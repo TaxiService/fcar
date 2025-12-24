@@ -222,6 +222,9 @@ linear_damp = 1.0
 angular_damp = 1.0
 script = ExtResource("1_fr0kx")
 max_tilt_for_stabilizer = 20.0
+stable_angular_damp = 1.8
+unstable_angular_damp = 0.8
+unstable_linear_damp = 0.85
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="FCar"]
 shape = SubResource("BoxShape3D_eaf57")
