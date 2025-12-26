@@ -2,6 +2,7 @@ extends RigidBody3D
 
 var lock_height: bool = false
 var target_height: float
+var height_lock_refresh_timer: float = 0.0  # Time since last height lock refresh
 var is_stable: bool = true  # Tracks if car is stable enough for stabilizers/wheels
 var disabled_time_remaining: float = 0.0  # Time until stabilizers can re-enable
 var grace_period_remaining: float = 0.0  # Immunity period after recovery
@@ -17,13 +18,13 @@ var current_yaw: float = 0.0       # Rotation (-1 to 1)
 
 # Vectored thrust parameters
 @export_category("thrust")
-@export var hover_thrust: float = 2.5  # Thrust when NOT height-locked (slowly descends)
+@export var hover_thrust: float = 3.0  # Thrust when NOT height-locked (slowly descends)
 @export var heightlock_thrust: float = 5.0  # Thrust when height-locked (maintains altitude)
 @export var max_thrust: float = 10.0  # Maximum possible thrust per wheel
 @export var max_thrust_angle: float = 50.0  # Max thruster tilt from vertical (degrees)
 @export_category("tilt differential")
-@export var pitch_differential: float = 0.3  # 0=no tilt, 1=max tilt (front/back thrust difference)
-@export var roll_differential: float = 0.3   # 0=no tilt, 1=max tilt (left/right thrust difference)
+@export var pitch_differential: float = 0.5  # 0=no tilt, 1=max tilt (front/back thrust difference)
+@export var roll_differential: float = 0.35   # 0=no tilt, 1=max tilt (left/right thrust difference)
 @export_category("input smoothing")
 # Left stick (WASD) - how fast each axis responds
 @export var pitch_acceleration: float = 3.0  # How fast forward/back input ramps (higher = snappier)
@@ -35,11 +36,13 @@ var current_yaw: float = 0.0       # Rotation (-1 to 1)
 @export var yaw_thrust_angle: float = 30.0  # How much front/back thrusters tilt for yaw
 @export var max_angular_speed: float = 2.0  # Max rotation speed (rad/s) - prevents crazy spinning
 @export_category("height lock")
-@export var height_lock_strength: float = 0.5  # How aggressively height lock corrects
-@export var height_lock_dissipation: float = 2.0  # How fast thrust fades when disabled (seconds)
+@export var height_lock_strength: float = 0.8  # How aggressively height lock corrects
+@export var height_lock_dissipation: float = 0.5  # How fast thrust fades when disabled (seconds)
+@export var height_lock_refresh_threshold: float = 0.8  # Only refresh target if drifted this far (in meters)
+@export var throttle_power: float = 2.0  # How much Space/C multiply thrust (higher = faster climb/descent)
 @export_category("stabilizer")
 @export var stabilizer_strength: float = 25.0  # Reduced to allow natural tilting
-@export var max_tilt_for_stabilizer: float = 60.0  # Disable stabilizer beyond this tilt angle (degrees)
+@export var max_tilt_for_stabilizer: float = 45.0  # Disable stabilizer beyond this tilt angle (degrees)
 @export_category("unstable/disabled")
 @export var recovery_time: float = 1.5  # How long stabilizers stay disabled after exceeding tilt
 @export var grace_period: float = 3.0  # Immunity time after recovery - can't be disabled again
@@ -104,6 +107,21 @@ func _physics_process(delta):
 			# Car is upright - enable
 			is_stable = true
 			thrust_power = move_toward(thrust_power, 1.0, delta / height_lock_dissipation)
+
+	# Height lock auto-refresh system
+	if lock_height:
+		# Count up the timer
+		height_lock_refresh_timer += delta
+		# Every 1 second, check if we've drifted significantly
+		if height_lock_refresh_timer >= 1.0:
+			var height_drift = abs(global_transform.origin.y - target_height)
+			# Only refresh target if we've drifted more than threshold (e.g., landed on platform)
+			if height_drift > height_lock_refresh_threshold:
+				target_height = global_transform.origin.y
+			height_lock_refresh_timer = 0.0  # Reset timer regardless
+	else:
+		# Height lock is off - reset timer
+		height_lock_refresh_timer = 0.0
 
 	# Only accept inputs if car is stable/operational
 	if is_stable:
@@ -183,7 +201,7 @@ func _physics_process(delta):
 		var input_roll: float = current_roll
 
 		# Throttle: scale to thrust multipliers
-		var throttle: float = current_throttle * 1.2  # Scale factor for thrust effect
+		var throttle: float = current_throttle * throttle_power
 
 		# Yaw: apply ease-in curve for smoother feel
 		var input_yaw: float = sign(current_yaw) * pow(abs(current_yaw), 1.5)
