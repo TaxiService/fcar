@@ -43,7 +43,7 @@ var current_yaw: float = 0.0       # Rotation (-1 to 1)
 @export_category("stabilizer")
 @export var stabilizer_strength: float = 25.0  # Reduced to allow natural tilting
 @export var max_tilt_for_stabilizer: float = 45.0  # Disable stabilizer beyond this tilt angle (degrees)
-@export_category("unstable/disabled")
+@export_category("unstable/disabled") 
 @export var recovery_time: float = 1.5  # How long stabilizers stay disabled after exceeding tilt
 @export var grace_period: float = 3.0  # Immunity time after recovery - can't be disabled again
 @export var auto_flip_strength: float = 25.0  # Torque to help flip car upright during grace period
