@@ -52,6 +52,12 @@ var current_yaw: float = 0.0       # Rotation (-1 to 1)
 @export var unstable_angular_damp: float = 0.8  # Angular damping when disabled/tumbling
 @export var stable_linear_damp: float = 2.0  # Linear damping when stabilizers active
 @export var unstable_linear_damp: float = 0.85  # Linear damping when disabled/tumbling
+@export_category("debug")
+@export var debug_thrusters: bool = false  # Show thruster direction cylinders and force arrows
+@export var com_compensation_enabled: bool = true  # Compensate for center of mass offset
+@export_range(0.0, 3.0, 0.1) var com_compensation_strength: float = 1.0  # How aggressively to compensate (1=calculated, 2=double, 0=none)
+@export var heading_hold_enabled: bool = true  # Actively cancel unwanted yaw when not turning
+@export var heading_hold_strength: float = 15.0  # How strongly to hold heading (higher = more stable)
 
 # Wheel/corner nodes for future force application
 # These should be Marker3D children positioned at the car's corners
@@ -59,6 +65,196 @@ var current_yaw: float = 0.0       # Rotation (-1 to 1)
 @onready var wheel_front_right: Node3D = $WheelFrontRight if has_node("WheelFrontRight") else null
 @onready var wheel_back_left: Node3D = $WheelBackLeft if has_node("WheelBackLeft") else null
 @onready var wheel_back_right: Node3D = $WheelBackRight if has_node("WheelBackRight") else null
+
+# Debug visualization
+var debug_cylinders: Array[MeshInstance3D] = []
+var debug_arrows: Array[MeshInstance3D] = []
+
+# CoM compensation - precomputed lever arms and compensation factors
+var wheel_lever_arms: Array[Vector3] = []  # Position of each wheel relative to CoM
+var strafe_compensation: Array[float] = []  # Thrust multiplier for strafing (prevents yaw)
+var pitch_compensation: Array[float] = []   # Thrust multiplier for forward/back (prevents roll)
+var yaw_compensation: Array[float] = []     # Yaw tilt multiplier (balances yaw torque around CoM)
+var throttle_compensation: Array[float] = []  # Thrust multiplier for up/down (prevents pitch/roll)
+
+func _ready():
+	if debug_thrusters:
+		_create_debug_visuals()
+	_calculate_com_compensation()
+
+func _calculate_com_compensation():
+	# Get center of mass (local to the rigid body)
+	var com = center_of_mass if center_of_mass_mode == 1 else Vector3.ZERO
+
+	var wheel_nodes = [wheel_front_left, wheel_front_right, wheel_back_left, wheel_back_right]
+
+	# Clear and recalculate
+	wheel_lever_arms.clear()
+	strafe_compensation.clear()
+	pitch_compensation.clear()
+	yaw_compensation.clear()
+	throttle_compensation.clear()
+
+	# First pass: calculate lever arms and find averages
+	var total_abs_z = 0.0
+	var total_abs_x = 0.0
+	var total_horizontal_dist = 0.0  # Distance in X-Z plane for yaw
+	var valid_count = 0
+
+	for wheel in wheel_nodes:
+		if wheel:
+			var lever = wheel.position - com
+			wheel_lever_arms.append(lever)
+			total_abs_z += abs(lever.z)
+			total_abs_x += abs(lever.x)
+			total_horizontal_dist += sqrt(lever.x * lever.x + lever.z * lever.z)
+			valid_count += 1
+		else:
+			wheel_lever_arms.append(Vector3.ZERO)
+
+	if valid_count == 0:
+		# No wheels, set defaults
+		for i in range(4):
+			strafe_compensation.append(1.0)
+			pitch_compensation.append(1.0)
+			yaw_compensation.append(1.0)
+			throttle_compensation.append(1.0)
+		return
+
+	var avg_abs_z = total_abs_z / valid_count
+	var avg_abs_x = total_abs_x / valid_count
+	var avg_horizontal_dist = total_horizontal_dist / valid_count
+
+	# Second pass: calculate compensation factors
+	# Wheels with larger lever arms get less thrust to prevent unwanted torque
+	for i in range(wheel_nodes.size()):
+		if wheel_nodes[i]:
+			var lever = wheel_lever_arms[i]
+
+			# Strafe compensation: based on Z lever (forward/back distance from CoM)
+			# Larger |Z| means more yaw torque when strafing, so reduce thrust
+			if abs(lever.z) > 0.01:
+				var strafe_comp = avg_abs_z / abs(lever.z)
+				strafe_compensation.append(clamp(strafe_comp, 0.3, 3.0))
+			else:
+				strafe_compensation.append(1.0)
+
+			# Pitch compensation: based on X lever (left/right distance from CoM)
+			# Larger |X| means more roll torque when pitching, so reduce thrust
+			if abs(lever.x) > 0.01:
+				var pitch_comp = avg_abs_x / abs(lever.x)
+				pitch_compensation.append(clamp(pitch_comp, 0.3, 3.0))
+			else:
+				pitch_compensation.append(1.0)
+
+			# Yaw compensation: based on horizontal distance from CoM
+			# Wheels further from CoM in X-Z plane create more yaw torque
+			# So reduce their yaw tilt to balance yaw response
+			var horizontal_dist = sqrt(lever.x * lever.x + lever.z * lever.z)
+			if horizontal_dist > 0.01:
+				var yaw_comp = avg_horizontal_dist / horizontal_dist
+				yaw_compensation.append(clamp(yaw_comp, 0.3, 3.0))
+			else:
+				yaw_compensation.append(1.0)
+
+			# Throttle compensation: based on horizontal distance from CoM
+			# When going up/down, wheels further from CoM create more pitch/roll torque
+			# So reduce their thrust to prevent unwanted rotation during vertical movement
+			if horizontal_dist > 0.01:
+				var throttle_comp = avg_horizontal_dist / horizontal_dist
+				throttle_compensation.append(clamp(throttle_comp, 0.3, 3.0))
+			else:
+				throttle_compensation.append(1.0)
+		else:
+			strafe_compensation.append(1.0)
+			pitch_compensation.append(1.0)
+			yaw_compensation.append(1.0)
+			throttle_compensation.append(1.0)
+
+	if debug_thrusters:
+		print("CoM compensation calculated:")
+		print("  Center of Mass: ", com)
+		print("  Lever arms: ", wheel_lever_arms)
+		print("  Strafe compensation: ", strafe_compensation)
+		print("  Pitch compensation: ", pitch_compensation)
+		print("  Yaw compensation: ", yaw_compensation)
+		print("  Throttle compensation: ", throttle_compensation)
+
+func _create_debug_visuals():
+	var wheel_nodes = [wheel_front_left, wheel_front_right, wheel_back_left, wheel_back_right]
+
+	for wheel in wheel_nodes:
+		if not wheel:
+			continue
+
+		# Create cylinder for thruster direction
+		var cylinder_mesh = MeshInstance3D.new()
+		var cylinder = CylinderMesh.new()
+		cylinder.top_radius = 0.05
+		cylinder.bottom_radius = 0.08
+		cylinder.height = 0.3
+		cylinder_mesh.mesh = cylinder
+
+		# Create material for cylinder (blue-ish)
+		var cyl_mat = StandardMaterial3D.new()
+		cyl_mat.albedo_color = Color(0.3, 0.5, 1.0, 0.8)
+		cyl_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		cylinder_mesh.material_override = cyl_mat
+
+		add_child(cylinder_mesh)
+		debug_cylinders.append(cylinder_mesh)
+
+		# Create arrow for force vector
+		var arrow_mesh = MeshInstance3D.new()
+		var arrow = CylinderMesh.new()
+		arrow.top_radius = 0.0
+		arrow.bottom_radius = 0.04
+		arrow.height = 0.5
+		arrow_mesh.mesh = arrow
+
+		# Create material for arrow (green for force)
+		var arrow_mat = StandardMaterial3D.new()
+		arrow_mat.albedo_color = Color(0.2, 1.0, 0.3, 0.9)
+		arrow_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		arrow_mesh.material_override = arrow_mat
+
+		add_child(arrow_mesh)
+		debug_arrows.append(arrow_mesh)
+
+func _update_debug_visual(index: int, wheel_pos: Vector3, thrust_direction: Vector3, thrust_magnitude: float):
+	if index >= debug_cylinders.size() or index >= debug_arrows.size():
+		return
+
+	var cylinder = debug_cylinders[index]
+	var arrow = debug_arrows[index]
+
+	# Position cylinder at wheel, pointing in thrust direction
+	cylinder.global_position = wheel_pos
+
+	# Rotate cylinder to point along thrust direction
+	# Cylinder's default orientation is along Y axis, so we need to align Y to thrust_direction
+	if thrust_direction.length() > 0.01:
+		var up = thrust_direction.normalized()
+		var right = up.cross(Vector3.FORWARD).normalized()
+		if right.length() < 0.01:
+			right = up.cross(Vector3.RIGHT).normalized()
+		var forward = right.cross(up).normalized()
+		cylinder.global_transform.basis = Basis(right, up, forward)
+
+	# Position arrow BELOW the cylinder (like thruster exhaust fire!)
+	# Points opposite to thrust direction, length scales with thrust magnitude
+	var arrow_length = clamp(thrust_magnitude / max_thrust, 0.1, 2.0) * 0.5
+	var exhaust_direction = -thrust_direction.normalized()  # Opposite of thrust = exhaust direction
+	arrow.global_position = wheel_pos + exhaust_direction * (0.15 + arrow_length * 0.5)
+	# Flip the basis to point downward (negate the up vector)
+	if thrust_direction.length() > 0.01:
+		var down = exhaust_direction
+		var right = down.cross(Vector3.FORWARD).normalized()
+		if right.length() < 0.01:
+			right = down.cross(Vector3.RIGHT).normalized()
+		var forward = right.cross(down).normalized()
+		arrow.global_transform.basis = Basis(right, down, forward)
+	arrow.scale = Vector3(1, arrow_length, 1)
 
 func engage_heightlock():
 	lock_height = !lock_height
@@ -164,9 +360,14 @@ func _physics_process(delta):
 		if Input.is_action_pressed("turn_left"):  # E key
 			target_yaw = -1.0
 
-		# Height lock toggle
+		# Height lock toggle (Caps Lock)
 		if Input.is_action_just_pressed("height_brake"):
 			engage_heightlock()
+
+		# CoM compensation toggle (Control)
+		if Input.is_action_just_pressed("toggle_com_compensation"):
+			com_compensation_enabled = !com_compensation_enabled
+			print("CoM compensation: ", "ON" if com_compensation_enabled else "OFF")
 
 		# ===== APPLY INPUT SMOOTHING =====
 		# All axes ramp towards their targets (like analog sticks)
@@ -226,8 +427,10 @@ func _physics_process(delta):
 			{"node": wheel_back_right, "is_front": false, "is_left": false}
 		]
 
+		var wheel_index = 0
 		for wheel in wheels:
 			if not wheel.node:
+				wheel_index += 1
 				continue
 
 			# Start with base tilt from movement input
@@ -236,7 +439,12 @@ func _physics_process(delta):
 
 			# Add yaw component: front wheels tilt sideways opposite to back wheels
 			# This creates natural rotation through thrust differential
-			var yaw_tilt = input_yaw * yaw_thrust_angle
+			# Apply yaw compensation to balance torque around CoM (if enabled)
+			var yaw_comp = 1.0
+			if com_compensation_enabled and wheel_index < yaw_compensation.size():
+				# Apply strength: pow(comp, strength) - higher strength = more aggressive compensation
+				yaw_comp = pow(yaw_compensation[wheel_index], com_compensation_strength)
+			var yaw_tilt = input_yaw * yaw_thrust_angle * yaw_comp
 			if wheel.is_front:
 				tilt_roll += yaw_tilt  # Front wheels tilt one way
 			else:
@@ -279,13 +487,45 @@ func _physics_process(delta):
 
 			thrust_multiplier = clamp(thrust_multiplier, 0.1, 2.0)  # Don't go negative or too high
 
+			# Apply Center of Mass compensation to prevent unwanted rotation during translation
+			# This adjusts thrust per wheel based on lever arm distance from CoM
+			var com_comp = 1.0
+			if com_compensation_enabled and wheel_index < throttle_compensation.size():
+				# Blend compensation based on input magnitude
+				# Each axis contributes its compensation weighted by input strength
+				var strafe_weight = abs(input_roll)
+				var pitch_weight = abs(input_pitch)
+				var throttle_weight = abs(throttle)  # Include vertical thrust!
+				var total_weight = strafe_weight + pitch_weight + throttle_weight
+
+				if total_weight > 0.01:
+					# Get base compensation values
+					var strafe_comp = strafe_compensation[wheel_index] if wheel_index < strafe_compensation.size() else 1.0
+					var pitch_comp = pitch_compensation[wheel_index] if wheel_index < pitch_compensation.size() else 1.0
+					var throt_comp = throttle_compensation[wheel_index]
+
+					# Apply strength: pow(comp, strength) - higher strength = more aggressive
+					strafe_comp = pow(strafe_comp, com_compensation_strength)
+					pitch_comp = pow(pitch_comp, com_compensation_strength)
+					throt_comp = pow(throt_comp, com_compensation_strength)
+
+					# Blend based on input weights
+					com_comp = (strafe_comp * strafe_weight + pitch_comp * pitch_weight + throt_comp * throttle_weight) / total_weight
+				# When not moving (hovering), no compensation needed
+
 			# Calculate thrust magnitude (with dissipation via thrust_power)
-			var thrust_magnitude = current_base_thrust * (1.0 + throttle) * altitude_compensation * thrust_multiplier * thrust_power
+			var thrust_magnitude = current_base_thrust * (1.0 + throttle) * altitude_compensation * thrust_multiplier * com_comp * thrust_power
 			thrust_magnitude = clamp(thrust_magnitude, 0.0, max_thrust)  # Cap at max thrust
 			var thrust_force = thrust_direction * thrust_magnitude * mass
 
 			# Apply thrust at wheel position
 			apply_force(thrust_force, wheel.node.global_position - global_position)
+
+			# Update debug visualization
+			if debug_thrusters:
+				_update_debug_visual(wheel_index, wheel.node.global_position, thrust_direction, thrust_magnitude)
+
+			wheel_index += 1
 
 	else:
 		# Car is disabled - decay all inputs towards zero
@@ -294,6 +534,13 @@ func _physics_process(delta):
 		current_roll = move_toward(current_roll, 0.0, roll_acceleration * delta * 2.0)
 		current_throttle = move_toward(current_throttle, 0.0, throttle_acceleration * delta * 2.0)
 		current_yaw = move_toward(current_yaw, 0.0, yaw_acceleration * delta * 2.0)
+
+		# Update debug visuals to show disabled state (thrusters pointing up, no force)
+		if debug_thrusters:
+			var wheel_nodes = [wheel_front_left, wheel_front_right, wheel_back_left, wheel_back_right]
+			for i in range(wheel_nodes.size()):
+				if wheel_nodes[i]:
+					_update_debug_visual(i, wheel_nodes[i].global_position, Vector3.UP, 0.0)
 
 	# Apply damping and stabilization based on stability state
 	if is_stable:
@@ -321,6 +568,14 @@ func _physics_process(delta):
 			apply_torque(-angular_velocity * mass)
 			# Corrective torque to stay upright
 			apply_torque(axis.normalized() * angle * mass * stabilizer_strength)
+
+			# Heading hold: when not intentionally yawing, actively cancel yaw velocity
+			# This prevents unwanted rotation from CoM-induced torque imbalance
+			if heading_hold_enabled and abs(current_yaw) < 0.1:
+				# Get yaw angular velocity (rotation around car's up axis)
+				var yaw_velocity = angular_velocity.dot(global_transform.basis.y)
+				# Apply counter-torque to cancel unwanted yaw
+				apply_torque(-global_transform.basis.y * yaw_velocity * mass * heading_hold_strength)
 	else:
 		# Disabled - use lower damping, let it tumble naturally
 		linear_damp = unstable_linear_damp

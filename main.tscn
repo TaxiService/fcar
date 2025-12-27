@@ -1,4 +1,4 @@
-[gd_scene load_steps=19 format=3 uid="uid://dek4efddws8mr"]
+[gd_scene load_steps=18 format=3 uid="uid://dek4efddws8mr"]
 
 [ext_resource type="Texture2D" uid="uid://b8dhd5iqbef0" path="res://icon.svg" id="1_et1pl"]
 [ext_resource type="Script" uid="uid://c7m1dsqpdck13" path="res://FCar.gd" id="1_fr0kx"]
@@ -49,12 +49,9 @@ size = Vector3(1, 0.8, 2)
 [sub_resource type="ConvexPolygonShape3D" id="ConvexPolygonShape3D_1juei"]
 points = PackedVector3Array(0.5, 0, 1, -0.5, 0, 1, -0.3, -0.2, 0.6, 0.3, -0.2, 0.6, 0.3, -0.2, -0.6, 0.5, 0, -1, -0.5, 0, -1, -0.3, -0.2, -0.6)
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_hkrge"]
-albedo_color = Color(0.486275, 0.486275, 0.486275, 1)
-
-[sub_resource type="BoxMesh" id="BoxMesh_25rs8"]
-material = SubResource("StandardMaterial3D_hkrge")
-size = Vector3(1, 0.8, 2)
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_h2yge"]
+radial_segments = 5
+rings = 3
 
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_feaec"]
 radial_segments = 7
@@ -221,6 +218,8 @@ max_contacts_reported = 10
 linear_damp = 1.0
 angular_damp = 1.0
 script = ExtResource("1_fr0kx")
+debug_thrusters = true
+com_compensation_enabled = false
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="FCar"]
 shape = SubResource("BoxShape3D_eaf57")
@@ -230,7 +229,8 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.4, 0)
 shape = SubResource("ConvexPolygonShape3D_1juei")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="FCar"]
-mesh = SubResource("BoxMesh_25rs8")
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 0, 0)
+mesh = SubResource("CapsuleMesh_h2yge")
 
 [node name="MeshInstance3D2" type="MeshInstance3D" parent="FCar"]
 transform = Transform3D(1.00635, 0, 0, 0, -4.3225e-08, -0.670446, 0, 0.988872, -2.93061e-08, 0, -0.336463, 0)
