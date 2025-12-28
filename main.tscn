@@ -234,6 +234,7 @@ max_contacts_reported = 10
 linear_damp = 1.0
 angular_damp = 1.0
 script = ExtResource("1_fr0kx")
+hover_thrust = 5.0
 roll_differential = 0.5
 debug_thrusters = true
 
