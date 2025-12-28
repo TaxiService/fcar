@@ -66,8 +66,15 @@ var current_yaw: float = 0.0
 @export var auto_hover_distance: float = 2.0
 @export var auto_hover_margin: float = 0.5
 
+@export_category("boosters")
+@export var booster_max_thrust: float = 100000.0
+@export var booster_shin_limit: float = 25.0  # ± degrees
+@export var booster_default_thigh_angle: float = 50.0  # degrees
+@export var booster_default_shin_angle: float = 35.0  # degrees
+
 @export_category("debug")
 @export var debug_thrusters: bool = false
+@export var debug_boosters: bool = false
 @export var com_compensation_enabled: bool = true
 @export_range(0.0, 3.0, 0.1) var com_compensation_strength: float = 1.0
 @export var heading_hold_enabled: bool = true
@@ -83,6 +90,7 @@ var current_yaw: float = 0.0
 # ===== SUBSYSTEMS =====
 var thruster_system: ThrusterSystem
 var stabilizer_system: StabilizerSystem
+var booster_system: BoosterSystem
 var debug_visualizer: DebugVisualizer
 var status_lights: StatusLights
 
@@ -110,6 +118,9 @@ func _init_subsystems():
 		debug_visualizer.max_thrust = max_thrust
 		debug_visualizer.create_visuals(self, wheel_nodes)
 
+	# Initialize booster system
+	_init_booster_system()
+
 	# Initialize status lights
 	if statuslights_node:
 		status_lights = StatusLights.new()
@@ -117,6 +128,20 @@ func _init_subsystems():
 		if not status_lights.initialize(statuslights_node):
 			status_lights = null
 			push_warning("FCar: Status lights initialization failed")
+
+
+func _init_booster_system():
+	booster_system = BoosterSystem.new()
+	if booster_system:
+		booster_system.max_thrust = booster_max_thrust
+		booster_system.shin_rotation_limit = booster_shin_limit
+		booster_system.default_thigh_angle = booster_default_thigh_angle
+		booster_system.default_shin_angle = booster_default_shin_angle
+		if not booster_system.initialize(self):
+			booster_system = null
+			push_warning("FCar: Booster system initialization failed")
+	else:
+		push_warning("FCar: BoosterSystem.new() returned null - check for parse errors")
 
 
 func _sync_thruster_config():
@@ -187,6 +212,13 @@ func _physics_process(delta):
 	# Update status lights
 	if status_lights:
 		status_lights.update(auto_hover_enabled, lock_height, global_position.y, target_height)
+
+	# Update boosters (disabled when car is unstable)
+	if booster_system:
+		if is_stable:
+			_update_boosters(delta)
+		else:
+			booster_system.set_thrust(0.0)
 
 
 func _update_stability_state(delta: float, tilt_angle: float):
@@ -407,3 +439,55 @@ func _process_disabled_state(delta: float):
 
 	if debug_visualizer:
 		debug_visualizer.update_all_disabled(_get_wheel_nodes())
+
+
+func _update_boosters(delta: float):
+	# Test controls: Shift fires boosters, arrow keys rotate joints
+	var boost_active = Input.is_key_pressed(KEY_SHIFT)
+
+	# Arrow keys rotate booster joints (works anytime)
+	var thigh_input = 0.0
+	var shin_input = 0.0
+
+	if Input.is_key_pressed(KEY_LEFT):
+		thigh_input = -1.0
+	elif Input.is_key_pressed(KEY_RIGHT):
+		thigh_input = 1.0
+
+	if Input.is_key_pressed(KEY_UP):
+		shin_input = -1.0
+	elif Input.is_key_pressed(KEY_DOWN):
+		shin_input = 1.0
+
+	# Apply rotation (90 deg/sec for thigh, 50 deg/sec for shin)
+	if thigh_input != 0.0 or shin_input != 0.0:
+		var thigh_speed = 90.0 * delta
+		var shin_speed = 50.0 * delta
+
+		booster_system.thigh_angle_left += thigh_input * thigh_speed
+		booster_system.thigh_angle_right += thigh_input * thigh_speed
+		booster_system.shin_angle_left += shin_input * shin_speed
+		booster_system.shin_angle_right += shin_input * shin_speed
+
+		# Clamp shin angles
+		booster_system.shin_angle_left = clamp(booster_system.shin_angle_left, -booster_shin_limit, booster_shin_limit)
+		booster_system.shin_angle_right = clamp(booster_system.shin_angle_right, -booster_shin_limit, booster_shin_limit)
+
+		booster_system._apply_rotations()
+
+	# Shift controls thrust
+	if boost_active:
+		booster_system.set_thrust(1.0)
+	else:
+		booster_system.set_thrust(0.0)
+
+	booster_system.apply_thrust(self, delta)
+
+	# Debug output
+	if debug_boosters and boost_active:
+		var dirs = booster_system.get_thrust_directions()
+		print("Boosters: thigh=", booster_system.thigh_angle_left, "° shin=", booster_system.shin_angle_left, "°")
+		if dirs.has("left"):
+			print("  L dir: ", dirs.left.direction)
+		if dirs.has("right"):
+			print("  R dir: ", dirs.right.direction)
