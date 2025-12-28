@@ -238,6 +238,7 @@ physics_material_override = SubResource("PhysicsMaterial_elbkq")
 gravity_scale = 2.0
 center_of_mass_mode = 1
 center_of_mass = Vector3(0, -0.3, -0.1)
+can_sleep = false
 continuous_cd = true
 contact_monitor = true
 max_contacts_reported = 10
@@ -248,6 +249,7 @@ hover_thrust = 3.0
 heightlock_thrust = 5.0
 roll_differential = 0.5
 debug_thrusters = true
+com_compensation_enabled = false
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="FCar"]
 shape = SubResource("BoxShape3D_eaf57")
