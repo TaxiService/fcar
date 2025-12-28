@@ -236,7 +236,6 @@ angular_damp = 1.0
 script = ExtResource("1_fr0kx")
 roll_differential = 0.5
 debug_thrusters = true
-com_compensation_enabled = false
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="FCar"]
 shape = SubResource("BoxShape3D_eaf57")
