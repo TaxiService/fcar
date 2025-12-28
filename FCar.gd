@@ -7,6 +7,7 @@ var is_stable: bool = true  # Tracks if car is stable enough for stabilizers/whe
 var disabled_time_remaining: float = 0.0  # Time until stabilizers can re-enable
 var grace_period_remaining: float = 0.0  # Immunity period after recovery
 var thrust_power: float = 1.0  # Current thrust multiplier (dissipates when disabled)
+var handbrake_active: bool = false  # When true, all thrusters are disabled
 
 # Smoothed input state (all axes ramp up/down like analog sticks)
 # Left stick (WASD) - controls tilt/movement direction
@@ -52,6 +53,14 @@ var current_yaw: float = 0.0       # Rotation (-1 to 1)
 @export var unstable_angular_damp: float = 0.8  # Angular damping when disabled/tumbling
 @export var stable_linear_damp: float = 2.0  # Linear damping when stabilizers active
 @export var unstable_linear_damp: float = 0.85  # Linear damping when disabled/tumbling
+@export_category("handbrake")
+@export var handbrake_disables_stabilizer: bool = true  # Also disable stabilizer when handbrake is held
+
+@export_category("auto-hover safety")
+@export var auto_hover_enabled: bool = true  # Automatically lock height when close to ground
+@export var auto_hover_distance: float = 2.0  # Distance to ground that triggers auto-hover (meters)
+@export var auto_hover_margin: float = 0.5  # Extra height added when auto-hover kicks in
+
 @export_category("debug")
 @export var debug_thrusters: bool = false  # Show thruster direction cylinders and force arrows
 @export var com_compensation_enabled: bool = true  # Compensate for center of mass offset
@@ -369,6 +378,14 @@ func _physics_process(delta):
 			com_compensation_enabled = !com_compensation_enabled
 			print("CoM compensation: ", "ON" if com_compensation_enabled else "OFF")
 
+		# Auto-hover toggle (V)
+		if Input.is_action_just_pressed("toggle_auto_hover"):
+			auto_hover_enabled = !auto_hover_enabled
+			print("Auto-hover safety: ", "ON" if auto_hover_enabled else "OFF")
+
+		# Handbrake (X) - held to disable thrusters
+		handbrake_active = Input.is_action_pressed("handbrake")
+
 		# ===== APPLY INPUT SMOOTHING =====
 		# All axes ramp towards their targets (like analog sticks)
 
@@ -408,19 +425,39 @@ func _physics_process(delta):
 			input_pitch /= input_magnitude
 			input_roll /= input_magnitude
 
-		# Throttle: scale to thrust multipliers
-		var throttle: float = current_throttle * throttle_power
+		# Throttle: simple linear boost/reduction to base thrust
+		# Space adds thrust, C reduces thrust - straightforward!
+		var throttle_boost: float = current_throttle * throttle_power
 
 		# Yaw: apply ease-in curve for smoother feel
 		var input_yaw: float = sign(current_yaw) * pow(abs(current_yaw), 1.5)
 
+		# ===== AUTO-HOVER SAFETY SYSTEM =====
+		# Raycast downward to detect ground proximity
+		if auto_hover_enabled and not lock_height and not handbrake_active:
+			var space_state = get_world_3d().direct_space_state
+			var ray_origin = global_position
+			var ray_end = global_position + Vector3.DOWN * (auto_hover_distance + 1.0)
+
+			var query = PhysicsRayQueryParameters3D.create(ray_origin, ray_end)
+			query.exclude = [self]  # Don't hit ourselves
+
+			var result = space_state.intersect_ray(query)
+			if result:
+				var ground_distance = global_position.y - result.position.y
+				if ground_distance < auto_hover_distance:
+					# Too close to ground! Auto-engage height lock
+					lock_height = true
+					target_height = result.position.y + auto_hover_distance + auto_hover_margin
+					print("Auto-hover engaged! Ground at ", ground_distance, "m, locking at ", target_height)
+
 		# ===== HEIGHT LOCK SYSTEM =====
 		var current_base_thrust = heightlock_thrust if lock_height else hover_thrust
 
-		# Height lock assistance (adds to throttle)
+		# Height lock assistance (adds to throttle boost)
 		if lock_height:
 			var height_error = target_height - global_transform.origin.y
-			throttle += clamp(height_error * height_lock_strength, -0.5, 0.5)
+			throttle_boost += clamp(height_error * height_lock_strength, -0.5, 0.5)
 
 		# Car's local axes for thrust direction
 		var pitch_axis = global_transform.basis.x  # Car's right axis
@@ -434,105 +471,121 @@ func _physics_process(delta):
 			{"node": wheel_back_right, "is_front": false, "is_left": false}
 		]
 
-		var wheel_index = 0
-		for wheel in wheels:
-			if not wheel.node:
-				wheel_index += 1
-				continue
-
-			# Start with base tilt from movement input
-			var tilt_pitch = input_pitch * max_thrust_angle
-			var tilt_roll = input_roll * max_thrust_angle
-
-			# Add yaw component: front wheels tilt sideways opposite to back wheels
-			# This creates natural rotation through thrust differential
-			# Apply yaw compensation to balance torque around CoM (if enabled)
-			var yaw_comp = 1.0
-			if com_compensation_enabled and wheel_index < yaw_compensation.size():
-				# Apply strength: pow(comp, strength) - higher strength = more aggressive compensation
-				yaw_comp = pow(yaw_compensation[wheel_index], com_compensation_strength)
-			var yaw_tilt = input_yaw * yaw_thrust_angle * yaw_comp
-			if wheel.is_front:
-				tilt_roll += yaw_tilt  # Front wheels tilt one way
-			else:
-				tilt_roll -= yaw_tilt  # Back wheels tilt the other way
-
-			# Calculate thrust direction (start with UP, then rotate)
-			var thrust_direction = Vector3.UP
-			thrust_direction = thrust_direction.rotated(pitch_axis, deg_to_rad(tilt_pitch))
-			thrust_direction = thrust_direction.rotated(roll_axis, deg_to_rad(tilt_roll))
-
-			# Calculate total tilt angle for thrust compensation
-			var total_tilt = sqrt(tilt_pitch * tilt_pitch + tilt_roll * tilt_roll)
-			total_tilt = clamp(total_tilt, 0.0, 89.0)  # Prevent division by zero at 90°
-
-			# Compensate thrust to maintain altitude: multiply by 1/cos(angle)
-			var altitude_compensation = 1.0 / cos(deg_to_rad(total_tilt))
-
-			# Calculate thrust differential for natural pitch/roll tilt
-			# Front/back difference creates pitch, left/right difference creates roll
-			var thrust_multiplier = 1.0
-
-			# Only apply pitch differential (not roll) to avoid diagonal yaw
-			# Pitch differential: front wheels less thrust, back wheels more (when pitching forward)
-			if wheel.is_front:
-				thrust_multiplier -= input_pitch * pitch_differential
-			else:
-				thrust_multiplier += input_pitch * pitch_differential
-
-			# Only apply roll differential (not pitch) to avoid diagonal yaw
-			# Roll differential: left wheels less thrust, right wheels more (when rolling right)
-			if wheel.is_left:
-				thrust_multiplier -= input_roll * roll_differential
-			else:
-				thrust_multiplier += input_roll * roll_differential
-
-			# When moving diagonally, reduce differential to prevent yaw
-			var diagonal_factor = abs(input_pitch) * abs(input_roll)
-			if diagonal_factor > 0.0:
-				thrust_multiplier = lerp(thrust_multiplier, 1.0, diagonal_factor * 0.7)
-
-			thrust_multiplier = clamp(thrust_multiplier, 0.1, 2.0)  # Don't go negative or too high
-
-			# Apply Center of Mass compensation to prevent unwanted rotation during translation
-			# This adjusts thrust per wheel based on lever arm distance from CoM
-			var com_comp = 1.0
-			if com_compensation_enabled and wheel_index < throttle_compensation.size():
-				# Blend compensation based on input magnitude
-				# Each axis contributes its compensation weighted by input strength
-				var strafe_weight = abs(input_roll)
-				var pitch_weight = abs(input_pitch)
-				var throttle_weight = abs(throttle)  # Include vertical thrust!
-				var total_weight = strafe_weight + pitch_weight + throttle_weight
-
-				if total_weight > 0.01:
-					# Get base compensation values
-					var strafe_comp = strafe_compensation[wheel_index] if wheel_index < strafe_compensation.size() else 1.0
-					var pitch_comp = pitch_compensation[wheel_index] if wheel_index < pitch_compensation.size() else 1.0
-					var throt_comp = throttle_compensation[wheel_index]
-
-					# Apply strength: pow(comp, strength) - higher strength = more aggressive
-					strafe_comp = pow(strafe_comp, com_compensation_strength)
-					pitch_comp = pow(pitch_comp, com_compensation_strength)
-					throt_comp = pow(throt_comp, com_compensation_strength)
-
-					# Blend based on input weights
-					com_comp = (strafe_comp * strafe_weight + pitch_comp * pitch_weight + throt_comp * throttle_weight) / total_weight
-				# When not moving (hovering), no compensation needed
-
-			# Calculate thrust magnitude (with dissipation via thrust_power)
-			var thrust_magnitude = current_base_thrust * (1.0 + throttle) * altitude_compensation * thrust_multiplier * com_comp * thrust_power
-			thrust_magnitude = clamp(thrust_magnitude, 0.0, max_thrust)  # Cap at max thrust
-			var thrust_force = thrust_direction * thrust_magnitude * mass
-
-			# Apply thrust at wheel position
-			apply_force(thrust_force, wheel.node.global_position - global_position)
-
-			# Update debug visualization
+		# Skip thrust application if handbrake is active
+		if handbrake_active:
+			# Update debug visuals to show disabled state
 			if debug_thrusters:
-				_update_debug_visual(wheel_index, wheel.node.global_position, thrust_direction, thrust_magnitude)
+				var wheel_nodes = [wheel_front_left, wheel_front_right, wheel_back_left, wheel_back_right]
+				for i in range(wheel_nodes.size()):
+					if wheel_nodes[i]:
+						_update_debug_visual(i, wheel_nodes[i].global_position, Vector3.UP, 0.0)
+		else:
+			# Normal thrust application
+			var wheel_index = 0
+			for wheel in wheels:
+				if not wheel.node:
+					wheel_index += 1
+					continue
 
-			wheel_index += 1
+				# Start with base tilt from movement input
+				var tilt_pitch = input_pitch * max_thrust_angle
+				var tilt_roll = input_roll * max_thrust_angle
+
+				# Add yaw component: front wheels tilt sideways opposite to back wheels
+				# This creates natural rotation through thrust differential
+				# Apply yaw compensation to balance torque around CoM (if enabled)
+				var yaw_comp = 1.0
+				if com_compensation_enabled and wheel_index < yaw_compensation.size():
+					# Apply strength: pow(comp, strength) - higher strength = more aggressive compensation
+					yaw_comp = pow(yaw_compensation[wheel_index], com_compensation_strength)
+				var yaw_tilt = input_yaw * yaw_thrust_angle * yaw_comp
+				if wheel.is_front:
+					tilt_roll += yaw_tilt  # Front wheels tilt one way
+				else:
+					tilt_roll -= yaw_tilt  # Back wheels tilt the other way
+
+				# Calculate thrust direction (start with UP, then rotate)
+				var thrust_direction = Vector3.UP
+				thrust_direction = thrust_direction.rotated(pitch_axis, deg_to_rad(tilt_pitch))
+				thrust_direction = thrust_direction.rotated(roll_axis, deg_to_rad(tilt_roll))
+
+				# Calculate total tilt angle for thrust compensation
+				var total_tilt = sqrt(tilt_pitch * tilt_pitch + tilt_roll * tilt_roll)
+				total_tilt = clamp(total_tilt, 0.0, 89.0)  # Prevent division by zero at 90°
+
+				# Compensate thrust to maintain altitude: multiply by 1/cos(angle)
+				# Cap at 1.5x to prevent extreme thrust when heavily tilted + throttling
+				var altitude_compensation = 1.0 / cos(deg_to_rad(total_tilt))
+				altitude_compensation = minf(altitude_compensation, 1.5)
+
+				# Calculate thrust differential for natural pitch/roll tilt
+				# Front/back difference creates pitch, left/right difference creates roll
+				var thrust_multiplier = 1.0
+
+				# Only apply pitch differential (not roll) to avoid diagonal yaw
+				# Pitch differential: front wheels less thrust, back wheels more (when pitching forward)
+				if wheel.is_front:
+					thrust_multiplier -= input_pitch * pitch_differential
+				else:
+					thrust_multiplier += input_pitch * pitch_differential
+
+				# Only apply roll differential (not pitch) to avoid diagonal yaw
+				# Roll differential: left wheels less thrust, right wheels more (when rolling right)
+				if wheel.is_left:
+					thrust_multiplier -= input_roll * roll_differential
+				else:
+					thrust_multiplier += input_roll * roll_differential
+
+				# When moving diagonally, reduce differential to prevent yaw
+				var diagonal_factor = abs(input_pitch) * abs(input_roll)
+				if diagonal_factor > 0.0:
+					thrust_multiplier = lerp(thrust_multiplier, 1.0, diagonal_factor * 0.7)
+
+				thrust_multiplier = clamp(thrust_multiplier, 0.1, 2.0)  # Don't go negative or too high
+
+				# Apply Center of Mass compensation to prevent unwanted rotation during translation
+				# This adjusts thrust per wheel based on lever arm distance from CoM
+				var com_comp = 1.0
+				if com_compensation_enabled and wheel_index < throttle_compensation.size():
+					# Blend compensation based on input magnitude
+					# Each axis contributes its compensation weighted by input strength
+					var strafe_weight = abs(input_roll)
+					var pitch_weight = abs(input_pitch)
+					var throttle_weight = abs(throttle_boost)  # Include vertical thrust!
+					var total_weight = strafe_weight + pitch_weight + throttle_weight
+
+					if total_weight > 0.01:
+						# Get base compensation values
+						var strafe_comp = strafe_compensation[wheel_index] if wheel_index < strafe_compensation.size() else 1.0
+						var pitch_comp = pitch_compensation[wheel_index] if wheel_index < pitch_compensation.size() else 1.0
+						var throt_comp = throttle_compensation[wheel_index]
+
+						# Apply strength: pow(comp, strength) - higher strength = more aggressive
+						strafe_comp = pow(strafe_comp, com_compensation_strength)
+						pitch_comp = pow(pitch_comp, com_compensation_strength)
+						throt_comp = pow(throt_comp, com_compensation_strength)
+
+						# Blend based on input weights
+						com_comp = (strafe_comp * strafe_weight + pitch_comp * pitch_weight + throt_comp * throttle_weight) / total_weight
+					# When not moving (hovering), no compensation needed
+
+				# Calculate thrust magnitude (with dissipation via thrust_power)
+				# Throttle is now ADDITIVE: base thrust + throttle boost
+				# This means Space = more thrust, C = less thrust, simple and intuitive
+				var effective_base = current_base_thrust + throttle_boost
+				effective_base = maxf(effective_base, 0.0)  # Never go negative
+				var thrust_magnitude = effective_base * altitude_compensation * thrust_multiplier * com_comp * thrust_power
+				thrust_magnitude = clamp(thrust_magnitude, 0.0, max_thrust)  # Cap at max thrust
+				var thrust_force = thrust_direction * thrust_magnitude * mass
+
+				# Apply thrust at wheel position
+				apply_force(thrust_force, wheel.node.global_position - global_position)
+
+				# Update debug visualization
+				if debug_thrusters:
+					_update_debug_visual(wheel_index, wheel.node.global_position, thrust_direction, thrust_magnitude)
+
+				wheel_index += 1
 
 	else:
 		# Car is disabled - decay all inputs towards zero
@@ -550,7 +603,10 @@ func _physics_process(delta):
 					_update_debug_visual(i, wheel_nodes[i].global_position, Vector3.UP, 0.0)
 
 	# Apply damping and stabilization based on stability state
-	if is_stable:
+	# Handbrake can optionally disable stabilizer for free-fall/tricks
+	var stabilizer_active = is_stable and not (handbrake_active and handbrake_disables_stabilizer)
+
+	if stabilizer_active:
 		linear_damp = stable_linear_damp
 		angular_damp = stable_angular_damp
 
@@ -584,6 +640,6 @@ func _physics_process(delta):
 				# Apply counter-torque to cancel unwanted yaw
 				apply_torque(-global_transform.basis.y * yaw_velocity * mass * heading_hold_strength)
 	else:
-		# Disabled - use lower damping, let it tumble naturally
+		# Disabled or handbrake - use lower damping, let it tumble/fall naturally
 		linear_damp = unstable_linear_damp
 		angular_damp = unstable_angular_damp
