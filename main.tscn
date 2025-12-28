@@ -1,4 +1,4 @@
-[gd_scene load_steps=18 format=3 uid="uid://dek4efddws8mr"]
+[gd_scene load_steps=22 format=3 uid="uid://dek4efddws8mr"]
 
 [ext_resource type="Texture2D" uid="uid://b8dhd5iqbef0" path="res://icon.svg" id="1_et1pl"]
 [ext_resource type="Script" uid="uid://c7m1dsqpdck13" path="res://FCar.gd" id="1_fr0kx"]
@@ -53,9 +53,24 @@ points = PackedVector3Array(0.5, 0, 1, -0.5, 0, 1, -0.3, -0.2, 0.6, 0.3, -0.2, 0
 radial_segments = 5
 rings = 3
 
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_h2yge"]
+albedo_color = Color(1, 0.6862745, 0.13725491, 1)
+
+[sub_resource type="SphereMesh" id="SphereMesh_h2yge"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_1bvp3"]
+albedo_color = Color(0.41960785, 0.9529412, 1, 1)
+metallic = 0.3
+metallic_specular = 0.44
+
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_feaec"]
 radial_segments = 7
 rings = 1
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_lquwl"]
+albedo_color = Color(0.39817834, 0.45201308, 0.40984902, 1)
+metallic = 0.17
+metallic_specular = 0.31
 
 [node name="Main" type="Node"]
 
@@ -72,6 +87,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1, 0)
 shape = SubResource("BoxShape3D_5patm")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Node/Floor"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0013418198, -0.019368052, -0.01874566)
 mesh = SubResource("BoxMesh_t3vcl")
 
 [node name="Floor2" type="StaticBody3D" parent="Node"]
@@ -201,12 +217,12 @@ shape = SubResource("BoxShape3D_n53hl")
 mesh = SubResource("BoxMesh_h3x72")
 
 [node name="Camera3D" type="Camera3D" parent="." node_paths=PackedStringArray("target")]
-transform = Transform3D(1, 0, 0, 0, 0.996195, 0.0871557, 0, -0.0871557, 0.996195, 0, 2.07618, 4)
+transform = Transform3D(1, 0, 0, 0, 0.9961948, 0.08715568, 0, -0.08715568, 0.9961948, -2.2765515, 2.07618, 7.6534176)
 script = ExtResource("1_ptugb")
 target = NodePath("../FCar")
 
 [node name="FCar" type="RigidBody3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.576183, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.2765515, 0.576183, 3.6534178)
 mass = 5000.0
 physics_material_override = SubResource("PhysicsMaterial_elbkq")
 gravity_scale = 2.0
@@ -218,6 +234,7 @@ max_contacts_reported = 10
 linear_damp = 1.0
 angular_damp = 1.0
 script = ExtResource("1_fr0kx")
+roll_differential = 0.5
 debug_thrusters = true
 com_compensation_enabled = false
 
@@ -231,10 +248,18 @@ shape = SubResource("ConvexPolygonShape3D_1juei")
 [node name="MeshInstance3D" type="MeshInstance3D" parent="FCar"]
 transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 0, 0)
 mesh = SubResource("CapsuleMesh_h2yge")
+surface_material_override/0 = SubResource("StandardMaterial3D_h2yge")
+
+[node name="MeshInstance3D3" type="MeshInstance3D" parent="FCar"]
+transform = Transform3D(2.5373334e-05, -0.0062358533, -0.6879197, -0.67026913, -0.48751736, 0.003224503, -0.51182514, 0.6384361, -0.0042568073, 0, 0.07722026, -0.68935686)
+mesh = SubResource("SphereMesh_h2yge")
+skeleton = NodePath("../MeshInstance3D")
+surface_material_override/0 = SubResource("StandardMaterial3D_1bvp3")
 
 [node name="MeshInstance3D2" type="MeshInstance3D" parent="FCar"]
 transform = Transform3D(1.00635, 0, 0, 0, -4.3225e-08, -0.670446, 0, 0.988872, -2.93061e-08, 0, -0.336463, 0)
 mesh = SubResource("CapsuleMesh_feaec")
+surface_material_override/0 = SubResource("StandardMaterial3D_lquwl")
 
 [node name="WheelFrontLeft" type="Marker3D" parent="FCar"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.1, -1)

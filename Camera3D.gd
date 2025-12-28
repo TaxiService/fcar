@@ -29,10 +29,18 @@ var time_since_mouse_input: float = 0.0  # Timer for auto-return
 var is_mouselooking: bool = false  # Whether mouselook is active
 
 func _ready():
-	# Capture mouse for mouselook
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	# Start with mouse visible - only capture when right-click is held
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 func _input(event):
+	# Handle mouse button press/release for capture
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_RIGHT:
+			if event.pressed:
+				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+			else:
+				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
 	# Handle mouse movement for mouselook
 	if event is InputEventMouseMotion:
 		# Right mouse button or middle mouse button for mouselook

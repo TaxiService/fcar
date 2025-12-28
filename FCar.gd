@@ -401,6 +401,13 @@ func _physics_process(delta):
 		var input_pitch: float = current_pitch
 		var input_roll: float = current_roll
 
+		# Normalize diagonal input to prevent faster/stronger diagonal movement
+		# Without this, W+A would give magnitude √2 ≈ 1.414 instead of 1.0
+		var input_magnitude = sqrt(input_pitch * input_pitch + input_roll * input_roll)
+		if input_magnitude > 1.0:
+			input_pitch /= input_magnitude
+			input_roll /= input_magnitude
+
 		# Throttle: scale to thrust multipliers
 		var throttle: float = current_throttle * throttle_power
 
