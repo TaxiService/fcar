@@ -1,4 +1,4 @@
-[gd_scene load_steps=22 format=3 uid="uid://dek4efddws8mr"]
+[gd_scene load_steps=26 format=3 uid="uid://dek4efddws8mr"]
 
 [ext_resource type="Texture2D" uid="uid://b8dhd5iqbef0" path="res://icon.svg" id="1_et1pl"]
 [ext_resource type="Script" uid="uid://c7m1dsqpdck13" path="res://FCar.gd" id="1_fr0kx"]
@@ -71,6 +71,16 @@ rings = 1
 albedo_color = Color(0.39817834, 0.45201308, 0.40984902, 1)
 metallic = 0.17
 metallic_specular = 0.31
+
+[sub_resource type="BoxMesh" id="BoxMesh_h2yge"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_7mycd"]
+albedo_color = Color(0.17716414, 0.17716414, 0.12428273, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_272bh"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_5vw27"]
+albedo_color = Color(1.8566039, 4.415934, 0.18679522, 1)
 
 [node name="Main" type="Node"]
 
@@ -234,7 +244,8 @@ max_contacts_reported = 10
 linear_damp = 1.0
 angular_damp = 1.0
 script = ExtResource("1_fr0kx")
-hover_thrust = 5.0
+hover_thrust = 3.0
+heightlock_thrust = 5.0
 roll_differential = 0.5
 debug_thrusters = true
 
@@ -272,3 +283,43 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.1, 1)
 
 [node name="WheelBackRight" type="Marker3D" parent="FCar"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0.1, 1)
+
+[node name="statuslights" type="Node3D" parent="FCar"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.99301744)
+
+[node name="autohover" type="MeshInstance3D" parent="FCar/statuslights"]
+transform = Transform3D(0.21165748, 0, 0, 0, 0.042190384, 0.018301047, 0, -0.024047405, 0.032108586, 0, -0.30908442, -0.042146683)
+mesh = SubResource("BoxMesh_h2yge")
+surface_material_override/0 = SubResource("StandardMaterial3D_7mycd")
+
+[node name="heightlock" type="Node3D" parent="FCar/statuslights"]
+
+[node name="+2" type="MeshInstance3D" parent="FCar/statuslights/heightlock"]
+transform = Transform3D(0.22272772, 0, 0, 0, 0.025750296, 0, 0, 0, 0.2940546, 0, 0.15930629, -0.13936377)
+mesh = SubResource("BoxMesh_272bh")
+skeleton = NodePath("../..")
+surface_material_override/0 = SubResource("StandardMaterial3D_7mycd")
+
+[node name="+1" type="MeshInstance3D" parent="FCar/statuslights/heightlock"]
+transform = Transform3D(0.30593187, 0, 0, 0, 0.025750296, 0, 0, 0, 0.2940546, 0, 0.09539145, -0.13936377)
+mesh = SubResource("BoxMesh_272bh")
+skeleton = NodePath("../..")
+surface_material_override/0 = SubResource("StandardMaterial3D_7mycd")
+
+[node name="0" type="MeshInstance3D" parent="FCar/statuslights/heightlock"]
+transform = Transform3D(0.3829149, 0, 0, 0, 0.025750296, 0, 0, 0, 0.2940546, 0, 0.039858878, -0.13936377)
+mesh = SubResource("BoxMesh_272bh")
+skeleton = NodePath("../..")
+surface_material_override/0 = SubResource("StandardMaterial3D_5vw27")
+
+[node name="-1" type="MeshInstance3D" parent="FCar/statuslights/heightlock"]
+transform = Transform3D(0.30593187, 0, 0, 0, 0.025750296, 0, 0, 0, 0.2940546, 0, -0.017243862, -0.13936377)
+mesh = SubResource("BoxMesh_272bh")
+skeleton = NodePath("../..")
+surface_material_override/0 = SubResource("StandardMaterial3D_7mycd")
+
+[node name="-2" type="MeshInstance3D" parent="FCar/statuslights/heightlock"]
+transform = Transform3D(0.22272772, 0, 0, 0, 0.025750296, 0, 0, 0, 0.2940546, 0, -0.080904245, -0.13936377)
+mesh = SubResource("BoxMesh_272bh")
+skeleton = NodePath("../..")
+surface_material_override/0 = SubResource("StandardMaterial3D_7mycd")

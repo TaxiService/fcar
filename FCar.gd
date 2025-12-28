@@ -18,9 +18,9 @@ var current_yaw: float = 0.0
 
 # ===== EXPORT PARAMETERS =====
 @export_category("thrust")
-@export var hover_thrust: float = 3.0
-@export var heightlock_thrust: float = 5.0
-@export var max_thrust: float = 10.0
+@export var hover_thrust: float = 4.0  # Slightly under gravity - graceful descent when height lock OFF
+@export var heightlock_thrust: float = 6.0  # Enough for height lock to maintain + maneuver
+@export var max_thrust: float = 15.0
 @export var max_thrust_angle: float = 50.0
 
 @export_category("tilt differential")

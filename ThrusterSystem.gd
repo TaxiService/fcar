@@ -149,10 +149,11 @@ func calculate_wheel_thrust(
 	thrust_direction = thrust_direction.rotated(pitch_axis, deg_to_rad(tilt_pitch))
 	thrust_direction = thrust_direction.rotated(roll_axis, deg_to_rad(tilt_roll))
 
-	# Altitude compensation (capped at 1.5x)
+	# Altitude compensation - increase thrust to maintain altitude when tilted
+	# Cap at 2.0x which perfectly compensates up to ~60° tilt
 	var total_tilt = sqrt(tilt_pitch * tilt_pitch + tilt_roll * tilt_roll)
 	total_tilt = clamp(total_tilt, 0.0, 89.0)
-	var altitude_compensation = minf(1.0 / cos(deg_to_rad(total_tilt)), 1.5)
+	var altitude_compensation = minf(1.0 / cos(deg_to_rad(total_tilt)), 2.0)
 
 	# Thrust differential
 	var thrust_multiplier = 1.0
