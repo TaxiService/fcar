@@ -78,11 +78,13 @@ var current_yaw: float = 0.0
 @onready var wheel_front_right: Node3D = $WheelFrontRight if has_node("WheelFrontRight") else null
 @onready var wheel_back_left: Node3D = $WheelBackLeft if has_node("WheelBackLeft") else null
 @onready var wheel_back_right: Node3D = $WheelBackRight if has_node("WheelBackRight") else null
+@onready var statuslights_node: Node3D = $statuslights if has_node("statuslights") else null
 
 # ===== SUBSYSTEMS =====
 var thruster_system: ThrusterSystem
 var stabilizer_system: StabilizerSystem
 var debug_visualizer: DebugVisualizer
+var status_lights: StatusLights
 
 
 func _ready():
@@ -107,6 +109,14 @@ func _init_subsystems():
 		debug_visualizer = DebugVisualizer.new()
 		debug_visualizer.max_thrust = max_thrust
 		debug_visualizer.create_visuals(self, wheel_nodes)
+
+	# Initialize status lights
+	if statuslights_node:
+		status_lights = StatusLights.new()
+		status_lights.height_lock_refresh_threshold = height_lock_refresh_threshold
+		if not status_lights.initialize(statuslights_node):
+			status_lights = null
+			push_warning("FCar: Status lights initialization failed")
 
 
 func _sync_thruster_config():
@@ -173,6 +183,10 @@ func _physics_process(delta):
 			self, car_up, current_yaw,
 			grace_period_remaining > 0.0, tilt_angle
 		)
+
+	# Update status lights
+	if status_lights:
+		status_lights.update(auto_hover_enabled, lock_height, global_position.y, target_height)
 
 
 func _update_stability_state(delta: float, tilt_angle: float):
