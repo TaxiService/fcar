@@ -261,7 +261,6 @@ hover_thrust = 3.0
 heightlock_thrust = 5.0
 roll_differential = 0.5
 booster_default_thigh_angle = -60.0
-booster_default_shin_angle = 45.0
 debug_thrusters = true
 com_compensation_enabled = false
 

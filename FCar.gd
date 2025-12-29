@@ -68,8 +68,11 @@ var current_yaw: float = 0.0
 
 @export_category("boosters")
 @export var booster_max_thrust: float = 100000.0
-@export var booster_shin_limit: float = 25.0  # ± degrees
-@export var booster_default_thigh_angle: float = 50.0  # degrees
+@export var booster_thigh_min: float = -180.0  # degrees
+@export var booster_thigh_max: float = 0.0  # degrees
+@export var booster_shin_min: float = 0.0  # degrees
+@export var booster_shin_max: float = 45.0  # degrees
+@export var booster_default_thigh_angle: float = -50.0  # degrees (negative = pointing back)
 @export var booster_default_shin_angle: float = 35.0  # degrees
 
 @export_category("debug")
@@ -134,7 +137,10 @@ func _init_booster_system():
 	booster_system = BoosterSystem.new()
 	if booster_system:
 		booster_system.max_thrust = booster_max_thrust
-		booster_system.shin_rotation_limit = booster_shin_limit
+		booster_system.thigh_rotation_min = booster_thigh_min
+		booster_system.thigh_rotation_max = booster_thigh_max
+		booster_system.shin_rotation_min = booster_shin_min
+		booster_system.shin_rotation_max = booster_shin_max
 		booster_system.default_thigh_angle = booster_default_thigh_angle
 		booster_system.default_shin_angle = booster_default_shin_angle
 		if not booster_system.initialize(self):
@@ -469,9 +475,11 @@ func _update_boosters(delta: float):
 		booster_system.shin_angle_left += shin_input * shin_speed
 		booster_system.shin_angle_right += shin_input * shin_speed
 
-		# Clamp shin angles
-		booster_system.shin_angle_left = clamp(booster_system.shin_angle_left, -booster_shin_limit, booster_shin_limit)
-		booster_system.shin_angle_right = clamp(booster_system.shin_angle_right, -booster_shin_limit, booster_shin_limit)
+		# Clamp angles
+		booster_system.thigh_angle_left = clamp(booster_system.thigh_angle_left, booster_thigh_min, booster_thigh_max)
+		booster_system.thigh_angle_right = clamp(booster_system.thigh_angle_right, booster_thigh_min, booster_thigh_max)
+		booster_system.shin_angle_left = clamp(booster_system.shin_angle_left, booster_shin_min, booster_shin_max)
+		booster_system.shin_angle_right = clamp(booster_system.shin_angle_right, booster_shin_min, booster_shin_max)
 
 		booster_system._apply_rotations()
 

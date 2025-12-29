@@ -12,11 +12,14 @@ var exhaust_left: Node3D
 var exhaust_right: Node3D
 
 # Configuration
-var shin_rotation_limit: float = 25.0  # degrees, ±
+var thigh_rotation_min: float = -180.0  # degrees
+var thigh_rotation_max: float = 0.0  # degrees
+var shin_rotation_min: float = 0.0  # degrees
+var shin_rotation_max: float = 45.0  # degrees
 var max_thrust: float = 100000.0  # boosters should be powerful
 
 # Default rotation angles (degrees)
-var default_thigh_angle: float = 50.0
+var default_thigh_angle: float = -50.0  # negative = pointing back
 var default_shin_angle: float = 35.0
 
 # Current rotation state (degrees)
@@ -73,14 +76,14 @@ func initialize(fcar: Node3D) -> bool:
 
 
 func set_thigh_angles(left: float, right: float) -> void:
-	thigh_angle_left = left
-	thigh_angle_right = right
+	thigh_angle_left = clamp(left, thigh_rotation_min, thigh_rotation_max)
+	thigh_angle_right = clamp(right, thigh_rotation_min, thigh_rotation_max)
 	_apply_rotations()
 
 
 func set_shin_angles(left: float, right: float) -> void:
-	shin_angle_left = clamp(left, -shin_rotation_limit, shin_rotation_limit)
-	shin_angle_right = clamp(right, -shin_rotation_limit, shin_rotation_limit)
+	shin_angle_left = clamp(left, shin_rotation_min, shin_rotation_max)
+	shin_angle_right = clamp(right, shin_rotation_min, shin_rotation_max)
 	_apply_rotations()
 
 
