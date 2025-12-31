@@ -1,4 +1,4 @@
-[gd_scene load_steps=31 format=3 uid="uid://dek4efddws8mr"]
+[gd_scene load_steps=32 format=3 uid="uid://dek4efddws8mr"]
 
 [ext_resource type="Texture2D" uid="uid://b8dhd5iqbef0" path="res://icon.svg" id="1_et1pl"]
 [ext_resource type="Script" uid="uid://c7m1dsqpdck13" path="res://FCar.gd" id="1_fr0kx"]
@@ -67,6 +67,9 @@ metallic_specular = 0.44
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_feaec"]
 radial_segments = 7
 rings = 1
+
+[sub_resource type="BoxMesh" id="BoxMesh_5vw27"]
+size = Vector3(0.1, 0.1, 0.1)
 
 [sub_resource type="BoxMesh" id="BoxMesh_h2yge"]
 
@@ -301,6 +304,25 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.1, 1)
 [node name="WheelBackRight" type="Marker3D" parent="FCar"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0.1, 1)
 
+[node name="directionlights" type="Node3D" parent="FCar"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.45707715, 0.012311399)
+
+[node name="forwards" type="MeshInstance3D" parent="FCar/directionlights"]
+transform = Transform3D(0.70710677, 0, 0.70710677, 0, 1, 0, -0.70710677, 0, 0.70710677, 0, -0.0037791133, -0.10059936)
+mesh = SubResource("BoxMesh_5vw27")
+
+[node name="leftwards" type="MeshInstance3D" parent="FCar/directionlights"]
+transform = Transform3D(0.6750423, -0.24371019, 0.69636416, 0.17101005, 0.96984625, 0.17364816, -0.71768606, 0.0018654242, 0.69636416, -0.10173495, -0.03320676, 0)
+mesh = SubResource("BoxMesh_5vw27")
+
+[node name="backwards" type="MeshInstance3D" parent="FCar/directionlights"]
+transform = Transform3D(0.70710677, 0, 0.70710677, 0, 1, 0, -0.70710677, 0, 0.70710677, 0, -0.0037791133, 0.10080342)
+mesh = SubResource("BoxMesh_5vw27")
+
+[node name="rightwards" type="MeshInstance3D" parent="FCar/directionlights"]
+transform = Transform3D(0.6750423, 0.24371019, 0.69636416, -0.17101005, 0.96984625, -0.17364816, -0.71768606, -0.0018654242, 0.69636416, 0.10227362, -0.03320676, 0)
+mesh = SubResource("BoxMesh_5vw27")
+
 [node name="statuslights" type="Node3D" parent="FCar"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.99301744)
 
@@ -375,7 +397,6 @@ mesh = SubResource("CylinderMesh_lquwl")
 
 [node name="PeopleManager" type="Node" parent="."]
 script = ExtResource("6_people")
-spritesheet_path = "res://people4.png"
 
 [node name="SpawnSurface" type="Node3D" parent="."]
 script = ExtResource("7_spawn")
