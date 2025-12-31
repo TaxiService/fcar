@@ -30,11 +30,8 @@ var sprite_index: int = 0
 
 
 func _ready():
-	# Enable billboard mode - sprite always faces camera
-	billboard = BaseMaterial3D.BILLBOARD_ENABLED
-
-	# Enable alpha scissor for transparency
-	alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
+	# Disable built-in billboard (shader handles it)
+	billboard = BaseMaterial3D.BILLBOARD_DISABLED
 
 	# Disable backface culling so sprite is visible from both sides
 	double_sided = true
@@ -44,6 +41,11 @@ func _ready():
 
 	# Start in waiting state
 	_enter_state(State.WAITING)
+
+
+func set_shared_material(mat: ShaderMaterial):
+	# Use shared material from PeopleManager (for color sets)
+	material_override = mat
 
 
 func _process(delta: float):
@@ -128,9 +130,10 @@ func _enter_state(new_state: State):
 func _update_facing_direction():
 	# Determine facing based on X component of walk direction
 	# Positive X = right (default), Negative X = left (flipped)
+	# Use scale.x for flipping since materials are shared
 	if abs(walk_direction.x) > 0.1:
 		facing_right = walk_direction.x > 0
-		flip_h = not facing_right
+		scale.x = 1.0 if facing_right else -1.0
 
 
 func set_bounds(min_pos: Vector3, max_pos: Vector3):
@@ -143,6 +146,10 @@ func set_sprite(tex: AtlasTexture, index: int):
 	texture = tex
 	sprite_index = index
 
+	# Pass texture to shader if material is set
+	if material_override and material_override is ShaderMaterial:
+		material_override.set_shader_parameter("texture_albedo", tex)
+
 	# Scale sprite to be ~1.8m tall max
 	# Sprite is 300x600 pixels, so aspect ratio is 0.5
 	# pixel_size controls world units per pixel
@@ -153,3 +160,5 @@ func set_sprite(tex: AtlasTexture, index: int):
 func refresh_sprite(tex: AtlasTexture):
 	# Called when spritesheet is reloaded
 	texture = tex
+	if material_override and material_override is ShaderMaterial:
+		material_override.set_shader_parameter("texture_albedo", tex)

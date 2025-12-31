@@ -2,7 +2,7 @@ class_name PeopleManager
 extends Node
 
 # Spritesheet configuration
-@export var spritesheet_path: String = "res://people4.png"
+@export var spritesheet_path: String = "res://people5.png"
 @export var sprite_width: int = 300
 @export var sprite_height: int = 600
 @export var sprite_count: int = 11
@@ -21,6 +21,15 @@ extends Node
 @export var spawn_interval: float = 2.0  # Seconds between spawn attempts
 @export var auto_spawn: bool = true
 
+# Color sets - each set is an array of additive colors
+# Surfaces reference these by index (0, 1, 2, etc.)
+@export_category("Color Sets")
+@export var color_set_0: PackedColorArray = [Color.BLACK]  # Neutral
+@export var color_set_1: PackedColorArray = [Color(0.1, 0.0, 0.0), Color(0.1, 0.05, 0.0), Color(0.08, 0.08, 0.0)]  # Warm
+@export var color_set_2: PackedColorArray = [Color(0.0, 0.0, 0.1), Color(0.0, 0.08, 0.08), Color(0.05, 0.0, 0.1)]  # Cool
+@export var color_set_3: PackedColorArray = []
+@export var color_set_4: PackedColorArray = []
+
 # Runtime state
 var spritesheet: SpriteSheet
 var registered_surfaces: Array[SpawnSurface] = []
@@ -30,6 +39,33 @@ var spawn_timer: float = 0.0
 
 func _ready():
 	_load_spritesheet()
+
+
+func _get_color_set(index: int) -> PackedColorArray:
+	match index:
+		0: return color_set_0
+		1: return color_set_1
+		2: return color_set_2
+		3: return color_set_3
+		4: return color_set_4
+		_: return color_set_0
+
+
+func create_material_for_color(color: Color) -> ShaderMaterial:
+	# Create a new material with the given color
+	# Each person needs unique material for their texture
+	var shader = load("res://person_sprite.gdshader")
+	var mat = ShaderMaterial.new()
+	mat.shader = shader
+	mat.set_shader_parameter("color_add", Vector3(color.r, color.g, color.b))
+	return mat
+
+
+func get_random_color_from_set(set_index: int) -> Color:
+	var colors = _get_color_set(set_index)
+	if colors.size() == 0:
+		return Color.BLACK  # No tint
+	return colors[randi() % colors.size()]
 
 
 func _process(delta: float):
@@ -93,7 +129,12 @@ func spawn_person_on_surface(surface: SpawnSurface) -> Person:
 	person.wait_duration_min = wait_duration_min
 	person.wait_duration_max = wait_duration_max
 
-	# Set random sprite
+	# Create material with color from surface's color set
+	var color = get_random_color_from_set(surface.color_set_index)
+	var mat = create_material_for_color(color)
+	person.set_shared_material(mat)
+
+	# Set random sprite (must be after material is set)
 	var sprite_index = randi() % spritesheet.get_frame_count()
 	person.set_sprite(spritesheet.get_frame(sprite_index), sprite_index)
 
