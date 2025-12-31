@@ -89,6 +89,7 @@ var current_yaw: float = 0.0
 @onready var wheel_back_left: Node3D = $WheelBackLeft if has_node("WheelBackLeft") else null
 @onready var wheel_back_right: Node3D = $WheelBackRight if has_node("WheelBackRight") else null
 @onready var statuslights_node: Node3D = $statuslights if has_node("statuslights") else null
+@onready var directionlights_node: Node3D = $directionlights if has_node("directionlights") else null
 
 # ===== SUBSYSTEMS =====
 var thruster_system: ThrusterSystem
@@ -96,6 +97,7 @@ var stabilizer_system: StabilizerSystem
 var booster_system: BoosterSystem
 var debug_visualizer: DebugVisualizer
 var status_lights: StatusLights
+var direction_lights: DirectionLights
 
 
 func _ready():
@@ -131,6 +133,13 @@ func _init_subsystems():
 		if not status_lights.initialize(statuslights_node):
 			status_lights = null
 			push_warning("FCar: Status lights initialization failed")
+
+	# Initialize direction lights (reuse materials from status lights)
+	if directionlights_node and status_lights:
+		direction_lights = DirectionLights.new()
+		if not direction_lights.initialize(directionlights_node, status_lights.material_on, status_lights.material_off):
+			direction_lights = null
+			push_warning("FCar: Direction lights initialization failed")
 
 
 func _init_booster_system():
@@ -218,6 +227,15 @@ func _physics_process(delta):
 	# Update status lights
 	if status_lights:
 		status_lights.update(auto_hover_enabled, lock_height, global_position.y, target_height)
+
+	# Update direction lights based on WASD input
+	if direction_lights:
+		direction_lights.update(
+			Input.is_action_pressed("forward"),
+			Input.is_action_pressed("backward"),
+			Input.is_action_pressed("strafe_left"),
+			Input.is_action_pressed("strafe_right")
+		)
 
 	# Update boosters (disabled when car is unstable)
 	if booster_system:
