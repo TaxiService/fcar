@@ -1,0 +1,10 @@
+# Warm tints - reds, oranges, yellows
+# These values are ADDED to the sprite colors
+
+FF8000
+BFA200
+8A9426
+BA6D1D
+B8280E
+960404
+824C1F

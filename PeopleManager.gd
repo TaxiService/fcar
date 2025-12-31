@@ -21,34 +21,118 @@ extends Node
 @export var spawn_interval: float = 2.0  # Seconds between spawn attempts
 @export var auto_spawn: bool = true
 
-# Color sets - each set is an array of additive colors
-# Surfaces reference these by index (0, 1, 2, etc.)
+# Color sets - loaded from text files in color_sets_folder
+# Surfaces reference these by index (0, 1, 2, etc. based on alphabetical filename order)
 @export_category("Color Sets")
-@export var color_set_0: PackedColorArray = [Color.BLACK]  # Neutral
-@export var color_set_1: PackedColorArray = [Color(0.1, 0.0, 0.0), Color(0.1, 0.05, 0.0), Color(0.08, 0.08, 0.0)]  # Warm
-@export var color_set_2: PackedColorArray = [Color(0.0, 0.0, 0.1), Color(0.0, 0.08, 0.08), Color(0.05, 0.0, 0.1)]  # Cool
-@export var color_set_3: PackedColorArray = []
-@export var color_set_4: PackedColorArray = []
+@export_dir var color_sets_folder: String = "res://color_sets"
+
+# Loaded color sets (populated from text files)
+var color_sets: Array[PackedColorArray] = []
 
 # Runtime state
 var spritesheet: SpriteSheet
 var registered_surfaces: Array[SpawnSurface] = []
 var all_people: Array[Person] = []
 var spawn_timer: float = 0.0
+var spawn_counter: int = 0  # Increments with each spawn, used for deterministic color selection
 
 
 func _ready():
 	_load_spritesheet()
+	_load_color_sets()
+
+
+func _load_color_sets():
+	color_sets.clear()
+
+	var dir = DirAccess.open(color_sets_folder)
+	if not dir:
+		push_warning("PeopleManager: Could not open color sets folder: ", color_sets_folder)
+		# Add default neutral set as fallback
+		color_sets.append(PackedColorArray([Color.BLACK]))
+		return
+
+	# Get all .txt files sorted alphabetically
+	var files: Array[String] = []
+	dir.list_dir_begin()
+	var file_name = dir.get_next()
+	while file_name != "":
+		if not dir.current_is_dir() and file_name.ends_with(".txt"):
+			files.append(file_name)
+		file_name = dir.get_next()
+	dir.list_dir_end()
+
+	files.sort()
+
+	# Load each file as a color set
+	for fname in files:
+		var colors = _parse_color_file(color_sets_folder + "/" + fname)
+		if colors.size() > 0:
+			color_sets.append(colors)
+			print("PeopleManager: Loaded color set '", fname, "' with ", colors.size(), " colors")
+
+	if color_sets.size() == 0:
+		push_warning("PeopleManager: No color sets loaded, adding default")
+		color_sets.append(PackedColorArray([Color.BLACK]))
+
+
+func _parse_color_file(path: String) -> PackedColorArray:
+	var colors = PackedColorArray()
+
+	var file = FileAccess.open(path, FileAccess.READ)
+	if not file:
+		push_warning("PeopleManager: Could not open color file: ", path)
+		return colors
+
+	while not file.eof_reached():
+		var line = file.get_line().strip_edges()
+
+		# Skip empty lines and comments
+		if line.is_empty() or line.begins_with("#"):
+			continue
+
+		var color = _parse_color_line(line)
+		if color != null:
+			colors.append(color)
+
+	return colors
+
+
+func _parse_color_line(line: String) -> Variant:
+	# Try hex format: #RRGGBB or RRGGBB
+	if line.begins_with("#"):
+		line = line.substr(1)
+
+	if line.length() == 6 and line.is_valid_hex_number():
+		var hex = line.hex_to_int()
+		return Color(
+			((hex >> 16) & 0xFF) / 255.0,
+			((hex >> 8) & 0xFF) / 255.0,
+			(hex & 0xFF) / 255.0
+		)
+
+	# Try RGB format: R, G, B (floats 0.0-1.0 or ints 0-255)
+	var parts = line.split(",")
+	if parts.size() >= 3:
+		var r = parts[0].strip_edges().to_float()
+		var g = parts[1].strip_edges().to_float()
+		var b = parts[2].strip_edges().to_float()
+
+		# If values > 1, assume 0-255 range
+		if r > 1.0 or g > 1.0 or b > 1.0:
+			r /= 255.0
+			g /= 255.0
+			b /= 255.0
+
+		return Color(r, g, b)
+
+	return null
 
 
 func _get_color_set(index: int) -> PackedColorArray:
-	match index:
-		0: return color_set_0
-		1: return color_set_1
-		2: return color_set_2
-		3: return color_set_3
-		4: return color_set_4
-		_: return color_set_0
+	if index < 0 or index >= color_sets.size():
+		return color_sets[0] if color_sets.size() > 0 else PackedColorArray([Color.BLACK])
+	return color_sets[index]
 
 
 func create_material_for_color(color: Color) -> ShaderMaterial:
@@ -61,11 +145,11 @@ func create_material_for_color(color: Color) -> ShaderMaterial:
 	return mat
 
 
-func get_random_color_from_set(set_index: int) -> Color:
+func get_color_from_set(set_index: int, person_index: int) -> Color:
 	var colors = _get_color_set(set_index)
 	if colors.size() == 0:
 		return Color.BLACK  # No tint
-	return colors[randi() % colors.size()]
+	return colors[person_index % colors.size()]
 
 
 func _process(delta: float):
@@ -129,8 +213,9 @@ func spawn_person_on_surface(surface: SpawnSurface) -> Person:
 	person.wait_duration_min = wait_duration_min
 	person.wait_duration_max = wait_duration_max
 
-	# Create material with color from surface's color set
-	var color = get_random_color_from_set(surface.color_set_index)
+	# Create material with color from surface's color set (deterministic based on spawn order)
+	var color = get_color_from_set(surface.color_set_index, spawn_counter)
+	spawn_counter += 1
 	var mat = create_material_for_color(color)
 	person.set_shared_material(mat)
 

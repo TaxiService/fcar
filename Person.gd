@@ -156,6 +156,10 @@ func set_sprite(tex: AtlasTexture, index: int):
 	# At pixel_size = 0.003, 600 pixels = 1.8m
 	pixel_size = 0.003
 
+	# Offset sprite so origin is at bottom center (feet)
+	# Shift up by half the sprite height in pixels
+	offset.y = tex.get_height() / 2.0
+
 
 func refresh_sprite(tex: AtlasTexture):
 	# Called when spritesheet is reloaded
