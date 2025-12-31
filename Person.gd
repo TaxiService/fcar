@@ -28,17 +28,13 @@ var has_bounds: bool = false
 # Reference to manager for sprite updates
 var sprite_index: int = 0
 
-# Shader for magenta transparency
-static var _shader: Shader
-
 
 func _ready():
 	# Enable billboard mode - sprite always faces camera
 	billboard = BaseMaterial3D.BILLBOARD_ENABLED
 
-	# Use alpha blend for shader transparency
-	alpha_cut = SpriteBase3D.ALPHA_CUT_DISABLED
-	transparent = true
+	# Enable alpha scissor for transparency
+	alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
 
 	# Disable backface culling so sprite is visible from both sides
 	double_sided = true
@@ -153,23 +149,7 @@ func set_sprite(tex: AtlasTexture, index: int):
 	# At pixel_size = 0.003, 600 pixels = 1.8m
 	pixel_size = 0.003
 
-	# Apply shader for magenta transparency
-	_apply_shader(tex)
-
-
-func _apply_shader(tex: Texture2D):
-	# Load shader once (static)
-	if not _shader:
-		_shader = load("res://person_sprite.gdshader")
-
-	if _shader:
-		var mat = ShaderMaterial.new()
-		mat.shader = _shader
-		mat.set_shader_parameter("texture_albedo", tex)
-		material_override = mat
-
 
 func refresh_sprite(tex: AtlasTexture):
 	# Called when spritesheet is reloaded
 	texture = tex
-	_apply_shader(tex)

@@ -2,7 +2,7 @@ class_name PeopleManager
 extends Node
 
 # Spritesheet configuration
-@export var spritesheet_path: String = "res://people.png"
+@export var spritesheet_path: String = "res://people4.png"
 @export var sprite_width: int = 300
 @export var sprite_height: int = 600
 @export var sprite_count: int = 11
@@ -97,6 +97,9 @@ func spawn_person_on_surface(surface: SpawnSurface) -> Person:
 	var sprite_index = randi() % spritesheet.get_frame_count()
 	person.set_sprite(spritesheet.get_frame(sprite_index), sprite_index)
 
+	# Add to scene first (required before setting global_position)
+	add_child(person)
+
 	# Set bounds from surface
 	var bounds = surface.get_bounds_world()
 	person.set_bounds(bounds.min, bounds.max)
@@ -104,8 +107,7 @@ func spawn_person_on_surface(surface: SpawnSurface) -> Person:
 	# Position on surface
 	person.global_position = surface.get_random_spawn_position()
 
-	# Add to scene and tracking
-	add_child(person)
+	# Track the person
 	surface.add_person(person)
 	all_people.append(person)
 
@@ -132,6 +134,9 @@ func spawn_person_at(position: Vector3, bounds_min: Vector3 = Vector3.ZERO, boun
 	var sprite_index = randi() % spritesheet.get_frame_count()
 	person.set_sprite(spritesheet.get_frame(sprite_index), sprite_index)
 
+	# Add to scene first (required before setting global_position)
+	add_child(person)
+
 	# Set bounds if provided
 	if bounds_min != Vector3.ZERO or bounds_max != Vector3.ZERO:
 		person.set_bounds(bounds_min, bounds_max)
@@ -139,8 +144,7 @@ func spawn_person_at(position: Vector3, bounds_min: Vector3 = Vector3.ZERO, boun
 	# Position
 	person.global_position = position
 
-	# Add to scene
-	add_child(person)
+	# Track
 	all_people.append(person)
 
 	return person

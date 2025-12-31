@@ -375,7 +375,7 @@ mesh = SubResource("CylinderMesh_lquwl")
 
 [node name="PeopleManager" type="Node" parent="."]
 script = ExtResource("6_people")
-spritesheet_path = "res://people2.png"
+spritesheet_path = "res://people4.png"
 
 [node name="SpawnSurface" type="Node3D" parent="."]
 script = ExtResource("7_spawn")
