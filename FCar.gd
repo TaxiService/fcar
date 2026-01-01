@@ -36,6 +36,10 @@ var current_yaw: float = 0.0
 @export_category("yaw")
 @export var yaw_thrust_angle: float = 30.0
 @export var max_angular_speed: float = 2.0
+@export var yaw_deceleration: float = 3.0  # How fast yaw input decays when released
+@export var yaw_accel_min: float = 0.3  # Yaw acceleration at max speed
+@export var yaw_accel_max: float = 1.8  # Yaw acceleration at rest
+@export var yaw_accel_max_speed: float = 50.0  # Speed at which yaw_accel_min kicks in
 
 @export_category("height lock")
 @export var height_lock_strength: float = 0.8
@@ -377,7 +381,14 @@ func _read_inputs(delta: float) -> Dictionary:
 	if abs(current_roll) > 0.1:
 		target_yaw *= 0.3
 
-	current_yaw = move_toward(current_yaw, target_yaw, yaw_acceleration * delta)
+	# Calculate speed-based yaw acceleration (lerp from max at rest to min at max_speed)
+	var speed = linear_velocity.length()
+	var speed_t = clamp(speed / yaw_accel_max_speed, 0.0, 1.0) if yaw_accel_max_speed > 0 else 0.0
+	var yaw_accel = lerp(yaw_accel_max, yaw_accel_min, speed_t)
+
+	# Use different rates: acceleration when pressing, deceleration when releasing
+	var yaw_rate = yaw_accel if abs(target_yaw) > 0.1 else yaw_deceleration
+	current_yaw = move_toward(current_yaw, target_yaw, yaw_rate * delta)
 
 	# Calculate final input values
 	var input_pitch = current_pitch
