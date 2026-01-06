@@ -77,7 +77,7 @@ var current_yaw: float = 0.0
 @export var booster_shin_min: float = 0.0  # degrees
 @export var booster_shin_max: float = 45.0  # degrees
 @export var booster_default_thigh_angle: float = -50.0  # degrees (negative = pointing back)
-@export var booster_default_shin_angle: float = 35.0  # degrees
+@export var booster_default_shin_angle: float = 45.0  # degrees
 
 @export_category("debug")
 @export var debug_thrusters: bool = false
