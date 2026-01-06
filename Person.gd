@@ -2,7 +2,7 @@ class_name Person
 extends Sprite3D
 
 # Movement states
-enum State { WALKING, STOPPING, WAITING, HAILING, BOARDING, RIDING, EXITING, ARRIVED }
+enum State { WALKING, STOPPING, WAITING, HAILING, BOARDING, RIDING, EXITING, ARRIVED, RELOCATING }
 
 # Configuration (set by PeopleManager)
 var walk_speed_min: float = 0.8
@@ -40,6 +40,11 @@ var hail_time: float = 0.0  # For bobbing animation
 var board_speed: float = 5.0  # Speed when walking to car
 var base_y: float = 0.0  # Original Y position for bobbing
 var max_boarding_distance: float = 20.0  # Give up boarding if car gets this far
+
+# Relocation state (after delivery, walk to nearest surface)
+var relocation_target: Vector3 = Vector3.ZERO
+var relocation_surface: Node = null  # SpawnSurface to adopt bounds from
+var relocation_speed: float = 2.0  # Faster than normal walk
 
 
 func _ready():
@@ -86,6 +91,12 @@ func start_exiting():
 	_enter_state(State.EXITING)
 
 
+func start_relocating(target_pos: Vector3, surface: Node):
+	relocation_target = target_pos
+	relocation_surface = surface
+	_enter_state(State.RELOCATING)
+
+
 func _process(delta: float):
 	state_timer += delta
 	hail_time += delta
@@ -107,6 +118,8 @@ func _process(delta: float):
 			_process_exiting(delta)
 		State.ARRIVED:
 			_process_arrived(delta)
+		State.RELOCATING:
+			_process_relocating(delta)
 
 
 func _process_walking(delta: float):
@@ -206,10 +219,44 @@ func _process_exiting(_delta: float):
 
 func _process_arrived(_delta: float):
 	# Quest complete, transition back to normal wandering
+	# Bounds should already be set by FCar at delivery location
 	if state_timer >= 0.5:
 		destination = null
 		target_car = null
 		_enter_state(State.WAITING)
+
+
+func _process_relocating(delta: float):
+	# Walk toward relocation target
+	var to_target = relocation_target - global_position
+	to_target.y = 0  # Stay on same height plane
+
+	var dist = to_target.length()
+
+	if dist < 1.0:
+		# Reached target - adopt new surface bounds and start wandering
+		if relocation_surface and relocation_surface.has_method("get_bounds_world"):
+			var bounds = relocation_surface.get_bounds_world()
+			set_bounds(bounds.min, bounds.max)
+			# Register with the new surface
+			if relocation_surface.has_method("add_person"):
+				relocation_surface.add_person(self)
+
+		relocation_surface = null
+		relocation_target = Vector3.ZERO
+		destination = null
+		target_car = null
+		_enter_state(State.WAITING)
+		return
+
+	# Move toward target
+	var dir = to_target.normalized()
+	global_position += dir * relocation_speed * delta
+
+	# Face movement direction
+	if abs(dir.x) > 0.1:
+		facing_right = dir.x > 0
+		scale.x = 1.0 if facing_right else -1.0
 
 
 func _enter_state(new_state: State):
@@ -256,6 +303,10 @@ func _enter_state(new_state: State):
 
 		State.ARRIVED:
 			walk_direction = Vector3.ZERO
+
+		State.RELOCATING:
+			walk_direction = Vector3.ZERO
+			visible = true
 
 
 func _update_facing_direction():

@@ -26,6 +26,12 @@ extends Node
 @export_range(0.0, 1.0) var spawn_with_destination_chance: float = 0.3  # 30% of spawns want rides
 @export_range(0.0, 1.0) var in_a_hurry_chance: float = 0.1  # 10% of passengers are in a hurry
 @export var hurry_time: float = 60.0  # Seconds for in_a_hurry passengers
+@export var min_fare_distance: float = 100.0  # Minimum distance for a valid fare (no short walks)
+
+# Group configuration
+@export_category("Groups")
+@export_range(0.0, 1.0) var group_spawn_chance: float = 0.3  # 30% chance a fare is a group
+@export var default_group_size: int = 2  # Default group size when spawning groups
 
 # Color sets - loaded from text files in color_sets_folder
 # Surfaces reference these by index (0, 1, 2, etc. based on alphabetical filename order)
@@ -42,6 +48,7 @@ var registered_pois: Array[PointOfInterest] = []
 var all_people: Array[Person] = []
 var spawn_timer: float = 0.0
 var spawn_counter: int = 0  # Increments with each spawn, used for deterministic color selection
+var next_group_id: int = 1  # Counter for unique group IDs (0 reserved, -1 = solo)
 
 
 func _ready():
@@ -216,10 +223,133 @@ func get_enabled_pois() -> Array[PointOfInterest]:
 	return enabled
 
 
+func get_nearest_surface(pos: Vector3) -> SpawnSurface:
+	# Find the nearest enabled SpawnSurface to the given position
+	var nearest: SpawnSurface = null
+	var nearest_dist: float = INF
+
+	for surface in registered_surfaces:
+		if not is_instance_valid(surface) or not surface.enabled:
+			continue
+
+		var surface_pos = surface.global_position
+		var dist = pos.distance_to(surface_pos)
+
+		if dist < nearest_dist:
+			nearest_dist = dist
+			nearest = surface
+
+	return nearest
+
+
+func get_random_point_on_surface(surface: SpawnSurface) -> Vector3:
+	# Get a random position within a surface's bounds
+	if surface and surface.has_method("get_random_spawn_position"):
+		return surface.get_random_spawn_position()
+	return Vector3.ZERO
+
+
 func _try_spawn_on_surfaces():
 	for surface in registered_surfaces:
 		if surface.can_spawn_more():
-			spawn_person_on_surface(surface)
+			# Decide: spawn solo person or group?
+			var wants_destination = randf() < spawn_with_destination_chance
+			var wants_group = wants_destination and randf() < group_spawn_chance
+
+			if wants_group:
+				_spawn_group_on_surface(surface, default_group_size)
+			else:
+				var person = spawn_person_on_surface(surface)
+				# Solo person might want a destination
+				if person and wants_destination:
+					_assign_destination(person, surface)
+
+
+func _spawn_group_on_surface(surface: SpawnSurface, group_size: int):
+	# Check if surface has room for entire group
+	var available = surface.max_people - surface.get_people_count()
+	if available < group_size:
+		# Not enough room, spawn solo instead
+		var person = spawn_person_on_surface(surface)
+		if person:
+			_assign_destination(person, surface)
+		return
+
+	# Generate unique group ID
+	var group_id = next_group_id
+	next_group_id += 1
+
+	# Spawn group members near each other
+	var base_pos = surface.get_random_spawn_position()
+	var group_members: Array[Person] = []
+
+	for i in range(group_size):
+		var person = spawn_person_on_surface(surface)
+		if not person:
+			continue
+
+		# Assign group ID
+		person.group_id = group_id
+
+		# Position near each other (small offset)
+		var offset = Vector3(randf_range(-1.5, 1.5), 0, randf_range(-1.5, 1.5))
+		person.global_position = base_pos + offset
+
+		group_members.append(person)
+
+	if group_members.is_empty():
+		return
+
+	# Find a destination for the whole group
+	var destination = _find_valid_destination(group_members[0], surface)
+	if not destination:
+		# No valid destination - group becomes wanderers (no group_id needed)
+		for person in group_members:
+			person.group_id = -1
+		return
+
+	# Assign same destination to all group members
+	var is_hurry = randf() < in_a_hurry_chance
+	for person in group_members:
+		person.set_destination(destination)
+		if is_hurry:
+			person.in_a_hurry = true
+			person.hurry_timer = hurry_time
+
+	print("Group ", group_id, " spawned with ", group_members.size(), " members. In a hurry: ", is_hurry)
+
+
+func _find_valid_destination(person: Person, _source_surface: SpawnSurface) -> Node:
+	# Returns a valid destination node, or null if none found
+	var valid_targets: Array[Node] = []
+	var person_pos = person.global_position
+
+	for other in all_people:
+		if not is_instance_valid(other):
+			continue
+		if other == person:
+			continue
+		if other.destination != null:
+			continue
+		if other.current_state in [Person.State.BOARDING, Person.State.RIDING, Person.State.HAILING]:
+			continue
+		if person_pos.distance_to(other.global_position) < min_fare_distance:
+			continue
+		# Don't target someone in the same group
+		if other.group_id != -1 and other.group_id == person.group_id:
+			continue
+		valid_targets.append(other)
+
+	for poi in registered_pois:
+		if is_instance_valid(poi) and poi.enabled:
+			if person_pos.distance_to(poi.global_position) < min_fare_distance:
+				continue
+			valid_targets.append(poi)
+
+	if valid_targets.is_empty():
+		return null
+
+	return valid_targets[randi() % valid_targets.size()]
 
 
 func spawn_person_on_surface(surface: SpawnSurface) -> Person:
@@ -262,40 +392,14 @@ func spawn_person_on_surface(surface: SpawnSurface) -> Person:
 	surface.add_person(person)
 	all_people.append(person)
 
-	# Maybe assign a destination (making this person want a ride)
-	if randf() < spawn_with_destination_chance:
-		_assign_destination(person, surface)
-
 	return person
 
 
-func _assign_destination(person: Person, _source_surface: SpawnSurface):
-	# Build list of all valid destinations (other persons + POIs)
-	var valid_targets: Array[Node] = []
-
-	# Add other persons as potential destinations
-	for other in all_people:
-		if not is_instance_valid(other):
-			continue
-		if other == person:
-			continue
-		# Don't target people who are already passengers or have destinations
-		if other.destination != null:
-			continue
-		if other.current_state in [Person.State.BOARDING, Person.State.RIDING, Person.State.HAILING]:
-			continue
-		valid_targets.append(other)
-
-	# Add enabled POIs as potential destinations
-	for poi in registered_pois:
-		if is_instance_valid(poi) and poi.enabled:
-			valid_targets.append(poi)
-
-	if valid_targets.is_empty():
+func _assign_destination(person: Person, source_surface: SpawnSurface):
+	# Find a valid destination
+	var target = _find_valid_destination(person, source_surface)
+	if not target:
 		return  # No valid destinations
-
-	# Pick a random target
-	var target = valid_targets[randi() % valid_targets.size()]
 
 	# Assign destination
 	person.set_destination(target)
@@ -311,7 +415,7 @@ func _assign_destination(person: Person, _source_surface: SpawnSurface):
 		dest_name = "another person"
 	elif target is PointOfInterest:
 		dest_name = "POI: " + target.poi_name
-	print("Person spawned with destination: ", dest_name, " | In a hurry: ", person.in_a_hurry)
+	print("Solo person spawned with destination: ", dest_name, " | In a hurry: ", person.in_a_hurry)
 
 
 func spawn_person_at(position: Vector3, bounds_min: Vector3 = Vector3.ZERO, bounds_max: Vector3 = Vector3.ZERO) -> Person:

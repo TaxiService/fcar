@@ -84,6 +84,7 @@ var current_yaw: float = 0.0
 @export var pickup_range: float = 10.0  # Distance to trigger hailing persons to approach
 @export var board_range: float = 3.0  # Distance for person to teleport-board
 @export var delivery_range: float = 5.0  # Distance to destination for delivery
+@export var delivered_wander_radius: float = 8.0  # How far delivered people can wander from drop-off
 
 @export_category("waypoint marker")
 @export var marker_scale_max: float = 2.0  # Scale when very close (on-screen)
@@ -125,10 +126,16 @@ var destination_marker: CanvasLayer = null  # HUD layer for waypoint
 var marker_sprite: Sprite2D = null  # The actual waypoint indicator
 var marker_arrow: Sprite2D = null  # Arrow pointing to off-screen destination
 var is_ready_for_fares: bool = false  # Must be true for passengers to approach
-var _f_key_was_pressed: bool = false  # For detecting F key just pressed
+
+# Eject safety: triple-click Y within time window
+var eject_click_count: int = 0
+var eject_window_timer: float = 0.0
+const EJECT_CLICKS_REQUIRED: int = 3
+const EJECT_WINDOW: float = 1.0  # Must get all clicks within this time
 
 signal passenger_boarded(person: Person)
 signal passenger_delivered(person: Person, destination: Node)
+signal passenger_ejected(person: Person)
 signal ready_state_changed(is_ready: bool)
 
 
@@ -488,11 +495,9 @@ func _read_inputs(delta: float) -> Dictionary:
 		auto_hover_enabled = !auto_hover_enabled
 		print("Auto-hover safety: ", "ON" if auto_hover_enabled else "OFF")
 
-	# F key - toggle ready for fares (only when no passengers)
-	var f_pressed = Input.is_key_pressed(KEY_F)
-	if f_pressed and not _f_key_was_pressed:
+	# T key - toggle ready for fares (only when no passengers)
+	if Input.is_action_just_pressed("toggle_ready_for_fares"):
 		_toggle_ready_for_fares()
-	_f_key_was_pressed = f_pressed
 
 	handbrake_active = Input.is_action_pressed("handbrake")
 
@@ -669,6 +674,9 @@ func _update_passengers():
 	# Clean up invalid passenger references
 	passengers = passengers.filter(func(p): return is_instance_valid(p))
 
+	# Process eject ritual
+	_update_eject_ritual(get_physics_process_delta_time())
+
 	# Check for destination arrivals first
 	_check_destination_arrivals()
 
@@ -736,25 +744,53 @@ func _detect_and_board_hailing_persons():
 	if available_slots <= 0:
 		return  # No room for more
 
-	var started_count = 0
-
-	# Board persons up to available capacity
+	# Process nearest hailing person (handles groups too)
 	for person in hailing_in_range:
-		if started_count >= available_slots:
-			break
-
 		# Check if already boarding or riding
 		if person.current_state == Person.State.BOARDING or person.current_state == Person.State.RIDING:
 			continue
 
-		# Start boarding process
-		person.start_boarding(self)
-		started_count += 1
+		# Check if this is a group or solo
+		if person.group_id == -1:
+			# Solo person - board just them
+			_start_boarding_person(person)
+			return  # Only accept one fare at a time
+		else:
+			# Group member - find all members of this group
+			var group_members = _find_group_members(person.group_id)
 
-		# Check if close enough to board immediately
-		var dist = global_position.distance_to(person.global_position)
-		if dist <= board_range:
-			_complete_boarding(person)
+			# Check if entire group fits
+			if group_members.size() > available_slots:
+				print("Group of ", group_members.size(), " too large for ", available_slots, " slots - skipping")
+				continue  # Try next potential fare
+
+			# Start boarding all group members
+			for member in group_members:
+				_start_boarding_person(member)
+
+			print("Group ", person.group_id, " (", group_members.size(), " members) starting to board")
+			return  # Only accept one fare (group) at a time
+
+
+func _find_group_members(group_id: int) -> Array[Person]:
+	# Find all persons with the same group_id
+	var members: Array[Person] = []
+	for person in people_manager.all_people:
+		if not is_instance_valid(person):
+			continue
+		if person.group_id == group_id:
+			members.append(person)
+	return members
+
+
+func _start_boarding_person(person: Person):
+	# Start boarding process for a single person
+	person.start_boarding(self)
+
+	# Check if close enough to board immediately
+	var dist = global_position.distance_to(person.global_position)
+	if dist <= board_range:
+		_complete_boarding(person)
 
 
 func _complete_boarding(person: Person):
@@ -807,8 +843,16 @@ func _deliver_passenger(person: Person):
 	passengers.erase(person)
 
 	# Position person at delivery location
-	person.global_position = global_position
-	person.global_position.y = destination.global_position.y  # Match destination height
+	var drop_pos = global_position
+	drop_pos.y = destination.global_position.y  # Match destination height
+	person.global_position = drop_pos
+
+	# Set new bounds centered on drop-off point so they wander nearby
+	var half_radius = delivered_wander_radius / 2.0
+	person.set_bounds(
+		Vector3(drop_pos.x - half_radius, drop_pos.y, drop_pos.z - half_radius),
+		Vector3(drop_pos.x + half_radius, drop_pos.y, drop_pos.z + half_radius)
+	)
 
 	# Trigger exit sequence
 	person.start_exiting()
@@ -840,6 +884,72 @@ func _toggle_ready_for_fares():
 func is_available_for_pickup() -> bool:
 	# Must be ready AND have no passengers AND no one boarding
 	return is_ready_for_fares and passengers.size() == 0 and _count_boarding_persons() == 0
+
+
+func _update_eject_ritual(delta: float):
+	# No passengers = nothing to eject
+	if passengers.size() == 0:
+		eject_click_count = 0
+		return
+
+	# Count down window timer
+	if eject_click_count > 0:
+		eject_window_timer += delta
+		if eject_window_timer > EJECT_WINDOW:
+			# Window expired, reset
+			eject_click_count = 0
+
+	# Count clicks
+	if Input.is_action_just_pressed("eject_passengers"):
+		if eject_click_count == 0:
+			# First click starts the window
+			eject_window_timer = 0.0
+
+		eject_click_count += 1
+
+		if eject_click_count >= EJECT_CLICKS_REQUIRED:
+			_eject_all_passengers()
+			eject_click_count = 0
+
+
+func _eject_all_passengers():
+	print("EJECT! Ejecting ", passengers.size(), " passengers!")
+
+	# Eject all passengers at current car position
+	var eject_pos = global_position
+
+	for person in passengers:
+		if not is_instance_valid(person):
+			continue
+
+		# Position at car location
+		person.global_position = eject_pos
+
+		# Clear their destination - they're stranded now
+		person.destination = null
+		person.target_car = null
+
+		# Set small wander bounds around eject point
+		var half_radius = delivered_wander_radius / 2.0
+		person.set_bounds(
+			Vector3(eject_pos.x - half_radius, eject_pos.y, eject_pos.z - half_radius),
+			Vector3(eject_pos.x + half_radius, eject_pos.y, eject_pos.z + half_radius)
+		)
+
+		# Make visible and start exiting
+		person.visible = true
+		person.start_exiting()
+
+		passenger_ejected.emit(person)
+
+	passengers.clear()
+
+	# Also cancel any boarding persons
+	for person in people_manager.all_people:
+		if is_instance_valid(person) and person.current_state == Person.State.BOARDING:
+			if person.target_car == self:
+				person.target_car = null
+				person._enter_state(Person.State.HAILING)
 
 
 func _update_destination_marker():

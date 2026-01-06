@@ -138,6 +138,8 @@ yaw_deceleration = 1.5
 yaw_accel_min = 0.8
 yaw_accel_max = 1.5
 yaw_accel_max_speed = 30.0
+height_lock_refresh_threshold = 1.0
+unstable_angular_damp = 0.5
 booster_default_thigh_angle = -60.0
 marker_scale_min = 0.7
 marker_edge_margin = 45.0
@@ -415,6 +417,7 @@ script = ExtResource("6_people")
 [node name="POI1" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -63.64045, 2.957734, -6.918873)
 script = ExtResource("7_5vw27")
+poi_name = "t&St"
 arrival_radius = 10.0
 
 [node name="SpawnSurface1" type="Node3D" parent="."]
