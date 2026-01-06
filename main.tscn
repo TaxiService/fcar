@@ -139,6 +139,9 @@ yaw_accel_min = 0.8
 yaw_accel_max = 1.5
 yaw_accel_max_speed = 30.0
 booster_default_thigh_angle = -60.0
+marker_scale_min = 0.7
+marker_edge_margin = 45.0
+arrow_edge_offset = -55.0
 debug_thrusters = true
 com_compensation_enabled = false
 

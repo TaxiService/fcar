@@ -85,6 +85,15 @@ var current_yaw: float = 0.0
 @export var board_range: float = 3.0  # Distance for person to teleport-board
 @export var delivery_range: float = 5.0  # Distance to destination for delivery
 
+@export_category("waypoint marker")
+@export var marker_scale_max: float = 2.0  # Scale when very close (on-screen)
+@export var marker_scale_min: float = 0.2  # Scale when far (on-screen)
+@export var marker_scale_edge: float = 1.5  # Scale when projected to screen edge (off-screen)
+@export var marker_close_distance: float = 2.0  # Distance where marker is at max scale
+@export var marker_far_distance: float = 20.0  # Distance where marker reaches min scale
+@export var marker_edge_margin: float = 40.0  # How far from screen edge the marker sits
+@export var arrow_edge_offset: float = 30.0  # Additional outward offset for arrow (to separate from marker)
+
 @export_category("debug")
 @export var debug_thrusters: bool = false
 @export var debug_boosters: bool = false
@@ -115,9 +124,12 @@ var people_manager: Node = null  # Reference to PeopleManager for finding hailin
 var destination_marker: CanvasLayer = null  # HUD layer for waypoint
 var marker_sprite: Sprite2D = null  # The actual waypoint indicator
 var marker_arrow: Sprite2D = null  # Arrow pointing to off-screen destination
+var is_ready_for_fares: bool = false  # Must be true for passengers to approach
+var _f_key_was_pressed: bool = false  # For detecting F key just pressed
 
 signal passenger_boarded(person: Person)
 signal passenger_delivered(person: Person, destination: Node)
+signal ready_state_changed(is_ready: bool)
 
 
 func _ready():
@@ -333,13 +345,22 @@ func _physics_process(delta):
 		status_lights.update(auto_hover_enabled, lock_height, global_position.y, target_height)
 
 	# Update direction lights based on WASD input
+	# When ready + empty: INVERT lights (all ON, turn OFF on input) = "available" beacon
+	# When has passengers or not ready: normal (all OFF, turn ON on input)
 	if direction_lights:
-		direction_lights.update(
-			Input.is_action_pressed("forward"),
-			Input.is_action_pressed("backward"),
-			Input.is_action_pressed("strafe_left"),
-			Input.is_action_pressed("strafe_right")
-		)
+		var fwd = Input.is_action_pressed("forward")
+		var back = Input.is_action_pressed("backward")
+		var left = Input.is_action_pressed("strafe_left")
+		var right = Input.is_action_pressed("strafe_right")
+
+		# Invert when ready for fares and no passengers (taxi available mode)
+		if is_ready_for_fares and passengers.size() == 0:
+			fwd = not fwd
+			back = not back
+			left = not left
+			right = not right
+
+		direction_lights.update(fwd, back, left, right)
 
 	# Update boosters (disabled when car is unstable)
 	if booster_system:
@@ -466,6 +487,12 @@ func _read_inputs(delta: float) -> Dictionary:
 	if Input.is_action_just_pressed("toggle_auto_hover"):
 		auto_hover_enabled = !auto_hover_enabled
 		print("Auto-hover safety: ", "ON" if auto_hover_enabled else "OFF")
+
+	# F key - toggle ready for fares (only when no passengers)
+	var f_pressed = Input.is_key_pressed(KEY_F)
+	if f_pressed and not _f_key_was_pressed:
+		_toggle_ready_for_fares()
+	_f_key_was_pressed = f_pressed
 
 	handbrake_active = Input.is_action_pressed("handbrake")
 
@@ -648,9 +675,8 @@ func _update_passengers():
 	# Check for boarding persons who reached the car
 	_check_boarding_arrivals()
 
-	# Only accept new passengers if we have NONE (one group at a time)
-	# Once anyone is aboard or boarding, no more pickups until delivery
-	if passengers.size() == 0 and _count_boarding_persons() == 0:
+	# Only accept new passengers if ready and available
+	if is_available_for_pickup():
 		_detect_and_board_hailing_persons()
 
 	# Update destination marker
@@ -737,6 +763,12 @@ func _complete_boarding(person: Person):
 
 	person.board_complete()
 	passengers.append(person)
+
+	# Disable ready state - must press F again for next fare
+	if is_ready_for_fares:
+		is_ready_for_fares = false
+		ready_state_changed.emit(false)
+
 	print("Passenger boarded! Now carrying ", passengers.size(), "/", cargo_capacity)
 	passenger_boarded.emit(person)
 
@@ -794,6 +826,22 @@ func has_capacity() -> bool:
 	return get_passenger_count() < cargo_capacity
 
 
+func _toggle_ready_for_fares():
+	# Can only toggle ready when no passengers
+	if passengers.size() > 0:
+		print("Cannot toggle ready state while carrying passengers")
+		return
+
+	is_ready_for_fares = !is_ready_for_fares
+	print("Ready for fares: ", "YES" if is_ready_for_fares else "NO")
+	ready_state_changed.emit(is_ready_for_fares)
+
+
+func is_available_for_pickup() -> bool:
+	# Must be ready AND have no passengers AND no one boarding
+	return is_ready_for_fares and passengers.size() == 0 and _count_boarding_persons() == 0
+
+
 func _update_destination_marker():
 	if not marker_sprite or not marker_arrow:
 		return
@@ -820,6 +868,20 @@ func _update_destination_marker():
 	var dest_pos = dest.global_position + Vector3(0, 2, 0)  # Slightly above destination
 	var screen_size = get_viewport().get_visible_rect().size
 
+	# Calculate distance from camera to destination for scaling
+	var camera_distance = camera.global_position.distance_to(dest_pos)
+
+	# Calculate scale based on distance
+	# Close = max scale, Far = min scale, stays at min beyond far_distance
+	var scale_t = 0.0
+	if marker_far_distance > marker_close_distance:
+		scale_t = clamp(
+			(camera_distance - marker_close_distance) / (marker_far_distance - marker_close_distance),
+			0.0, 1.0
+		)
+	var current_scale = lerp(marker_scale_max, marker_scale_min, scale_t)
+	var scale_vec = Vector2(current_scale, current_scale)
+
 	# Check if destination is in front of camera
 	var cam_forward = -camera.global_transform.basis.z
 	var to_dest = (dest_pos - camera.global_position).normalized()
@@ -836,41 +898,54 @@ func _update_destination_marker():
 		screen_pos = screen_size - screen_pos
 
 	# Check if on screen (with margin)
-	var margin = 50.0
 	var is_on_screen = (
-		screen_pos.x >= margin and screen_pos.x <= screen_size.x - margin and
-		screen_pos.y >= margin and screen_pos.y <= screen_size.y - margin and
+		screen_pos.x >= marker_edge_margin and screen_pos.x <= screen_size.x - marker_edge_margin and
+		screen_pos.y >= marker_edge_margin and screen_pos.y <= screen_size.y - marker_edge_margin and
 		is_in_front
 	)
 
 	if is_on_screen:
-		# Show marker at projected position
+		# Show marker at projected position (distance-based scaling)
 		marker_sprite.visible = true
 		marker_sprite.position = screen_pos
-		marker_sprite.scale = Vector2(2.0, 2.0)  # Full size when on screen
+		marker_sprite.scale = scale_vec
 		marker_arrow.visible = false
 	else:
-		# Clamp to screen edge and show arrow
+		# Clamp to screen edge
 		var screen_center = screen_size / 2.0
 		var dir_to_marker = (screen_pos - screen_center).normalized()
 
-		# Find intersection with screen edge
-		var edge_pos = screen_center
-		var max_x = screen_size.x / 2.0 - margin
-		var max_y = screen_size.y / 2.0 - margin
+		# Find intersection with screen edge (for marker)
+		var max_x = screen_size.x / 2.0 - marker_edge_margin
+		var max_y = screen_size.y / 2.0 - marker_edge_margin
 
+		var marker_pos = screen_center
 		if abs(dir_to_marker.x) > 0.001 or abs(dir_to_marker.y) > 0.001:
 			var scale_x = max_x / abs(dir_to_marker.x) if abs(dir_to_marker.x) > 0.001 else 99999.0
 			var scale_y = max_y / abs(dir_to_marker.y) if abs(dir_to_marker.y) > 0.001 else 99999.0
 			var edge_scale = min(scale_x, scale_y)
-			edge_pos = screen_center + dir_to_marker * edge_scale
+			marker_pos = screen_center + dir_to_marker * edge_scale
 
-		# Show arrow at edge pointing toward destination
-		marker_arrow.visible = true
-		marker_arrow.position = edge_pos
-		marker_arrow.rotation = dir_to_marker.angle()
+		# Arrow position - further out toward edge
+		var arrow_max_x = screen_size.x / 2.0 - marker_edge_margin + arrow_edge_offset
+		var arrow_max_y = screen_size.y / 2.0 - marker_edge_margin + arrow_edge_offset
+		var arrow_pos = screen_center
+		if abs(dir_to_marker.x) > 0.001 or abs(dir_to_marker.y) > 0.001:
+			var scale_x = arrow_max_x / abs(dir_to_marker.x) if abs(dir_to_marker.x) > 0.001 else 99999.0
+			var scale_y = arrow_max_y / abs(dir_to_marker.y) if abs(dir_to_marker.y) > 0.001 else 99999.0
+			var edge_scale = min(scale_x, scale_y)
+			arrow_pos = screen_center + dir_to_marker * edge_scale
 
-		# Also show marker at edge
+		# Use edge scale for off-screen markers
+		var edge_scale_vec = Vector2(marker_scale_edge, marker_scale_edge)
+
+		# Show marker at edge
 		marker_sprite.visible = true
-		marker_sprite.position = edge_pos
-		marker_sprite.scale = Vector2(2.0, 2.0)  # Same size at edge for visibility
+		marker_sprite.position = marker_pos
+		marker_sprite.scale = edge_scale_vec
+
+		# Show arrow pointing toward destination
+		marker_arrow.visible = true
+		marker_arrow.position = arrow_pos
+		marker_arrow.rotation = dir_to_marker.angle()
+		marker_arrow.scale = edge_scale_vec
