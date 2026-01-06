@@ -21,6 +21,12 @@ extends Node
 @export var spawn_interval: float = 2.0  # Seconds between spawn attempts
 @export var auto_spawn: bool = true
 
+# Quest/destination configuration
+@export_category("Destinations")
+@export_range(0.0, 1.0) var spawn_with_destination_chance: float = 0.3  # 30% of spawns want rides
+@export_range(0.0, 1.0) var in_a_hurry_chance: float = 0.1  # 10% of passengers are in a hurry
+@export var hurry_time: float = 60.0  # Seconds for in_a_hurry passengers
+
 # Color sets - loaded from text files in color_sets_folder
 # Surfaces reference these by index (0, 1, 2, etc. based on alphabetical filename order)
 @export_category("Color Sets")
@@ -32,6 +38,7 @@ var color_sets: Array[PackedColorArray] = []
 # Runtime state
 var spritesheet: SpriteSheet
 var registered_surfaces: Array[SpawnSurface] = []
+var registered_pois: Array[PointOfInterest] = []
 var all_people: Array[Person] = []
 var spawn_timer: float = 0.0
 var spawn_counter: int = 0  # Increments with each spawn, used for deterministic color selection
@@ -191,6 +198,24 @@ func unregister_surface(surface: SpawnSurface):
 	registered_surfaces.erase(surface)
 
 
+func register_poi(poi: PointOfInterest):
+	if poi not in registered_pois:
+		registered_pois.append(poi)
+		print("PeopleManager: Registered POI '", poi.poi_name, "'")
+
+
+func unregister_poi(poi: PointOfInterest):
+	registered_pois.erase(poi)
+
+
+func get_enabled_pois() -> Array[PointOfInterest]:
+	var enabled: Array[PointOfInterest] = []
+	for poi in registered_pois:
+		if is_instance_valid(poi) and poi.enabled:
+			enabled.append(poi)
+	return enabled
+
+
 func _try_spawn_on_surfaces():
 	for surface in registered_surfaces:
 		if surface.can_spawn_more():
@@ -237,7 +262,56 @@ func spawn_person_on_surface(surface: SpawnSurface) -> Person:
 	surface.add_person(person)
 	all_people.append(person)
 
+	# Maybe assign a destination (making this person want a ride)
+	if randf() < spawn_with_destination_chance:
+		_assign_destination(person, surface)
+
 	return person
+
+
+func _assign_destination(person: Person, _source_surface: SpawnSurface):
+	# Build list of all valid destinations (other persons + POIs)
+	var valid_targets: Array[Node] = []
+
+	# Add other persons as potential destinations
+	for other in all_people:
+		if not is_instance_valid(other):
+			continue
+		if other == person:
+			continue
+		# Don't target people who are already passengers or have destinations
+		if other.destination != null:
+			continue
+		if other.current_state in [Person.State.BOARDING, Person.State.RIDING, Person.State.HAILING]:
+			continue
+		valid_targets.append(other)
+
+	# Add enabled POIs as potential destinations
+	for poi in registered_pois:
+		if is_instance_valid(poi) and poi.enabled:
+			valid_targets.append(poi)
+
+	if valid_targets.is_empty():
+		return  # No valid destinations
+
+	# Pick a random target
+	var target = valid_targets[randi() % valid_targets.size()]
+
+	# Assign destination
+	person.set_destination(target)
+
+	# Maybe make them in a hurry
+	if randf() < in_a_hurry_chance:
+		person.in_a_hurry = true
+		person.hurry_timer = hurry_time
+
+	# Debug output
+	var dest_name = ""
+	if target is Person:
+		dest_name = "another person"
+	elif target is PointOfInterest:
+		dest_name = "POI: " + target.poi_name
+	print("Person spawned with destination: ", dest_name, " | In a hurry: ", person.in_a_hurry)
 
 
 func spawn_person_at(position: Vector3, bounds_min: Vector3 = Vector3.ZERO, bounds_max: Vector3 = Vector3.ZERO) -> Person:

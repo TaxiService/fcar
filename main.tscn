@@ -1,4 +1,4 @@
-[gd_scene load_steps=32 format=3 uid="uid://dek4efddws8mr"]
+[gd_scene load_steps=33 format=3 uid="uid://dek4efddws8mr"]
 
 [ext_resource type="Texture2D" uid="uid://b8dhd5iqbef0" path="res://icon.svg" id="1_et1pl"]
 [ext_resource type="Script" uid="uid://c7m1dsqpdck13" path="res://FCar.gd" id="1_fr0kx"]
@@ -6,6 +6,7 @@
 [ext_resource type="Material" uid="uid://cc37tlrahc1tj" path="res://yellow.tres" id="4_lquwl"]
 [ext_resource type="Material" uid="uid://ce3eavktn35d4" path="res://grey.tres" id="5_7mycd"]
 [ext_resource type="Script" uid="uid://dvu3f10fe6r2" path="res://PeopleManager.gd" id="6_people"]
+[ext_resource type="Script" uid="uid://bb5smj3tq58ck" path="res://PointOfInterest.gd" id="7_5vw27"]
 [ext_resource type="Script" uid="uid://c72sj768vn5do" path="res://SpawnSurface.gd" id="7_spawn"]
 
 [sub_resource type="PhysicsMaterial" id="PhysicsMaterial_elbkq"]
@@ -408,6 +409,11 @@ mesh = SubResource("BoxMesh_h3x72")
 [node name="PeopleManager" type="Node" parent="."]
 script = ExtResource("6_people")
 
+[node name="POI1" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -63.64045, 2.957734, -6.918873)
+script = ExtResource("7_5vw27")
+arrival_radius = 10.0
+
 [node name="SpawnSurface1" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 41.285053, 0.10619187, -15.459599)
 script = ExtResource("7_spawn")
@@ -417,7 +423,7 @@ color_set_index = 2
 bounds_size = Vector3(100, 0, 100)
 
 [node name="SpawnSurface2" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -59.27123, 2.7867332, -5.4739046)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -59.27123, -0.5353551, -43.668526)
 script = ExtResource("7_spawn")
 enabled = true
 max_people = 20

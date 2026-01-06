@@ -79,6 +79,12 @@ var current_yaw: float = 0.0
 @export var booster_default_thigh_angle: float = -50.0  # degrees (negative = pointing back)
 @export var booster_default_shin_angle: float = 45.0  # degrees
 
+@export_category("passengers")
+@export var cargo_capacity: int = 2
+@export var pickup_range: float = 10.0  # Distance to trigger hailing persons to approach
+@export var board_range: float = 3.0  # Distance for person to teleport-board
+@export var delivery_range: float = 5.0  # Distance to destination for delivery
+
 @export_category("debug")
 @export var debug_thrusters: bool = false
 @export var debug_boosters: bool = false
@@ -102,6 +108,16 @@ var booster_system: BoosterSystem
 var debug_visualizer: DebugVisualizer
 var status_lights: StatusLights
 var direction_lights: DirectionLights
+
+# ===== PASSENGER SYSTEM =====
+var passengers: Array[Person] = []
+var people_manager: Node = null  # Reference to PeopleManager for finding hailing persons
+var destination_marker: CanvasLayer = null  # HUD layer for waypoint
+var marker_sprite: Sprite2D = null  # The actual waypoint indicator
+var marker_arrow: Sprite2D = null  # Arrow pointing to off-screen destination
+
+signal passenger_boarded(person: Person)
+signal passenger_delivered(person: Person, destination: Node)
 
 
 func _ready():
@@ -144,6 +160,90 @@ func _init_subsystems():
 		if not direction_lights.initialize(directionlights_node, status_lights.material_on, status_lights.material_off):
 			direction_lights = null
 			push_warning("FCar: Direction lights initialization failed")
+
+	# Find PeopleManager for passenger system
+	_find_people_manager()
+
+	# Create destination marker
+	_create_destination_marker()
+
+
+func _create_destination_marker():
+	# Create a HUD layer for the waypoint (renders on top of everything)
+	destination_marker = CanvasLayer.new()
+	destination_marker.name = "DestinationMarkerHUD"
+	destination_marker.layer = 100  # High layer to be on top
+
+	# Create the main waypoint sprite (diamond shape)
+	marker_sprite = Sprite2D.new()
+	marker_sprite.name = "WaypointSprite"
+
+	var img = Image.create(32, 32, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))  # Start transparent
+
+	# Draw a diamond shape with border
+	for y in range(32):
+		for x in range(32):
+			var cx = abs(x - 16)
+			var cy = abs(y - 16)
+			var dist = cx + cy
+			if dist <= 14:
+				if dist >= 11:
+					img.set_pixel(x, y, Color(1.0, 1.0, 1.0, 1.0))  # White border
+				else:
+					img.set_pixel(x, y, Color(1.0, 0.2, 0.8, 0.95))  # Magenta fill
+
+	var tex = ImageTexture.create_from_image(img)
+	marker_sprite.texture = tex
+	marker_sprite.scale = Vector2(2.0, 2.0)  # Make it bigger on screen
+	destination_marker.add_child(marker_sprite)
+
+	# Create arrow for off-screen indication
+	marker_arrow = Sprite2D.new()
+	marker_arrow.name = "DirectionArrow"
+
+	var arrow_img = Image.create(32, 32, false, Image.FORMAT_RGBA8)
+	arrow_img.fill(Color(0, 0, 0, 0))
+
+	# Draw an arrow pointing right (we'll rotate it)
+	for y in range(32):
+		for x in range(32):
+			var cy = abs(y - 16)
+			# Arrow shape: triangle pointing right
+			if x > 8 and x < 28 and cy < (28 - x) / 1.5:
+				arrow_img.set_pixel(x, y, Color(1.0, 0.2, 0.8, 0.95))
+
+	var arrow_tex = ImageTexture.create_from_image(arrow_img)
+	marker_arrow.texture = arrow_tex
+	marker_arrow.scale = Vector2(1.5, 1.5)
+	marker_arrow.visible = false
+	destination_marker.add_child(marker_arrow)
+
+	# Start hidden
+	marker_sprite.visible = false
+
+	# Add to scene
+	get_tree().root.add_child.call_deferred(destination_marker)
+
+
+func _find_people_manager():
+	# Search for PeopleManager in the scene
+	var root = get_tree().root
+	people_manager = _find_node_by_class(root, "PeopleManager")
+	if people_manager:
+		print("FCar: Found PeopleManager")
+	else:
+		push_warning("FCar: PeopleManager not found - passenger system disabled")
+
+
+func _find_node_by_class(node: Node, class_name_str: String) -> Node:
+	if node.get_class() == class_name_str or (node.get_script() and node.get_script().get_global_name() == class_name_str):
+		return node
+	for child in node.get_children():
+		var found = _find_node_by_class(child, class_name_str)
+		if found:
+			return found
+	return null
 
 
 func _init_booster_system():
@@ -247,6 +347,9 @@ func _physics_process(delta):
 			_update_boosters(delta)
 		else:
 			booster_system.set_thrust(0.0)
+
+	# Update passenger system
+	_update_passengers()
 
 
 func _update_stability_state(delta: float, tilt_angle: float):
@@ -528,3 +631,246 @@ func _update_boosters(delta: float):
 			print("  L dir: ", dirs.left.direction)
 		if dirs.has("right"):
 			print("  R dir: ", dirs.right.direction)
+
+
+# ===== PASSENGER SYSTEM =====
+
+func _update_passengers():
+	if not people_manager:
+		return
+
+	# Clean up invalid passenger references
+	passengers = passengers.filter(func(p): return is_instance_valid(p))
+
+	# Check for destination arrivals first
+	_check_destination_arrivals()
+
+	# Check for boarding persons who reached the car
+	_check_boarding_arrivals()
+
+	# Only accept new passengers if we have NONE (one group at a time)
+	# Once anyone is aboard or boarding, no more pickups until delivery
+	if passengers.size() == 0 and _count_boarding_persons() == 0:
+		_detect_and_board_hailing_persons()
+
+	# Update destination marker
+	_update_destination_marker()
+
+
+func _check_boarding_arrivals():
+	# Find persons in BOARDING state who are close enough to board
+	for person in people_manager.all_people:
+		if not is_instance_valid(person):
+			continue
+		if person.current_state != Person.State.BOARDING:
+			continue
+		if person.target_car != self:
+			continue
+
+		# Check distance
+		var dist = global_position.distance_to(person.global_position)
+		if dist <= board_range:
+			# They made it! Add to passengers
+			if passengers.size() < cargo_capacity and person not in passengers:
+				_complete_boarding(person)
+
+
+func _count_boarding_persons() -> int:
+	var count = 0
+	for person in people_manager.all_people:
+		if is_instance_valid(person) and person.current_state == Person.State.BOARDING:
+			if person.target_car == self:
+				count += 1
+	return count
+
+
+func _detect_and_board_hailing_persons():
+	# Find hailing persons within pickup range
+	var hailing_in_range: Array[Person] = []
+
+	for person in people_manager.all_people:
+		if not is_instance_valid(person):
+			continue
+		if not person.wants_ride():
+			continue
+
+		var dist = global_position.distance_to(person.global_position)
+		if dist <= pickup_range:
+			hailing_in_range.append(person)
+
+	# Sort by distance (nearest first)
+	hailing_in_range.sort_custom(func(a, b):
+		return global_position.distance_to(a.global_position) < global_position.distance_to(b.global_position)
+	)
+
+	# Count how many slots we have available
+	var current_boarding = _count_boarding_persons()
+	var available_slots = cargo_capacity - passengers.size() - current_boarding
+
+	if available_slots <= 0:
+		return  # No room for more
+
+	var started_count = 0
+
+	# Board persons up to available capacity
+	for person in hailing_in_range:
+		if started_count >= available_slots:
+			break
+
+		# Check if already boarding or riding
+		if person.current_state == Person.State.BOARDING or person.current_state == Person.State.RIDING:
+			continue
+
+		# Start boarding process
+		person.start_boarding(self)
+		started_count += 1
+
+		# Check if close enough to board immediately
+		var dist = global_position.distance_to(person.global_position)
+		if dist <= board_range:
+			_complete_boarding(person)
+
+
+func _complete_boarding(person: Person):
+	if person in passengers:
+		return  # Already boarded
+
+	person.board_complete()
+	passengers.append(person)
+	print("Passenger boarded! Now carrying ", passengers.size(), "/", cargo_capacity)
+	passenger_boarded.emit(person)
+
+
+func _check_destination_arrivals():
+	var to_deliver: Array[Person] = []
+
+	for person in passengers:
+		if not is_instance_valid(person) or not is_instance_valid(person.destination):
+			continue
+
+		var dest = person.destination
+		var dest_pos = dest.global_position
+		var dist = global_position.distance_to(dest_pos)
+
+		# Use POI's arrival_radius if destination is a POI, otherwise use delivery_range
+		var arrival_dist = delivery_range
+		if dest is PointOfInterest:
+			arrival_dist = dest.arrival_radius
+
+		if dist <= arrival_dist:
+			to_deliver.append(person)
+
+	# Deliver passengers
+	for person in to_deliver:
+		_deliver_passenger(person)
+
+
+func _deliver_passenger(person: Person):
+	if person not in passengers:
+		return
+
+	var destination = person.destination
+
+	# Remove from passengers
+	passengers.erase(person)
+
+	# Position person at delivery location
+	person.global_position = global_position
+	person.global_position.y = destination.global_position.y  # Match destination height
+
+	# Trigger exit sequence
+	person.start_exiting()
+
+	print("Passenger delivered! Now carrying ", passengers.size(), "/", cargo_capacity)
+	passenger_delivered.emit(person, destination)
+
+
+func get_passenger_count() -> int:
+	passengers = passengers.filter(func(p): return is_instance_valid(p))
+	return passengers.size()
+
+
+func has_capacity() -> bool:
+	return get_passenger_count() < cargo_capacity
+
+
+func _update_destination_marker():
+	if not marker_sprite or not marker_arrow:
+		return
+
+	# Find the first passenger with a valid destination
+	var dest: Node = null
+	for person in passengers:
+		if is_instance_valid(person) and is_instance_valid(person.destination):
+			dest = person.destination
+			break
+
+	if not dest:
+		marker_sprite.visible = false
+		marker_arrow.visible = false
+		return
+
+	# Get camera for projection
+	var camera = get_viewport().get_camera_3d()
+	if not camera:
+		marker_sprite.visible = false
+		marker_arrow.visible = false
+		return
+
+	var dest_pos = dest.global_position + Vector3(0, 2, 0)  # Slightly above destination
+	var screen_size = get_viewport().get_visible_rect().size
+
+	# Check if destination is in front of camera
+	var cam_forward = -camera.global_transform.basis.z
+	var to_dest = (dest_pos - camera.global_position).normalized()
+	var is_in_front = cam_forward.dot(to_dest) > 0
+
+	# Project to screen
+	var screen_pos: Vector2
+	if is_in_front:
+		screen_pos = camera.unproject_position(dest_pos)
+	else:
+		# Behind camera - project to opposite side of screen
+		screen_pos = camera.unproject_position(dest_pos)
+		# Flip around screen center
+		screen_pos = screen_size - screen_pos
+
+	# Check if on screen (with margin)
+	var margin = 50.0
+	var is_on_screen = (
+		screen_pos.x >= margin and screen_pos.x <= screen_size.x - margin and
+		screen_pos.y >= margin and screen_pos.y <= screen_size.y - margin and
+		is_in_front
+	)
+
+	if is_on_screen:
+		# Show marker at projected position
+		marker_sprite.visible = true
+		marker_sprite.position = screen_pos
+		marker_sprite.scale = Vector2(2.0, 2.0)  # Full size when on screen
+		marker_arrow.visible = false
+	else:
+		# Clamp to screen edge and show arrow
+		var screen_center = screen_size / 2.0
+		var dir_to_marker = (screen_pos - screen_center).normalized()
+
+		# Find intersection with screen edge
+		var edge_pos = screen_center
+		var max_x = screen_size.x / 2.0 - margin
+		var max_y = screen_size.y / 2.0 - margin
+
+		if abs(dir_to_marker.x) > 0.001 or abs(dir_to_marker.y) > 0.001:
+			var scale_x = max_x / abs(dir_to_marker.x) if abs(dir_to_marker.x) > 0.001 else 99999.0
+			var scale_y = max_y / abs(dir_to_marker.y) if abs(dir_to_marker.y) > 0.001 else 99999.0
+			var edge_scale = min(scale_x, scale_y)
+			edge_pos = screen_center + dir_to_marker * edge_scale
+
+		# Show arrow at edge pointing toward destination
+		marker_arrow.visible = true
+		marker_arrow.position = edge_pos
+		marker_arrow.rotation = dir_to_marker.angle()
+
+		# Also show marker at edge
+		marker_sprite.visible = true
+		marker_sprite.position = edge_pos
+		marker_sprite.scale = Vector2(2.0, 2.0)  # Same size at edge for visibility
