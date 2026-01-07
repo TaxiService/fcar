@@ -9,6 +9,9 @@ var disabled_time_remaining: float = 0.0
 var grace_period_remaining: float = 0.0
 var thrust_power: float = 1.0
 var handbrake_active: bool = false
+var handbrake_locked: bool = false  # Double-press to lock on
+var handbrake_last_press_time: float = 0.0
+const HANDBRAKE_DOUBLE_PRESS_WINDOW: float = 0.3  # Seconds
 
 # Smoothed input state
 var current_pitch: float = 0.0
@@ -64,6 +67,7 @@ var current_yaw: float = 0.0
 
 @export_category("handbrake")
 @export var handbrake_disables_stabilizer: bool = true
+@export var handbrake_disables_boosters: bool = true
 
 @export_category("auto-hover safety")
 @export var auto_hover_enabled: bool = true
@@ -71,6 +75,7 @@ var current_yaw: float = 0.0
 @export var auto_hover_margin: float = 0.5
 
 @export_category("boosters")
+@export var boosters_require_stability: bool = false  # If false, can fire boosters while tumbling
 @export var booster_max_thrust: float = 100000.0
 @export var booster_thigh_min: float = -180.0  # degrees
 @export var booster_thigh_max: float = 0.0  # degrees
@@ -369,10 +374,16 @@ func _physics_process(delta):
 
 		direction_lights.update(fwd, back, left, right)
 
-	# Update boosters (disabled when car is unstable)
+	# Update boosters
 	if booster_system:
-		if is_stable:
-			_update_boosters(delta)
+		# Rotation always allowed (even when disabled/unstable)
+		_update_booster_rotation(delta)
+
+		# Thrust allowed based on stability and handbrake flags
+		var stability_ok = is_stable or not boosters_require_stability
+		var handbrake_ok = not (handbrake_active and handbrake_disables_boosters)
+		if stability_ok and handbrake_ok:
+			_update_booster_thrust(delta)
 		else:
 			booster_system.set_thrust(0.0)
 
@@ -499,7 +510,20 @@ func _read_inputs(delta: float) -> Dictionary:
 	if Input.is_action_just_pressed("toggle_ready_for_fares"):
 		_toggle_ready_for_fares()
 
-	handbrake_active = Input.is_action_pressed("handbrake")
+	# Handbrake: hold to engage, double-press to lock on, single press to unlock
+	if Input.is_action_just_pressed("handbrake"):
+		var now = Time.get_ticks_msec() / 1000.0
+		if handbrake_locked:
+			# Single press while locked = unlock
+			handbrake_locked = false
+			print("Handbrake: unlocked")
+		elif now - handbrake_last_press_time < HANDBRAKE_DOUBLE_PRESS_WINDOW:
+			# Double press = lock on
+			handbrake_locked = true
+			print("Handbrake: LOCKED")
+		handbrake_last_press_time = now
+
+	handbrake_active = handbrake_locked or Input.is_action_pressed("handbrake")
 
 	# Apply input smoothing
 	current_pitch = move_toward(current_pitch, target_pitch, pitch_acceleration * delta)
@@ -611,11 +635,8 @@ func _process_disabled_state(delta: float):
 		debug_visualizer.update_all_disabled(_get_wheel_nodes())
 
 
-func _update_boosters(delta: float):
-	# Test controls: Shift fires boosters, arrow keys rotate joints
-	var boost_active = Input.is_key_pressed(KEY_SHIFT)
-
-	# Arrow keys rotate booster joints (works anytime)
+func _update_booster_rotation(delta: float):
+	# Arrow keys rotate booster joints (works even when disabled)
 	var thigh_input = 0.0
 	var shin_input = 0.0
 
@@ -647,7 +668,11 @@ func _update_boosters(delta: float):
 
 		booster_system._apply_rotations()
 
+
+func _update_booster_thrust(delta: float):
 	# Shift controls thrust
+	var boost_active = Input.is_key_pressed(KEY_SHIFT)
+
 	if boost_active:
 		booster_system.set_thrust(1.0)
 	else:

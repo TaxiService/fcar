@@ -1,8 +1,9 @@
-[gd_scene load_steps=33 format=3 uid="uid://dek4efddws8mr"]
+[gd_scene load_steps=34 format=3 uid="uid://dek4efddws8mr"]
 
 [ext_resource type="Texture2D" uid="uid://b8dhd5iqbef0" path="res://icon.svg" id="1_et1pl"]
 [ext_resource type="Script" uid="uid://c7m1dsqpdck13" path="res://FCar.gd" id="1_fr0kx"]
 [ext_resource type="Script" uid="uid://313aqakyo1m1" path="res://Camera3D.gd" id="1_ptugb"]
+[ext_resource type="Script" uid="uid://bbg344k4s2ltu" path="res://ui/UIController.gd" id="3_kek77"]
 [ext_resource type="Material" uid="uid://cc37tlrahc1tj" path="res://yellow.tres" id="4_lquwl"]
 [ext_resource type="Material" uid="uid://ce3eavktn35d4" path="res://grey.tres" id="5_7mycd"]
 [ext_resource type="Script" uid="uid://dvu3f10fe6r2" path="res://PeopleManager.gd" id="6_people"]
@@ -103,7 +104,7 @@ roughness = 0.5
 
 [sub_resource type="BoxMesh" id="BoxMesh_h3x72"]
 material = SubResource("StandardMaterial3D_uwb37")
-size = Vector3(50, 500, 50)
+size = Vector3(50, 2000, 50)
 
 [node name="Main" type="Node"]
 
@@ -138,14 +139,19 @@ yaw_deceleration = 1.5
 yaw_accel_min = 0.8
 yaw_accel_max = 1.5
 yaw_accel_max_speed = 30.0
-height_lock_refresh_threshold = 1.0
+height_lock_refresh_threshold = 2.5
 unstable_angular_damp = 0.5
+handbrake_disables_boosters = false
 booster_default_thigh_angle = -60.0
 marker_scale_min = 0.7
 marker_edge_margin = 45.0
 arrow_edge_offset = -55.0
 debug_thrusters = true
 com_compensation_enabled = false
+
+[node name="UIController" type="Node" parent="FCar"]
+script = ExtResource("3_kek77")
+car_node_path = NodePath("..")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="FCar"]
 shape = SubResource("BoxShape3D_eaf57")
@@ -460,7 +466,7 @@ color_set_index = 1
 bounds_size = Vector3(30, 0, 30)
 
 [node name="SpawnSurface6" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 91.3519, 136.54045, -66.47228)
+transform = Transform3D(0.87096244, 0, 0, 0, 1, 0, 0, 0, 0.5297819, 91.82374, 136.54045, -60.889416)
 script = ExtResource("7_spawn")
 enabled = true
 max_people = 20

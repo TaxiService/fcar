@@ -41,6 +41,11 @@ var board_speed: float = 5.0  # Speed when walking to car
 var base_y: float = 0.0  # Original Y position for bobbing
 var max_boarding_distance: float = 20.0  # Give up boarding if car gets this far
 
+# Per-person bobbing parameters (set by PeopleManager on spawn)
+var bob_rate: float = 1.5  # Personal bob frequency in Hz
+var bob_height: float = 0.2  # Jump height in meters
+var bob_hurry_multiplier: float = 2.0  # Speed multiplier when in a hurry
+
 # Relocation state (after delivery, walk to nearest surface)
 var relocation_target: Vector3 = Vector3.ZERO
 var relocation_surface: Node = null  # SpawnSurface to adopt bounds from
@@ -169,8 +174,15 @@ func _process_waiting(_delta: float):
 
 
 func _process_hailing(_delta: float):
-	# Bob up and down to indicate wanting a ride - fast and frantic!
-	var bob_offset = sin(hail_time * 12.0) * 0.25  # 12 Hz, 0.25m amplitude
+	# Square-wave bobbing - instant jump up, then back down
+	# Hurried people bob faster
+	var effective_rate = bob_rate * (bob_hurry_multiplier if in_a_hurry else 1.0)
+
+	# Position in cycle (0.0 to 1.0)
+	var cycle_pos = fmod(hail_time * effective_rate, 1.0)
+
+	# First half of cycle = up, second half = down (square wave)
+	var bob_offset = bob_height if cycle_pos < 0.5 else 0.0
 	global_position.y = base_y + bob_offset
 
 	# If car is nearby and triggered approach, handled by start_boarding()

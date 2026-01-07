@@ -33,6 +33,12 @@ extends Node
 @export_range(0.0, 1.0) var group_spawn_chance: float = 0.3  # 30% chance a fare is a group
 @export var default_group_size: int = 2  # Default group size when spawning groups
 
+@export_category("Hailing Animation")
+@export var bob_rate_base: float = 1.5  # Base bob frequency in Hz (cycles per second)
+@export var bob_rate_variance: float = 0.3  # Random variance ± this amount
+@export var bob_hurry_multiplier: float = 2.0  # Hurried people bob this much faster
+@export var bob_height: float = 0.2  # How high they jump (fraction of ~1.8m sprite height)
+
 # Color sets - loaded from text files in color_sets_folder
 # Surfaces reference these by index (0, 1, 2, etc. based on alphabetical filename order)
 @export_category("Color Sets")
@@ -368,6 +374,11 @@ func spawn_person_on_surface(surface: SpawnSurface) -> Person:
 	person.wait_duration_min = wait_duration_min
 	person.wait_duration_max = wait_duration_max
 
+	# Configure bobbing parameters with per-person variance
+	person.bob_rate = bob_rate_base + randf_range(-bob_rate_variance, bob_rate_variance)
+	person.bob_height = bob_height
+	person.bob_hurry_multiplier = bob_hurry_multiplier
+
 	# Create material with color from surface's color set (deterministic based on spawn order)
 	var color = get_color_from_set(surface.color_set_index, spawn_counter)
 	spawn_counter += 1
@@ -433,6 +444,11 @@ func spawn_person_at(position: Vector3, bounds_min: Vector3 = Vector3.ZERO, boun
 	person.walk_duration_max = walk_duration_max
 	person.wait_duration_min = wait_duration_min
 	person.wait_duration_max = wait_duration_max
+
+	# Configure bobbing parameters with per-person variance
+	person.bob_rate = bob_rate_base + randf_range(-bob_rate_variance, bob_rate_variance)
+	person.bob_height = bob_height
+	person.bob_hurry_multiplier = bob_hurry_multiplier
 
 	# Set random sprite
 	var sprite_index = randi() % spritesheet.get_frame_count()
