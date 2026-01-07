@@ -47,7 +47,8 @@ var current_yaw: float = 0.0
 @export_category("height lock")
 @export var height_lock_strength: float = 0.8
 @export var height_lock_dissipation: float = 0.5
-@export var height_lock_refresh_threshold: float = 0.8
+@export var use_city_grid_spacing: bool = true  # Use CityGrid autoload for height spacing
+@export var height_lock_refresh_threshold: float = 2.5  # Fallback if CityGrid unavailable
 @export var throttle_power: float = 2.0
 
 @export_category("stabilizer")
@@ -173,7 +174,9 @@ func _init_subsystems():
 	# Initialize status lights
 	if statuslights_node:
 		status_lights = StatusLights.new()
-		status_lights.height_lock_refresh_threshold = height_lock_refresh_threshold
+		# Use city grid spacing if available (check deferred since autoload may not be ready)
+		status_lights.height_grid_spacing = _get_height_grid_spacing()
+		call_deferred("_update_status_lights_spacing")
 		if not status_lights.initialize(statuslights_node):
 			status_lights = null
 			push_warning("FCar: Status lights initialization failed")
@@ -424,12 +427,26 @@ func _update_stability_state(delta: float, tilt_angle: float):
 			thrust_power = move_toward(thrust_power, 1.0, delta / height_lock_dissipation)
 
 
+func _get_height_grid_spacing() -> float:
+	# Returns the height grid spacing from CityGrid if available, otherwise fallback
+	if use_city_grid_spacing and has_node("/root/CityGrid"):
+		var city_grid = get_node("/root/CityGrid")
+		return city_grid.height_grid_spacing
+	return height_lock_refresh_threshold
+
+
+func _update_status_lights_spacing():
+	# Deferred call to update status lights with city grid spacing
+	if status_lights:
+		status_lights.height_grid_spacing = _get_height_grid_spacing()
+
+
 func _update_height_lock_refresh(delta: float):
 	if lock_height:
 		height_lock_refresh_timer += delta
 		if height_lock_refresh_timer >= 1.0:
 			var height_drift = abs(global_transform.origin.y - target_height)
-			if height_drift > height_lock_refresh_threshold:
+			if height_drift > _get_height_grid_spacing():
 				target_height = global_transform.origin.y
 			height_lock_refresh_timer = 0.0
 	else:

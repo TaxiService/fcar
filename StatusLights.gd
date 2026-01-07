@@ -9,8 +9,8 @@ var height_lights: Array[MeshInstance3D] = []  # Index 0=-2, 1=-1, 2=0, 3=+1, 4=
 var material_on: Material
 var material_off: Material
 
-# Configuration
-var height_lock_refresh_threshold: float = 0.8
+# Configuration - height grid spacing from CityGrid
+var height_grid_spacing: float = 2.5
 
 
 func initialize(statuslights_node: Node3D) -> bool:
@@ -49,44 +49,47 @@ func initialize(statuslights_node: Node3D) -> bool:
 	return true
 
 
-func update(auto_hover_enabled: bool, lock_height: bool, current_y: float, target_height: float) -> void:
+func update(auto_hover_enabled: bool, _lock_height: bool, current_y: float, _target_height: float) -> void:
 	# Update autohover light
 	_set_light(autohover_light, auto_hover_enabled)
 
-	if not lock_height:
-		# Height lock OFF - all height lights off
-		for light in height_lights:
-			_set_light(light, false)
-		return
+	# Height lights show position within the height grid cell
+	# Light 0 = on a grid plane, +/-1,2 = drifting between planes
+	# Only one light on at a time
 
-	# Height lock ON - calculate drift and light up accordingly
-	var drift = current_y - target_height
-	var drift_normalized = drift / height_lock_refresh_threshold if height_lock_refresh_threshold > 0 else 0.0
+	# Calculate offset from nearest grid plane
+	# nearest_plane = round(y / spacing) * spacing
+	# offset = y - nearest_plane, range: [-spacing/2, +spacing/2]
+	var nearest_plane = round(current_y / height_grid_spacing) * height_grid_spacing
+	var offset = current_y - nearest_plane
 
-	# Light 0 (index 2) is always on when height locked
-	_set_light(height_lights[2], true)
+	# Normalize to [-1, +1] range (where ±1 = halfway between planes)
+	# Negate so light shows where the plane is relative to car (above plane = light below)
+	var half_spacing = height_grid_spacing / 2.0
+	var normalized = -offset / half_spacing if half_spacing > 0 else 0.0
 
-	# Determine which lights to turn on based on drift
-	# Positive drift (above target): light up +1, +2
-	# Negative drift (below target): light up -1, -2
-	var abs_drift = abs(drift_normalized)
-
-	# Thresholds: 0.33 for ±1, 0.66 for ±2
-	var show_level_1 = abs_drift > 0.33
-	var show_level_2 = abs_drift > 0.66
-
-	if drift >= 0:
-		# Above target - light up positive side
-		_set_light(height_lights[3], show_level_1)  # +1
-		_set_light(height_lights[4], show_level_2)  # +2
-		_set_light(height_lights[1], false)  # -1
-		_set_light(height_lights[0], false)  # -2
+	# Map to light index (0-4 in array, representing -2 to +2)
+	# Thresholds divide the range into 5 zones:
+	#   [-1.0, -0.6) → -2 (index 0)
+	#   [-0.6, -0.2) → -1 (index 1)
+	#   [-0.2, +0.2) →  0 (index 2)
+	#   [+0.2, +0.6) → +1 (index 3)
+	#   [+0.6, +1.0] → +2 (index 4)
+	var light_index: int
+	if normalized < -0.6:
+		light_index = 0  # -2
+	elif normalized < -0.2:
+		light_index = 1  # -1
+	elif normalized < 0.2:
+		light_index = 2  # 0
+	elif normalized < 0.6:
+		light_index = 3  # +1
 	else:
-		# Below target - light up negative side
-		_set_light(height_lights[1], show_level_1)  # -1
-		_set_light(height_lights[0], show_level_2)  # -2
-		_set_light(height_lights[3], false)  # +1
-		_set_light(height_lights[4], false)  # +2
+		light_index = 4  # +2
+
+	# Turn on only the selected light
+	for i in range(height_lights.size()):
+		_set_light(height_lights[i], i == light_index)
 
 
 func _set_light(light: MeshInstance3D, on: bool) -> void:
