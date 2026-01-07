@@ -357,7 +357,7 @@ func _physics_process(delta):
 
 	# Update status lights
 	if status_lights:
-		status_lights.update(auto_hover_enabled, lock_height, global_position.y, target_height)
+		status_lights.update(auto_hover_enabled, lock_height, global_position.y, target_height, delta, linear_velocity.y)
 
 	# Update direction lights based on WASD input
 	# When ready + empty: INVERT lights (all ON, turn OFF on input) = "available" beacon
