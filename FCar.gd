@@ -38,11 +38,11 @@ var current_yaw: float = 0.0
 
 @export_category("yaw")
 @export var yaw_thrust_angle: float = 30.0
-@export var max_angular_speed: float = 2.0
-@export var yaw_deceleration: float = 3.0  # How fast yaw input decays when released
-@export var yaw_accel_min: float = 0.3  # Yaw acceleration at max speed
-@export var yaw_accel_max: float = 1.8  # Yaw acceleration at rest
-@export var yaw_accel_max_speed: float = 50.0  # Speed at which yaw_accel_min kicks in
+@export var max_angular_speed: float = 1.8 # old values were 2 3 0.3 1.8 50
+@export var yaw_deceleration: float = 1.5  # How fast yaw input decays when released
+@export var yaw_accel_min: float = 0.8  # Yaw acceleration at max speed
+@export var yaw_accel_max: float = 1.5  # Yaw acceleration at rest
+@export var yaw_accel_max_speed: float = 30.0  # Speed at which yaw_accel_min kicks in
 
 @export_category("height lock")
 @export var height_lock_strength: float = 0.8
@@ -62,13 +62,13 @@ var current_yaw: float = 0.0
 
 @export_category("damping")
 @export var stable_angular_damp: float = 1.8
-@export var unstable_angular_damp: float = 0.8
+@export var unstable_angular_damp: float = 0.2
 @export var stable_linear_damp: float = 2.0
 @export var unstable_linear_damp: float = 0.85
 
 @export_category("handbrake")
 @export var handbrake_disables_stabilizer: bool = true
-@export var handbrake_disables_boosters: bool = true
+@export var handbrake_disables_boosters: bool = false
 
 @export_category("auto-hover safety")
 @export var auto_hover_enabled: bool = true
@@ -82,7 +82,7 @@ var current_yaw: float = 0.0
 @export var booster_thigh_max: float = 0.0  # degrees
 @export var booster_shin_min: float = 0.0  # degrees
 @export var booster_shin_max: float = 45.0  # degrees
-@export var booster_default_thigh_angle: float = -50.0  # degrees (negative = pointing back)
+@export var booster_default_thigh_angle: float = -60.0  # degrees (negative = pointing back)
 @export var booster_default_shin_angle: float = 45.0  # degrees
 
 @export_category("passengers")
@@ -95,13 +95,13 @@ var current_yaw: float = 0.0
 
 @export_category("waypoint marker")
 @export var marker_scale_max: float = 2.0  # Scale when very close (on-screen)
-@export var marker_scale_min: float = 0.2  # Scale when far (on-screen)
+@export var marker_scale_min: float = 0.7  # Scale when far (on-screen)
 @export var marker_scale_edge: float = 1.5  # Scale when projected to screen edge (off-screen)
 @export var marker_close_distance: float = 2.0  # Distance where marker is at max scale
 @export var marker_far_distance: float = 20.0  # Distance where marker reaches min scale
-@export var marker_edge_margin: float = 40.0  # How far from screen edge the marker sits
-@export var arrow_edge_offset: float = 30.0  # Additional outward offset for arrow (to separate from marker)
-@export var label_edge_offset: float = 55.0  # Additional outward offset for label (beyond arrow)
+@export var marker_edge_margin: float = 45.0  # How far from screen edge the marker sits
+@export var arrow_edge_offset: float = -55.0  # Additional outward offset for arrow (to separate from marker)
+@export var label_edge_offset: float = -85.0  # Additional outward offset for label (beyond arrow)
 
 @export_category("debug")
 @export var debug_thrusters: bool = false
