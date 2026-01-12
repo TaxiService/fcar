@@ -132,6 +132,7 @@ var people_manager: Node = null  # Reference to PeopleManager for finding hailin
 var destination_marker: CanvasLayer = null  # HUD layer for waypoint
 var marker_sprite: Sprite2D = null  # The actual waypoint indicator
 var marker_arrow: Sprite2D = null  # Arrow pointing to off-screen destination
+var marker_label: Label = null  # Distance text for destination
 var hailing_markers: HailingMarkers = null  # Markers for nearby hailing groups
 var is_ready_for_fares: bool = false  # Must be true for passengers to approach
 var confirmed_boarding_group: Array = []  # Members of the group confirmed to board (explicit consent mode)
@@ -251,6 +252,16 @@ func _create_destination_marker():
 	marker_arrow.scale = Vector2(1.5, 1.5)
 	marker_arrow.visible = false
 	destination_marker.add_child(marker_arrow)
+
+	# Create distance label
+	marker_label = Label.new()
+	marker_label.name = "DistanceLabel"
+	marker_label.visible = false
+	marker_label.add_theme_font_size_override("font_size", 16)
+	marker_label.add_theme_color_override("font_color", Color(1.0, 0.2, 0.8, 1.0))  # Magenta
+	marker_label.add_theme_color_override("font_outline_color", Color(1.0, 1.0, 1.0, 1.0))  # White outline
+	marker_label.add_theme_constant_override("outline_size", 2)
+	destination_marker.add_child(marker_label)
 
 	# Start hidden
 	marker_sprite.visible = false
@@ -1060,7 +1071,7 @@ func _eject_all_passengers():
 
 
 func _update_destination_marker():
-	if not marker_sprite or not marker_arrow:
+	if not marker_sprite or not marker_arrow or not marker_label:
 		return
 
 	# Find the first passenger with a valid destination
@@ -1073,6 +1084,7 @@ func _update_destination_marker():
 	if not dest:
 		marker_sprite.visible = false
 		marker_arrow.visible = false
+		marker_label.visible = false
 		return
 
 	# Get camera for projection
@@ -1080,10 +1092,14 @@ func _update_destination_marker():
 	if not camera:
 		marker_sprite.visible = false
 		marker_arrow.visible = false
+		marker_label.visible = false
 		return
 
 	var dest_pos = dest.global_position + Vector3(0, 2, 0)  # Slightly above destination
 	var screen_size = get_viewport().get_visible_rect().size
+
+	# Calculate distance from car to destination (for display)
+	var car_to_dest_distance = global_position.distance_to(dest.global_position)
 
 	# Calculate distance from camera to destination for scaling
 	var camera_distance = camera.global_position.distance_to(dest_pos)
@@ -1121,12 +1137,18 @@ func _update_destination_marker():
 		is_in_front
 	)
 
+	# Format distance text
+	marker_label.text = _format_marker_distance(car_to_dest_distance)
+	marker_label.visible = true
+
 	if is_on_screen:
 		# Show marker at projected position (distance-based scaling)
 		marker_sprite.visible = true
 		marker_sprite.position = screen_pos
 		marker_sprite.scale = scale_vec
 		marker_arrow.visible = false
+		# Position label next to marker
+		marker_label.position = screen_pos + Vector2(20, -12)
 	else:
 		# Clamp to screen edge
 		var screen_center = screen_size / 2.0
@@ -1166,3 +1188,16 @@ func _update_destination_marker():
 		marker_arrow.position = arrow_pos
 		marker_arrow.rotation = dir_to_marker.angle()
 		marker_arrow.scale = edge_scale_vec
+
+		# Position label next to edge marker
+		marker_label.position = marker_pos + Vector2(20, -12)
+
+
+func _format_marker_distance(dist: float) -> String:
+	if dist < 1000:
+		# Round to nearest 10 meters
+		var rounded = int(round(dist / 10.0) * 10)
+		return str(rounded) + "m"
+	else:
+		# Format as X.Xkm for kilometers
+		return str(snapped(dist / 1000.0, 0.1)) + "km"
