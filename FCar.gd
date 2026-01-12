@@ -849,12 +849,12 @@ func _detect_and_board_hailing_persons():
 
 
 func _find_group_members(group_id: int) -> Array[Person]:
-	# Find all persons with the same group_id
+	# Find all persons with the same group_id who currently want a ride
 	var members: Array[Person] = []
 	for person in people_manager.all_people:
 		if not is_instance_valid(person):
 			continue
-		if person.group_id == group_id:
+		if person.group_id == group_id and person.wants_ride():
 			members.append(person)
 	return members
 
@@ -962,12 +962,38 @@ func _toggle_ready_for_fares():
 	elif explicit_boarding_consent:
 		# Ready + explicit mode: check for targeted group
 		var targeted = hailing_markers.get_targeted_group() if hailing_markers else null
-		if targeted:
-			# Confirm the targeted group for boarding
-			confirmed_boarding_group = targeted.members.duplicate()
+		if targeted and targeted.members.size() > 0:
+			# Get a representative member to find the full group
+			var representative = targeted.members[0]
+			if not is_instance_valid(representative):
+				_cancel_ready_state()
+				return
+
+			# Find ALL group members by group_id (more robust than pre-filtered list)
+			var group_members: Array[Person] = []
+			if representative.group_id == -1:
+				# Solo person - just them
+				group_members.append(representative)
+			else:
+				# Group - find all members with this group_id
+				group_members = _find_group_members(representative.group_id)
+
+			# Check capacity - can we fit the whole group?
+			var available_slots = cargo_capacity - passengers.size() - _count_boarding_persons()
+			if group_members.size() > available_slots:
+				print("No room! Group of ", group_members.size(), " won't fit in ", available_slots, " available slots")
+				# Stay in ready state so player can pick a different group
+				return
+
+			# Confirm the group for boarding
+			confirmed_boarding_group = []
+			for p in group_members:
+				confirmed_boarding_group.append(p)
 			print("Confirmed group of ", confirmed_boarding_group.size(), " for boarding")
-			# Start boarding the confirmed group (no need to re-check wants_ride, already verified)
-			for person in confirmed_boarding_group:
+
+			# Start boarding all group members
+			# IMPORTANT: iterate over a duplicate because _complete_boarding may clear the array
+			for person in confirmed_boarding_group.duplicate():
 				if is_instance_valid(person):
 					_start_boarding_person(person)
 			# Stay in ready state until boarding completes
