@@ -91,6 +91,7 @@ var current_yaw: float = 0.0
 @export var board_range: float = 3.0  # Distance for person to teleport-board
 @export var delivery_range: float = 5.0  # Distance to destination for delivery
 @export var delivered_wander_radius: float = 8.0  # How far delivered people can wander from drop-off
+@export var explicit_boarding_consent: bool = true  # If true, player must target and confirm groups
 
 @export_category("waypoint marker")
 @export var marker_scale_max: float = 2.0  # Scale when very close (on-screen)
@@ -131,7 +132,9 @@ var people_manager: Node = null  # Reference to PeopleManager for finding hailin
 var destination_marker: CanvasLayer = null  # HUD layer for waypoint
 var marker_sprite: Sprite2D = null  # The actual waypoint indicator
 var marker_arrow: Sprite2D = null  # Arrow pointing to off-screen destination
+var hailing_markers: HailingMarkers = null  # Markers for nearby hailing groups
 var is_ready_for_fares: bool = false  # Must be true for passengers to approach
+var confirmed_boarding_group: Array = []  # Members of the group confirmed to board (explicit consent mode)
 
 # Eject safety: triple-click Y within time window
 var eject_click_count: int = 0
@@ -194,6 +197,9 @@ func _init_subsystems():
 	# Create destination marker
 	_create_destination_marker()
 
+	# Create hailing markers (shows nearby potential fares)
+	_create_hailing_markers()
+
 
 func _create_destination_marker():
 	# Create a HUD layer for the waypoint (renders on top of everything)
@@ -251,6 +257,15 @@ func _create_destination_marker():
 
 	# Add to scene
 	get_tree().root.add_child.call_deferred(destination_marker)
+
+
+func _create_hailing_markers():
+	# Create hailing markers system (shows nearby potential fares when ready)
+	hailing_markers = HailingMarkers.new()
+	hailing_markers.name = "HailingMarkersHUD"
+	hailing_markers.fcar = self
+	hailing_markers.people_manager = people_manager
+	get_tree().root.add_child.call_deferred(hailing_markers)
 
 
 func _find_people_manager():
@@ -761,6 +776,12 @@ func _count_boarding_persons() -> int:
 
 
 func _detect_and_board_hailing_persons():
+	# In explicit consent mode, boarding is triggered by _toggle_ready_for_fares()
+	# This function only handles implicit (auto-board) mode
+	if explicit_boarding_consent:
+		return
+
+	# === IMPLICIT CONSENT MODE (auto-board nearest) ===
 	# Find hailing persons within pickup range
 	var hailing_in_range: Array[Person] = []
 
@@ -842,9 +863,10 @@ func _complete_boarding(person: Person):
 	person.board_complete()
 	passengers.append(person)
 
-	# Disable ready state - must press F again for next fare
+	# Disable ready state - must press T again for next fare
 	if is_ready_for_fares:
 		is_ready_for_fares = false
+		confirmed_boarding_group.clear()
 		ready_state_changed.emit(false)
 
 	print("Passenger boarded! Now carrying ", passengers.size(), "/", cargo_capacity)
@@ -918,9 +940,52 @@ func _toggle_ready_for_fares():
 		print("Cannot toggle ready state while carrying passengers")
 		return
 
-	is_ready_for_fares = !is_ready_for_fares
-	print("Ready for fares: ", "YES" if is_ready_for_fares else "NO")
-	ready_state_changed.emit(is_ready_for_fares)
+	if not is_ready_for_fares:
+		# Not ready → become ready
+		is_ready_for_fares = true
+		confirmed_boarding_group.clear()
+		print("Ready for fares: YES")
+		ready_state_changed.emit(true)
+	elif explicit_boarding_consent:
+		# Ready + explicit mode: check for targeted group
+		var targeted = hailing_markers.get_targeted_group() if hailing_markers else null
+		if targeted:
+			# Confirm the targeted group for boarding
+			confirmed_boarding_group = targeted.members.duplicate()
+			print("Confirmed group of ", confirmed_boarding_group.size(), " for boarding")
+			# Start boarding the confirmed group
+			for person in confirmed_boarding_group:
+				if is_instance_valid(person) and person.wants_ride():
+					_start_boarding_person(person)
+			# Stay in ready state until boarding completes
+		else:
+			# No target → cancel ready state
+			_cancel_ready_state()
+	else:
+		# Implicit mode: just toggle off
+		_cancel_ready_state()
+
+
+func _cancel_ready_state():
+	is_ready_for_fares = false
+	confirmed_boarding_group.clear()
+	print("Ready for fares: NO")
+	ready_state_changed.emit(false)
+	# Cancel any persons currently boarding this car
+	_cancel_all_boarding()
+
+
+func _cancel_all_boarding():
+	# Cancel all persons currently boarding this car - send them back to hailing
+	if not people_manager:
+		return
+	for person in people_manager.all_people:
+		if not is_instance_valid(person):
+			continue
+		if person.current_state == Person.State.BOARDING and person.target_car == self:
+			person.target_car = null
+			person._enter_state(Person.State.HAILING)
+			print("Cancelled boarding for person")
 
 
 func is_available_for_pickup() -> bool:
