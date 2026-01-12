@@ -101,8 +101,8 @@ func _create_marker_pool():
 		label.visible = false
 		label.add_theme_font_size_override("font_size", 14)
 		label.add_theme_color_override("font_color", Color(1.0, 0.2, 0.8, 1.0))  # Default magenta
-		label.add_theme_color_override("font_outline_color", Color(1.0, 1.0, 1.0, 1.0))  # White outline
-		label.add_theme_constant_override("outline_size", 2)
+		label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 1.0))  # Black outline
+		label.add_theme_constant_override("outline_size", 5)
 		add_child(label)
 		distance_labels.append(label)
 
