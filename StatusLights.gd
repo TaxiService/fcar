@@ -4,10 +4,12 @@ extends RefCounted
 # Light mesh references
 var autohover_light: MeshInstance3D
 var height_lights: Array[MeshInstance3D] = []  # Index 0=-2, 1=-1, 2=0, 3=+1, 4=+2
+var handbrake_light: MeshInstance3D
 
 # Materials (captured from the scene)
 var material_on: Material
 var material_off: Material
+var handbrake_material_on: Material  # Unique red material for handbrake
 
 # Configuration - height grid spacing from CityGrid
 var height_grid_spacing: float = 2.5
@@ -57,6 +59,13 @@ func initialize(statuslights_node: Node3D) -> bool:
 	if not material_on or not material_off:
 		push_warning("StatusLights: Could not capture materials")
 		return false
+
+	# Get handbrake light (optional - don't fail if missing)
+	handbrake_light = statuslights_node.get_node_or_null("handbrake") as MeshInstance3D
+	if handbrake_light:
+		# Capture its unique on material (red), then turn it off initially
+		handbrake_material_on = handbrake_light.get_surface_override_material(0)
+		handbrake_light.set_surface_override_material(0, material_off)
 
 	return true
 
@@ -135,3 +144,8 @@ func _get_effective_spacing(vertical_velocity: float) -> float:
 func _set_light(light: MeshInstance3D, on: bool) -> void:
 	if light:
 		light.set_surface_override_material(0, material_on if on else material_off)
+
+
+func set_handbrake(active: bool) -> void:
+	if handbrake_light and handbrake_material_on:
+		handbrake_light.set_surface_override_material(0, handbrake_material_on if active else material_off)
