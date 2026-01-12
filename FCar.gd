@@ -101,6 +101,7 @@ var current_yaw: float = 0.0
 @export var marker_far_distance: float = 20.0  # Distance where marker reaches min scale
 @export var marker_edge_margin: float = 40.0  # How far from screen edge the marker sits
 @export var arrow_edge_offset: float = 30.0  # Additional outward offset for arrow (to separate from marker)
+@export var label_edge_offset: float = 55.0  # Additional outward offset for label (beyond arrow)
 
 @export_category("debug")
 @export var debug_thrusters: bool = false
@@ -1189,8 +1190,18 @@ func _update_destination_marker():
 		marker_arrow.rotation = dir_to_marker.angle()
 		marker_arrow.scale = edge_scale_vec
 
-		# Position label next to edge marker
-		marker_label.position = marker_pos + Vector2(20, -12)
+		# Label position - even further out toward edge (beyond arrow)
+		var label_max_x = screen_size.x / 2.0 - marker_edge_margin + label_edge_offset
+		var label_max_y = screen_size.y / 2.0 - marker_edge_margin + label_edge_offset
+		var label_pos = screen_center
+		if abs(dir_to_marker.x) > 0.001 or abs(dir_to_marker.y) > 0.001:
+			var scale_x = label_max_x / abs(dir_to_marker.x) if abs(dir_to_marker.x) > 0.001 else 99999.0
+			var scale_y = label_max_y / abs(dir_to_marker.y) if abs(dir_to_marker.y) > 0.001 else 99999.0
+			var edge_scale = min(scale_x, scale_y)
+			label_pos = screen_center + dir_to_marker * edge_scale
+
+		# Center the label on its position
+		marker_label.position = label_pos - Vector2(marker_label.size.x / 2, marker_label.size.y / 2)
 
 
 func _format_marker_distance(dist: float) -> String:
