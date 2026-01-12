@@ -966,9 +966,9 @@ func _toggle_ready_for_fares():
 			# Confirm the targeted group for boarding
 			confirmed_boarding_group = targeted.members.duplicate()
 			print("Confirmed group of ", confirmed_boarding_group.size(), " for boarding")
-			# Start boarding the confirmed group
+			# Start boarding the confirmed group (no need to re-check wants_ride, already verified)
 			for person in confirmed_boarding_group:
-				if is_instance_valid(person) and person.wants_ride():
+				if is_instance_valid(person):
 					_start_boarding_person(person)
 			# Stay in ready state until boarding completes
 		else:
