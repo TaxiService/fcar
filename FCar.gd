@@ -19,6 +19,10 @@ var current_roll: float = 0.0
 var current_throttle: float = 0.0
 var current_yaw: float = 0.0
 
+# Booster assist state
+var booster_assist_enabled: bool = false
+var _alt_was_pressed: bool = false  # For detecting Alt key press
+
 # ===== EXPORT PARAMETERS =====
 @export_category("thrust")
 @export var hover_thrust: float = 4.0  # Slightly under gravity - graceful descent when height lock OFF
@@ -84,6 +88,14 @@ var current_yaw: float = 0.0
 @export var booster_shin_max: float = 45.0  # degrees
 @export var booster_default_thigh_angle: float = -60.0  # degrees (negative = pointing back)
 @export var booster_default_shin_angle: float = 45.0  # degrees
+
+@export_category("booster assist")
+@export var booster_assist_rotation_speed: float = 120.0  # degrees per second
+# Preset angles: {thigh, shin} for each direction
+@export var booster_preset_up: Vector2 = Vector2(-119.75, 45.0)
+@export var booster_preset_down: Vector2 = Vector2(0.0, 45.0)
+@export var booster_preset_forward: Vector2 = Vector2(-60.0, 45.0)
+@export var booster_preset_backward: Vector2 = Vector2(-180.0, 33.0)
 
 @export_category("passengers")
 @export var cargo_capacity: int = 2
@@ -681,7 +693,22 @@ func _process_disabled_state(delta: float):
 
 
 func _update_booster_rotation(delta: float):
-	# Arrow keys rotate booster joints (works even when disabled)
+	# Toggle booster assist with Alt (detect key press edge)
+	var alt_pressed = Input.is_key_pressed(KEY_ALT)
+	if alt_pressed and not _alt_was_pressed:
+		# Alt was just pressed this frame
+		booster_assist_enabled = not booster_assist_enabled
+		print("Booster assist: ", "ON" if booster_assist_enabled else "OFF")
+	_alt_was_pressed = alt_pressed
+
+	if booster_assist_enabled:
+		_update_booster_assist(delta)
+	else:
+		_update_booster_manual(delta)
+
+
+func _update_booster_manual(delta: float):
+	# Arrow keys rotate booster joints manually
 	var thigh_input = 0.0
 	var shin_input = 0.0
 
@@ -712,6 +739,58 @@ func _update_booster_rotation(delta: float):
 		booster_system.shin_angle_right = clamp(booster_system.shin_angle_right, booster_shin_min, booster_shin_max)
 
 		booster_system._apply_rotations()
+
+
+func _update_booster_assist(delta: float):
+	# Read directional inputs and blend presets
+	var target_thigh: float = booster_system.thigh_angle_left  # Default: keep current
+	var target_shin: float = booster_system.shin_angle_left
+	var input_count: int = 0
+	var accumulated_thigh: float = 0.0
+	var accumulated_shin: float = 0.0
+
+	# Check each direction and accumulate
+	if Input.is_action_pressed("forward"):  # W
+		accumulated_thigh += booster_preset_forward.x
+		accumulated_shin += booster_preset_forward.y
+		input_count += 1
+
+	if Input.is_action_pressed("backward"):  # S
+		accumulated_thigh += booster_preset_backward.x
+		accumulated_shin += booster_preset_backward.y
+		input_count += 1
+
+	if Input.is_action_pressed("jump"):  # Space
+		accumulated_thigh += booster_preset_up.x
+		accumulated_shin += booster_preset_up.y
+		input_count += 1
+
+	if Input.is_action_pressed("crouch"):  # C
+		accumulated_thigh += booster_preset_down.x
+		accumulated_shin += booster_preset_down.y
+		input_count += 1
+
+	# If any input, calculate blended target (average of all pressed directions)
+	if input_count > 0:
+		target_thigh = accumulated_thigh / input_count
+		target_shin = accumulated_shin / input_count
+
+		# Smoothly move toward target
+		var rotation_step = booster_assist_rotation_speed * delta
+
+		booster_system.thigh_angle_left = move_toward(booster_system.thigh_angle_left, target_thigh, rotation_step)
+		booster_system.thigh_angle_right = move_toward(booster_system.thigh_angle_right, target_thigh, rotation_step)
+		booster_system.shin_angle_left = move_toward(booster_system.shin_angle_left, target_shin, rotation_step)
+		booster_system.shin_angle_right = move_toward(booster_system.shin_angle_right, target_shin, rotation_step)
+
+		# Clamp angles
+		booster_system.thigh_angle_left = clamp(booster_system.thigh_angle_left, booster_thigh_min, booster_thigh_max)
+		booster_system.thigh_angle_right = clamp(booster_system.thigh_angle_right, booster_thigh_min, booster_thigh_max)
+		booster_system.shin_angle_left = clamp(booster_system.shin_angle_left, booster_shin_min, booster_shin_max)
+		booster_system.shin_angle_right = clamp(booster_system.shin_angle_right, booster_shin_min, booster_shin_max)
+
+		booster_system._apply_rotations()
+	# If no input, keep current angles (do nothing)
 
 
 func _update_booster_thrust(delta: float):

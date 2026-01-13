@@ -125,7 +125,13 @@ func _process(delta: float):
 	# Update booster angles
 	if "booster_system" in car_ref and car_ref.booster_system:
 		var bs = car_ref.booster_system
-		booster_angles_label.text = "Thigh: %.0f  Shin: %.0f" % [bs.thigh_angle_left, bs.shin_angle_left]
+		var assist_indicator = "[A] " if car_ref.booster_assist_enabled else ""
+		booster_angles_label.text = "%sThigh: %.0f  Shin: %.0f" % [assist_indicator, bs.thigh_angle_left, bs.shin_angle_left]
+		# Highlight when assist is active
+		if car_ref.booster_assist_enabled:
+			booster_angles_label.add_theme_color_override("font_color", Color(0.4, 0.8, 1.0))
+		else:
+			booster_angles_label.add_theme_color_override("font_color", Color(0.85, 0.85, 0.85))
 	else:
 		booster_angles_label.text = "Boosters: N/A"
 
