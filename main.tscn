@@ -365,7 +365,7 @@ shape = SubResource("BoxShape3D_n53hl")
 mesh = SubResource("BoxMesh_h3x72")
 
 [node name="Building2" type="StaticBody3D" parent="city"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -245.28256, -1, -221.0426)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -243.33812, -1, -223.46906)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="city/Building2"]
 shape = SubResource("BoxShape3D_n53hl")
@@ -374,7 +374,7 @@ shape = SubResource("BoxShape3D_n53hl")
 mesh = SubResource("BoxMesh_h3x72")
 
 [node name="Building3" type="StaticBody3D" parent="city"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -106.86513, -1.00003, -358.89352)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -106.306946, -1.00003, -358.89352)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="city/Building3"]
 shape = SubResource("BoxShape3D_n53hl")
@@ -417,6 +417,15 @@ shape = SubResource("BoxShape3D_n53hl")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="city/Building7"]
 mesh = SubResource("BoxMesh_h3x72")
+
+[node name="Floor3" type="StaticBody3D" parent="city"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -175.014, 118.987045, -290.983)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="city/Floor3"]
+shape = SubResource("BoxShape3D_5patm")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="city/Floor3"]
+mesh = SubResource("BoxMesh_t3vcl")
 
 [node name="PeopleManager" type="Node" parent="."]
 script = ExtResource("6_people")
@@ -510,3 +519,10 @@ script = ExtResource("7_spawn")
 enabled = true
 max_people = 30
 bounds_size = Vector3(50, 0, 50)
+
+[node name="SpawnSurface12" type="Node3D" parent="."]
+transform = Transform3D(0.9624031, 0, -0.27162522, 0, 1, 0, 0.27162522, 0, 0.9624031, -138.51523, 119.96489, -281.20572)
+script = ExtResource("7_spawn")
+enabled = true
+max_people = 50
+bounds_size = Vector3(100, 0, 100)
