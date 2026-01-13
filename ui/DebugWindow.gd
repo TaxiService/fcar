@@ -11,6 +11,8 @@ const UPDATE_INTERVAL: float = 0.1  # Update 10 times per second
 # Labels
 var speed_label: Label
 var altitude_label: Label
+var vertical_vel_label: Label
+var booster_angles_label: Label
 var passengers_label: Label
 var ready_label: Label
 var stability_label: Label
@@ -46,6 +48,16 @@ func _build_ui():
 	altitude_label = Label.new()
 	altitude_label.text = "Altitude: ---"
 	vbox.add_child(altitude_label)
+
+	# Vertical velocity
+	vertical_vel_label = Label.new()
+	vertical_vel_label.text = "Vert Vel: ---"
+	vbox.add_child(vertical_vel_label)
+
+	# Booster angles
+	booster_angles_label = Label.new()
+	booster_angles_label.text = "Boosters: ---"
+	vbox.add_child(booster_angles_label)
 
 	# Stability
 	stability_label = Label.new()
@@ -94,6 +106,26 @@ func _process(delta: float):
 
 	# Update altitude
 	altitude_label.text = "Altitude: %.1f m" % car_ref.global_position.y
+
+	# Update vertical velocity
+	if "linear_velocity" in car_ref:
+		var vert_vel = car_ref.linear_velocity.y
+		var direction = "^" if vert_vel > 0.5 else ("v" if vert_vel < -0.5 else "-")
+		vertical_vel_label.text = "Vert Vel: %s %.1f m/s" % [direction, vert_vel]
+		# Color based on direction
+		if vert_vel > 0.5:
+			vertical_vel_label.add_theme_color_override("font_color", Color(0.5, 1.0, 0.5))
+		elif vert_vel < -0.5:
+			vertical_vel_label.add_theme_color_override("font_color", Color(1.0, 0.6, 0.4))
+		else:
+			vertical_vel_label.add_theme_color_override("font_color", Color(0.85, 0.85, 0.85))
+
+	# Update booster angles
+	if "booster_system" in car_ref and car_ref.booster_system:
+		var bs = car_ref.booster_system
+		booster_angles_label.text = "Thigh: %.0f  Shin: %.0f" % [bs.thigh_angle_left, bs.shin_angle_left]
+	else:
+		booster_angles_label.text = "Boosters: N/A"
 
 	# Update stability
 	if "is_stable" in car_ref:

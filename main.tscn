@@ -141,6 +141,7 @@ hover_thrust = 3.0
 heightlock_thrust = 5.0
 roll_differential = 0.5
 yaw_acceleration = 1.8
+booster_default_thigh_angle = -119.75
 debug_thrusters = true
 
 [node name="UIController" type="Node" parent="FCar"]

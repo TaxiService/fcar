@@ -48,12 +48,16 @@ func _ready():
 	# Ensure we can receive input
 	mouse_filter = Control.MOUSE_FILTER_STOP
 
+	# Force layout update now and after a frame (ensures correct sizing)
+	_update_layout()
+	call_deferred("_update_layout")
+
 
 func _build_window_structure():
-	# Title bar
+	# Title bar (manually positioned, no anchors to avoid conflicts)
 	title_bar = Panel.new()
 	title_bar.name = "TitleBar"
-	title_bar.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	title_bar.position = Vector2.ZERO
 	title_bar.custom_minimum_size = Vector2(0, TITLE_BAR_HEIGHT)
 	title_bar.size = Vector2(size.x, TITLE_BAR_HEIGHT)
 	# Pass mouse events through to the window for drag handling

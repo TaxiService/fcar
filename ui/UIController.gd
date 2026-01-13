@@ -72,9 +72,9 @@ func open_debug_window() -> UIWindow:
 		"Debug",
 		content,
 		Vector2(20, 20),
-		Vector2(220, 200)
+		Vector2(220, 270)
 	)
-	window.min_size = Vector2(180, 150)
+	window.min_size = Vector2(180, 260)
 	return window
 
 
