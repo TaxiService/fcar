@@ -153,6 +153,7 @@ var marker_sprite: Sprite2D = null  # The actual waypoint indicator
 var marker_arrow: Sprite2D = null  # Arrow pointing to off-screen destination
 var marker_label: Label = null  # Distance text for destination
 var hailing_markers: HailingMarkers = null  # Markers for nearby hailing groups
+var shift_manager: ShiftManager = null  # Scoring and shift tracking
 var is_ready_for_fares: bool = false  # Must be true for passengers to approach
 var confirmed_boarding_group: Array = []  # Members of the group confirmed to board (explicit consent mode)
 
@@ -219,6 +220,16 @@ func _init_subsystems():
 
 	# Create hailing markers (shows nearby potential fares)
 	_create_hailing_markers()
+
+	# Create shift manager (scoring system)
+	_create_shift_manager()
+
+
+func _create_shift_manager():
+	shift_manager = ShiftManager.new()
+	shift_manager.name = "ShiftManager"
+	shift_manager.fcar = self
+	get_tree().root.add_child.call_deferred(shift_manager)
 
 
 func _create_destination_marker():
