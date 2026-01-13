@@ -302,7 +302,7 @@ shape = SubResource("BoxShape3D_5patm")
 mesh = SubResource("BoxMesh_t3vcl")
 
 [node name="FloorSmall" type="StaticBody3D" parent="city"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 91.3062, 134.082, -66.3163)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 91.3062, 134.082, -55.35019)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="city/FloorSmall"]
 shape = SubResource("BoxShape3D_5dwv6")
@@ -311,7 +311,7 @@ shape = SubResource("BoxShape3D_5dwv6")
 mesh = SubResource("BoxMesh_nrjh1")
 
 [node name="FloorSmall2" type="StaticBody3D" parent="city"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -304.477, -114.207, 69.8457)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -299.93152, -114.207, 69.8457)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="city/FloorSmall2"]
 shape = SubResource("BoxShape3D_5dwv6")
@@ -320,7 +320,7 @@ shape = SubResource("BoxShape3D_5dwv6")
 mesh = SubResource("BoxMesh_nrjh1")
 
 [node name="FloorSmall3" type="StaticBody3D" parent="city"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -304.477, -50.6923, 69.8457)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -299.93152, -50.6923, 69.8457)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="city/FloorSmall3"]
 shape = SubResource("BoxShape3D_5dwv6")
@@ -329,7 +329,7 @@ shape = SubResource("BoxShape3D_5dwv6")
 mesh = SubResource("BoxMesh_nrjh1")
 
 [node name="FloorSmall4" type="StaticBody3D" parent="city"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -304.477, 11.4628, 69.8457)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -299.93152, 11.4628, 69.8457)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="city/FloorSmall4"]
 shape = SubResource("BoxShape3D_5dwv6")
@@ -338,7 +338,7 @@ shape = SubResource("BoxShape3D_5dwv6")
 mesh = SubResource("BoxMesh_nrjh1")
 
 [node name="FloorSmall5" type="StaticBody3D" parent="city"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28.7957, 141.394, 213.274)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40.7026, 141.394, 213.274)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="city/FloorSmall5"]
 shape = SubResource("BoxShape3D_5dwv6")
@@ -365,7 +365,7 @@ shape = SubResource("BoxShape3D_n53hl")
 mesh = SubResource("BoxMesh_h3x72")
 
 [node name="Building2" type="StaticBody3D" parent="city"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -193.447, -1, -236.438)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -245.28256, -1, -221.0426)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="city/Building2"]
 shape = SubResource("BoxShape3D_n53hl")
@@ -374,7 +374,7 @@ shape = SubResource("BoxShape3D_n53hl")
 mesh = SubResource("BoxMesh_h3x72")
 
 [node name="Building3" type="StaticBody3D" parent="city"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -196.105, -1.00003, -339.651)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -106.86513, -1.00003, -358.89352)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="city/Building3"]
 shape = SubResource("BoxShape3D_n53hl")
@@ -444,7 +444,7 @@ color_set_index = 1
 bounds_size = Vector3(30, 0, 30)
 
 [node name="SpawnSurface3" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -304.52493, 13.921724, 69.873314)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -300.46033, 13.921724, 69.873314)
 script = ExtResource("7_spawn")
 enabled = true
 max_people = 30
@@ -452,14 +452,14 @@ color_set_index = 2
 bounds_size = Vector3(30, 0, 30)
 
 [node name="SpawnSurface4" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -304.52493, -48.234848, 69.873314)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -300.46033, -48.234848, 69.873314)
 script = ExtResource("7_spawn")
 enabled = true
 max_people = 20
 bounds_size = Vector3(30, 0, 30)
 
 [node name="SpawnSurface5" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -304.52493, -111.485374, 69.873314)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -300.46033, -111.485374, 69.873314)
 script = ExtResource("7_spawn")
 enabled = true
 max_people = 25
@@ -467,14 +467,14 @@ color_set_index = 1
 bounds_size = Vector3(30, 0, 30)
 
 [node name="SpawnSurface6" type="Node3D" parent="."]
-transform = Transform3D(0.87096244, 0, 0, 0, 1, 0, 0, 0, 0.5297819, 91.82374, 136.54045, -60.889416)
+transform = Transform3D(0.87096244, 0, 0, 0, 1, 0, 0, 0, 0.5297819, 91.82374, 136.54045, -56.306652)
 script = ExtResource("7_spawn")
 enabled = true
 max_people = 20
 bounds_size = Vector3(30, 0, 30)
 
 [node name="SpawnSurface7" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28.589527, 143.93634, 213.12761)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40.6159, 143.93634, 213.12761)
 script = ExtResource("7_spawn")
 enabled = true
 max_people = 30
@@ -482,14 +482,14 @@ color_set_index = 2
 bounds_size = Vector3(30, 0, 30)
 
 [node name="SpawnSurface8" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -189.17351, 138.57793, -294.28735)
+transform = Transform3D(0.9624031, 0, -0.27162522, 0, 1, 0, 0.27162522, 0, 0.9624031, -172.23619, 138.57793, -287.10168)
 script = ExtResource("7_spawn")
 enabled = true
 max_people = 50
 bounds_size = Vector3(100, 0, 100)
 
 [node name="SpawnSurface9" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -172.49275, 138.82335, -246.1421)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -130.73364, 138.82335, -246.1421)
 script = ExtResource("7_spawn")
 enabled = true
 max_people = 50
@@ -497,7 +497,7 @@ color_set_index = 1
 bounds_size = Vector3(100, 0, 100)
 
 [node name="SpawnSurface10" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -217.57185, 138.57793, -333.74377)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -216.40321, 138.57793, -333.74377)
 script = ExtResource("7_spawn")
 enabled = true
 max_people = 50
