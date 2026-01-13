@@ -58,23 +58,25 @@ func open_debug_window() -> UIWindow:
 	if not window_manager:
 		return null
 
-	# Check if already open
-	var existing = window_manager.get_window_by_title("Debug")
-	if existing:
-		window_manager.bring_window_to_front(existing)
-		return existing
-
+	# Create content first to get its preferred title
 	var content = DebugWindow.new()
 	if car_ref:
 		content.set_car(car_ref)
 
+	# Check if already open (using content's title)
+	var existing = window_manager.get_window_by_title(content.window_title)
+	if existing:
+		window_manager.bring_window_to_front(existing)
+		content.queue_free()  # Don't need this instance
+		return existing
+
 	var window = window_manager.create_window_with_content(
-		"Debug",
+		content.window_title,
 		content,
 		Vector2(20, 20),
-		Vector2(220, 270)
+		Vector2(220, 260)
 	)
-	window.min_size = Vector2(180, 260)
+	window.min_size = Vector2(180, 240)
 	return window
 
 

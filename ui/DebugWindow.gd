@@ -4,6 +4,8 @@ extends Control
 # A simple debug info panel to demonstrate the windowing system
 # Shows car status, passenger info, etc.
 
+var window_title: String = "Car status"  # Title for the parent window
+
 var car_ref: Node = null  # Reference to FCar
 var update_timer: float = 0.0
 const UPDATE_INTERVAL: float = 0.1  # Update 10 times per second
@@ -28,16 +30,16 @@ func _build_ui():
 	vbox.add_theme_constant_override("separation", 4)
 	add_child(vbox)
 
-	# Title
+	# Title (disabled right now)
 	var title = Label.new()
 	title.text = "-- CAR STATUS --"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_color_override("font_color", Color(0.7, 0.9, 1.0))
-	vbox.add_child(title)
+	#vbox.add_child(title)
 
-	# Separator
+	# Separator (hidden for the moment)
 	var sep = HSeparator.new()
-	vbox.add_child(sep)
+	#vbox.add_child(sep)
 
 	# Speed
 	speed_label = Label.new()

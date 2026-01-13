@@ -78,9 +78,9 @@ func _build_window_structure():
 	if closable:
 		close_button = Button.new()
 		close_button.name = "CloseButton"
-		close_button.text = "X"
-		close_button.size = Vector2(24, 24)
-		close_button.position = Vector2(size.x - 28, 2)
+		close_button.text = ""
+		close_button.size = Vector2(20, 20)
+		close_button.position = Vector2(size.x, 4)
 		close_button.pressed.connect(_on_close_pressed)
 		title_bar.add_child(close_button)
 
@@ -109,7 +109,7 @@ func _apply_default_style():
 	title_bar.add_theme_stylebox_override("panel", title_style)
 
 	# Title text color
-	title_label.add_theme_color_override("font_color", Color(0.9, 0.9, 0.9, 1.0))
+	title_label.add_theme_color_override("font_color", Color(0.4, 0.4, 0.45, 1.0))
 
 	# Close button style
 	if close_button:
@@ -310,6 +310,10 @@ func set_content(control: Control):
 
 		content_container.add_child(control)
 		control.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+
+		# If the content specifies a window_title, use it
+		if "window_title" in control and control.window_title:
+			window_title = control.window_title
 
 
 func get_content_container() -> Control:
