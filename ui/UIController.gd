@@ -131,3 +131,39 @@ func open_custom_window(title: String, content: Control, pos: Vector2 = Vector2(
 
 func get_window_manager() -> WindowManager:
 	return window_manager
+
+
+func _unhandled_input(event: InputEvent):
+	if event is InputEventKey and event.pressed:
+		match event.keycode:
+			KEY_F1:
+				toggle_debug_window()
+				get_viewport().set_input_as_handled()
+			KEY_F2:
+				toggle_score_window()
+				get_viewport().set_input_as_handled()
+
+
+func toggle_debug_window():
+	if not window_manager:
+		return
+
+	# Check if window exists by looking for the title
+	var existing = window_manager.get_window_by_title("Car status")
+	if existing:
+		existing.closed.emit()  # Notify WindowManager to remove from tracking
+		existing.queue_free()
+	else:
+		open_debug_window()
+
+
+func toggle_score_window():
+	if not window_manager:
+		return
+
+	var existing = window_manager.get_window_by_title("Shift")
+	if existing:
+		existing.closed.emit()  # Notify WindowManager to remove from tracking
+		existing.queue_free()
+	else:
+		open_score_window()
