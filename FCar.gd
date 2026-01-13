@@ -894,6 +894,9 @@ func _update_passengers():
 	# Check for boarding persons who reached the car
 	_check_boarding_arrivals()
 
+	# Check if we've flown too far from boarding passengers - cancel if so
+	_check_boarding_too_far()
+
 	# Only accept new passengers if ready and available
 	if is_available_for_pickup():
 		_detect_and_board_hailing_persons()
@@ -918,6 +921,31 @@ func _check_boarding_arrivals():
 			# They made it! Add to passengers
 			if passengers.size() < cargo_capacity and person not in passengers:
 				_complete_boarding(person)
+
+
+func _check_boarding_too_far():
+	# If we have a confirmed boarding group and fly too far, cancel the whole thing
+	if not is_ready_for_fares or confirmed_boarding_group.is_empty():
+		return
+
+	# Check if any boarding person is too far away
+	for person in people_manager.all_people:
+		if not is_instance_valid(person):
+			continue
+		if person.current_state != Person.State.BOARDING:
+			continue
+		if person.target_car != self:
+			continue
+
+		var dist = global_position.distance_to(person.global_position)
+		if dist > pickup_range:
+			# Too far - cancel boarding and return to selection mode
+			print("Boarding cancelled: flew too far from passenger (", "%.1f" % dist, "m)")
+			_cancel_ready_state()
+			# Re-enable ready state so player can select again
+			is_ready_for_fares = true
+			ready_state_changed.emit(true)
+			return
 
 
 func _count_boarding_persons() -> int:
