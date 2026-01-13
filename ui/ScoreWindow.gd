@@ -3,7 +3,7 @@ extends Control
 
 # Score display window for shift progress
 
-var window_title: String = "Shift"
+var window_title: String = "Shift status"
 
 var shift_manager: Node = null
 var update_timer: float = 0.0
@@ -60,7 +60,7 @@ func _build_ui():
 
 	# Score display (large)
 	score_label = Label.new()
-	score_label.text = "₧ 0"
+	score_label.text = "0 ₧"
 	score_label.add_theme_font_size_override("font_size", 24)
 	score_label.add_theme_color_override("font_color", Color(0.2, 1.0, 0.4))
 	score_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -118,22 +118,22 @@ func _process(delta: float):
 
 func _update_display():
 	if not shift_manager:
-		score_label.text = "₧ ---"
+		score_label.text = "--- ₧"
 		fare_count_label.text = "No shift"
 		return
 
 	# Update score
 	var score = shift_manager.get_score()
-	score_label.text = "₧ %d" % score
+	score_label.text = "%d ₧" % score
 
 	# Update fare count
 	var fare_count = shift_manager.get_fare_count()
 	var fares_per_shift = shift_manager.fares_per_shift
-	fare_count_label.text = "Fare %d/%d" % [fare_count, fares_per_shift]
+	fare_count_label.text = "%d / %d fares" % [fare_count, fares_per_shift]
 
 	# Update status based on shift state
 	if not shift_manager.is_shift_active() and fare_count == 0:
-		status_label.text = "Ready for shift"
+		status_label.text = "Press R to start new shift"
 		status_label.add_theme_color_override("font_color", Color(0.6, 0.8, 1.0))
 
 
@@ -158,7 +158,7 @@ func _on_shift_started():
 
 
 func _on_shift_ended(total_score: int):
-	status_label.text = "Shift Complete!\nPress T to start new shift"
+	status_label.text = "Shift Complete!\nPress R to start new shift"
 	status_label.add_theme_color_override("font_color", Color(0.3, 1.0, 0.5))
 
 	# Show final score flash
