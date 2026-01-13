@@ -20,8 +20,8 @@ var current_throttle: float = 0.0
 var current_yaw: float = 0.0
 
 # Booster assist state
-var booster_assist_enabled: bool = false
 var _alt_was_pressed: bool = false  # For detecting Alt key press
+var _booster_roll_differential: float = 0.0  # Current shin offset (left - right)
 
 # ===== EXPORT PARAMETERS =====
 @export_category("thrust")
@@ -96,6 +96,11 @@ var _alt_was_pressed: bool = false  # For detecting Alt key press
 @export var booster_preset_down: Vector2 = Vector2(0.0, 45.0)
 @export var booster_preset_forward: Vector2 = Vector2(-60.0, 45.0)
 @export var booster_preset_backward: Vector2 = Vector2(-180.0, 33.0)
+# Arrow key controls (when assist is enabled)
+@export var booster_roll_offset: float = 15.0  # Max differential shin offset in degrees
+@export var booster_roll_offset_limited: bool = true  # If false, offset can go beyond limit (testing)
+@export var booster_roll_speed: float = 60.0  # How fast the differential builds (deg/sec)
+@export var booster_pitch_torque: float = 50000.0  # Torque strength for pitch control
 
 @export_category("passengers")
 @export var cargo_capacity: int = 2
@@ -122,6 +127,7 @@ var _alt_was_pressed: bool = false  # For detecting Alt key press
 @export_range(0.0, 3.0, 0.1) var com_compensation_strength: float = 1.0
 @export var heading_hold_enabled: bool = true
 @export var heading_hold_strength: float = 15.0
+@export var booster_assist_enabled: bool = true  # WASD/Space/C controls booster presets
 
 # ===== WHEEL REFERENCES =====
 @onready var wheel_front_left: Node3D = $WheelFrontLeft if has_node("WheelFrontLeft") else null
@@ -580,6 +586,11 @@ func _read_inputs(delta: float) -> Dictionary:
 			print("Handbrake: LOCKED")
 		handbrake_last_press_time = now
 
+	# Release handbrake lock when Space or C pressed (vertical movement intent)
+	if handbrake_locked and (Input.is_action_just_pressed("jump") or Input.is_action_just_pressed("crouch")):
+		handbrake_locked = false
+		print("Handbrake: released by vertical input")
+
 	handbrake_active = handbrake_locked or Input.is_action_pressed("handbrake")
 
 	# Apply input smoothing
@@ -742,7 +753,7 @@ func _update_booster_manual(delta: float):
 
 
 func _update_booster_assist(delta: float):
-	# Read directional inputs and blend presets
+	# === WASD/Space/C: Preset direction control ===
 	var target_thigh: float = booster_system.thigh_angle_left  # Default: keep current
 	var target_shin: float = booster_system.shin_angle_left
 	var input_count: int = 0
@@ -770,27 +781,78 @@ func _update_booster_assist(delta: float):
 		accumulated_shin += booster_preset_down.y
 		input_count += 1
 
-	# If any input, calculate blended target (average of all pressed directions)
-	if input_count > 0:
+	# If any preset input, calculate blended target
+	var has_preset_input = input_count > 0
+	if has_preset_input:
 		target_thigh = accumulated_thigh / input_count
 		target_shin = accumulated_shin / input_count
 
-		# Smoothly move toward target
+	# === Left/Right arrows: Roll via differential shin angles ===
+	var roll_input = 0.0
+	if Input.is_key_pressed(KEY_LEFT):
+		roll_input = -1.0
+	elif Input.is_key_pressed(KEY_RIGHT):
+		roll_input = 1.0
+
+	# Update roll differential (builds up while held, decays when released)
+	if roll_input != 0.0:
+		var target_differential = roll_input * booster_roll_offset
+		if not booster_roll_offset_limited:
+			# Unlimited mode: keep increasing
+			_booster_roll_differential += roll_input * booster_roll_speed * delta
+		else:
+			# Limited mode: move toward fixed offset
+			_booster_roll_differential = move_toward(_booster_roll_differential, target_differential, booster_roll_speed * delta)
+	else:
+		# No roll input: decay back to zero
+		_booster_roll_differential = move_toward(_booster_roll_differential, 0.0, booster_roll_speed * delta)
+
+	# === Up/Down arrows: Pitch via direct torque ===
+	var pitch_input = 0.0
+	if Input.is_key_pressed(KEY_UP):
+		pitch_input = 1.0  # Pitch nose up
+	elif Input.is_key_pressed(KEY_DOWN):
+		pitch_input = -1.0  # Pitch nose down
+
+	if pitch_input != 0.0:
+		# Apply torque around the car's local X axis (pitch axis)
+		var pitch_axis = global_transform.basis.x
+		apply_torque(pitch_axis * pitch_input * booster_pitch_torque)
+
+	# === Apply angles ===
+	var needs_update = has_preset_input or _booster_roll_differential != 0.0
+
+	if needs_update:
 		var rotation_step = booster_assist_rotation_speed * delta
 
-		booster_system.thigh_angle_left = move_toward(booster_system.thigh_angle_left, target_thigh, rotation_step)
-		booster_system.thigh_angle_right = move_toward(booster_system.thigh_angle_right, target_thigh, rotation_step)
-		booster_system.shin_angle_left = move_toward(booster_system.shin_angle_left, target_shin, rotation_step)
-		booster_system.shin_angle_right = move_toward(booster_system.shin_angle_right, target_shin, rotation_step)
+		# Move thighs toward target (both same)
+		if has_preset_input:
+			booster_system.thigh_angle_left = move_toward(booster_system.thigh_angle_left, target_thigh, rotation_step)
+			booster_system.thigh_angle_right = move_toward(booster_system.thigh_angle_right, target_thigh, rotation_step)
 
-		# Clamp angles
+		# Move shins toward target + differential (left gets +half, right gets -half)
+		var base_shin_left = target_shin if has_preset_input else booster_system.shin_angle_left
+		var base_shin_right = target_shin if has_preset_input else booster_system.shin_angle_right
+
+		# Apply differential: positive = left shin increases, right decreases
+		var target_shin_left = base_shin_left + _booster_roll_differential / 2.0
+		var target_shin_right = base_shin_right - _booster_roll_differential / 2.0
+
+		if has_preset_input:
+			booster_system.shin_angle_left = move_toward(booster_system.shin_angle_left, target_shin_left, rotation_step)
+			booster_system.shin_angle_right = move_toward(booster_system.shin_angle_right, target_shin_right, rotation_step)
+		else:
+			# Only roll input - apply differential directly
+			booster_system.shin_angle_left = move_toward(booster_system.shin_angle_left, booster_system.shin_angle_left + _booster_roll_differential / 2.0, booster_roll_speed * delta)
+			booster_system.shin_angle_right = move_toward(booster_system.shin_angle_right, booster_system.shin_angle_right - _booster_roll_differential / 2.0, booster_roll_speed * delta)
+
+		# Clamp all angles
 		booster_system.thigh_angle_left = clamp(booster_system.thigh_angle_left, booster_thigh_min, booster_thigh_max)
 		booster_system.thigh_angle_right = clamp(booster_system.thigh_angle_right, booster_thigh_min, booster_thigh_max)
 		booster_system.shin_angle_left = clamp(booster_system.shin_angle_left, booster_shin_min, booster_shin_max)
 		booster_system.shin_angle_right = clamp(booster_system.shin_angle_right, booster_shin_min, booster_shin_max)
 
 		booster_system._apply_rotations()
-	# If no input, keep current angles (do nothing)
 
 
 func _update_booster_thrust(delta: float):

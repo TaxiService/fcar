@@ -126,7 +126,11 @@ func _process(delta: float):
 	if "booster_system" in car_ref and car_ref.booster_system:
 		var bs = car_ref.booster_system
 		var assist_indicator = "[A] " if car_ref.booster_assist_enabled else ""
-		booster_angles_label.text = "%sThigh: %.0f  Shin: %.0f" % [assist_indicator, bs.thigh_angle_left, bs.shin_angle_left]
+		# Show both shin angles if they differ (roll differential active)
+		if abs(bs.shin_angle_left - bs.shin_angle_right) > 0.5:
+			booster_angles_label.text = "%sT:%.0f S:%.0f/%.0f" % [assist_indicator, bs.thigh_angle_left, bs.shin_angle_left, bs.shin_angle_right]
+		else:
+			booster_angles_label.text = "%sThigh: %.0f  Shin: %.0f" % [assist_indicator, bs.thigh_angle_left, bs.shin_angle_left]
 		# Highlight when assist is active
 		if car_ref.booster_assist_enabled:
 			booster_angles_label.add_theme_color_override("font_color", Color(0.4, 0.8, 1.0))

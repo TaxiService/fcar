@@ -142,6 +142,10 @@ heightlock_thrust = 5.0
 roll_differential = 0.5
 yaw_acceleration = 1.8
 booster_default_thigh_angle = -119.75
+booster_preset_forward = Vector2(-57, 45)
+booster_preset_backward = Vector2(-180, 27)
+booster_roll_offset = 60.0
+booster_roll_speed = 120.0
 debug_thrusters = true
 
 [node name="UIController" type="Node" parent="FCar"]
@@ -427,6 +431,97 @@ shape = SubResource("BoxShape3D_5patm")
 [node name="MeshInstance3D" type="MeshInstance3D" parent="city/Floor3"]
 mesh = SubResource("BoxMesh_t3vcl")
 
+[node name="SpawnSurface1" type="Node3D" parent="city"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 41.285053, 0.10619187, -15.459599)
+script = ExtResource("7_spawn")
+enabled = true
+max_people = 50
+color_set_index = 2
+bounds_size = Vector3(100, 0, 100)
+
+[node name="SpawnSurface2" type="Node3D" parent="city"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -59.27123, -0.5353551, -43.668526)
+script = ExtResource("7_spawn")
+enabled = true
+max_people = 20
+color_set_index = 1
+bounds_size = Vector3(30, 0, 30)
+
+[node name="SpawnSurface3" type="Node3D" parent="city"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -300.46033, 13.921724, 69.873314)
+script = ExtResource("7_spawn")
+enabled = true
+max_people = 30
+color_set_index = 2
+bounds_size = Vector3(30, 0, 30)
+
+[node name="SpawnSurface4" type="Node3D" parent="city"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -300.46033, -48.234848, 69.873314)
+script = ExtResource("7_spawn")
+enabled = true
+max_people = 20
+bounds_size = Vector3(30, 0, 30)
+
+[node name="SpawnSurface5" type="Node3D" parent="city"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -300.46033, -111.485374, 69.873314)
+script = ExtResource("7_spawn")
+enabled = true
+max_people = 25
+color_set_index = 1
+bounds_size = Vector3(30, 0, 30)
+
+[node name="SpawnSurface6" type="Node3D" parent="city"]
+transform = Transform3D(0.87096244, 0, 0, 0, 1, 0, 0, 0, 0.5297819, 91.82374, 136.54045, -56.306652)
+script = ExtResource("7_spawn")
+enabled = true
+max_people = 20
+bounds_size = Vector3(30, 0, 30)
+
+[node name="SpawnSurface7" type="Node3D" parent="city"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40.6159, 143.93634, 213.12761)
+script = ExtResource("7_spawn")
+enabled = true
+max_people = 30
+color_set_index = 2
+bounds_size = Vector3(30, 0, 30)
+
+[node name="SpawnSurface8" type="Node3D" parent="city"]
+transform = Transform3D(0.9624031, 0, -0.27162522, 0, 1, 0, 0.27162522, 0, 0.9624031, -172.23619, 138.57793, -287.10168)
+script = ExtResource("7_spawn")
+enabled = true
+max_people = 50
+bounds_size = Vector3(100, 0, 100)
+
+[node name="SpawnSurface9" type="Node3D" parent="city"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -130.73364, 138.82335, -246.1421)
+script = ExtResource("7_spawn")
+enabled = true
+max_people = 50
+color_set_index = 1
+bounds_size = Vector3(100, 0, 100)
+
+[node name="SpawnSurface10" type="Node3D" parent="city"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -216.40321, 138.57793, -333.74377)
+script = ExtResource("7_spawn")
+enabled = true
+max_people = 50
+color_set_index = 2
+bounds_size = Vector3(100, 0, 100)
+
+[node name="SpawnSurface11" type="Node3D" parent="city"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -18.94347, 0.10619187, 26.995434)
+script = ExtResource("7_spawn")
+enabled = true
+max_people = 30
+bounds_size = Vector3(50, 0, 50)
+
+[node name="SpawnSurface12" type="Node3D" parent="city"]
+transform = Transform3D(0.9624031, 0, -0.27162522, 0, 1, 0, 0.27162522, 0, 0.9624031, -138.51523, 119.96489, -281.20572)
+script = ExtResource("7_spawn")
+enabled = true
+max_people = 50
+bounds_size = Vector3(100, 0, 100)
+
 [node name="PeopleManager" type="Node" parent="."]
 script = ExtResource("6_people")
 
@@ -435,94 +530,3 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -63.64045, 2.957734, -6.91887
 script = ExtResource("7_5vw27")
 poi_name = "t&St"
 arrival_radius = 10.0
-
-[node name="SpawnSurface1" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 41.285053, 0.10619187, -15.459599)
-script = ExtResource("7_spawn")
-enabled = true
-max_people = 50
-color_set_index = 2
-bounds_size = Vector3(100, 0, 100)
-
-[node name="SpawnSurface2" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -59.27123, -0.5353551, -43.668526)
-script = ExtResource("7_spawn")
-enabled = true
-max_people = 20
-color_set_index = 1
-bounds_size = Vector3(30, 0, 30)
-
-[node name="SpawnSurface3" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -300.46033, 13.921724, 69.873314)
-script = ExtResource("7_spawn")
-enabled = true
-max_people = 30
-color_set_index = 2
-bounds_size = Vector3(30, 0, 30)
-
-[node name="SpawnSurface4" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -300.46033, -48.234848, 69.873314)
-script = ExtResource("7_spawn")
-enabled = true
-max_people = 20
-bounds_size = Vector3(30, 0, 30)
-
-[node name="SpawnSurface5" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -300.46033, -111.485374, 69.873314)
-script = ExtResource("7_spawn")
-enabled = true
-max_people = 25
-color_set_index = 1
-bounds_size = Vector3(30, 0, 30)
-
-[node name="SpawnSurface6" type="Node3D" parent="."]
-transform = Transform3D(0.87096244, 0, 0, 0, 1, 0, 0, 0, 0.5297819, 91.82374, 136.54045, -56.306652)
-script = ExtResource("7_spawn")
-enabled = true
-max_people = 20
-bounds_size = Vector3(30, 0, 30)
-
-[node name="SpawnSurface7" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40.6159, 143.93634, 213.12761)
-script = ExtResource("7_spawn")
-enabled = true
-max_people = 30
-color_set_index = 2
-bounds_size = Vector3(30, 0, 30)
-
-[node name="SpawnSurface8" type="Node3D" parent="."]
-transform = Transform3D(0.9624031, 0, -0.27162522, 0, 1, 0, 0.27162522, 0, 0.9624031, -172.23619, 138.57793, -287.10168)
-script = ExtResource("7_spawn")
-enabled = true
-max_people = 50
-bounds_size = Vector3(100, 0, 100)
-
-[node name="SpawnSurface9" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -130.73364, 138.82335, -246.1421)
-script = ExtResource("7_spawn")
-enabled = true
-max_people = 50
-color_set_index = 1
-bounds_size = Vector3(100, 0, 100)
-
-[node name="SpawnSurface10" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -216.40321, 138.57793, -333.74377)
-script = ExtResource("7_spawn")
-enabled = true
-max_people = 50
-color_set_index = 2
-bounds_size = Vector3(100, 0, 100)
-
-[node name="SpawnSurface11" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -18.94347, 0.10619187, 26.995434)
-script = ExtResource("7_spawn")
-enabled = true
-max_people = 30
-bounds_size = Vector3(50, 0, 50)
-
-[node name="SpawnSurface12" type="Node3D" parent="."]
-transform = Transform3D(0.9624031, 0, -0.27162522, 0, 1, 0, 0.27162522, 0, 0.9624031, -138.51523, 119.96489, -281.20572)
-script = ExtResource("7_spawn")
-enabled = true
-max_people = 50
-bounds_size = Vector3(100, 0, 100)
