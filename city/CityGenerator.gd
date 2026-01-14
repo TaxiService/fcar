@@ -13,6 +13,27 @@ extends Node3D
 @export var spire_radius: float = 15.0  # 30m diameter
 @export var biome_count: int = 4  # Number of vertical sections
 
+# Connector settings
+@export var connector_radius: float = 10.0  # 20m diameter beams
+@export var connectors_per_biome: int = 1  # How many connector levels per biome section
+
+# Crosslink pattern library - vertex pairs within a hexagon (vertices 0-5)
+# These connect non-adjacent spires inside each hex
+const CROSSLINK_PATTERNS = {
+	"empty": [],
+	"cross": [[0, 3], [1, 4]],
+	"cross_alt": [[0, 3], [2, 5]],
+	"dagger": [[0, 3], [1, 5], [2, 4]],  # All opposite pairs
+	"triangle": [[0, 2], [2, 4], [4, 0]],
+	"triangle_alt": [[1, 3], [3, 5], [5, 1]],
+	"star": [[0, 2], [1, 3], [2, 4], [3, 5], [4, 0], [5, 1]],
+	"rect": [[0, 1], [1, 3], [3, 4], [4, 0]],
+	"single": [[0, 3]],  # Just one through line
+}
+
+# Which patterns to use (can be customized)
+@export var enabled_patterns: Array[String] = ["empty", "cross", "dagger", "triangle", "single"]
+
 # Visual settings
 @export var biome_colors: Array[Color] = [
 	Color(0.15, 0.25, 0.4),   # Bottom - deep blue/industrial
@@ -24,6 +45,8 @@ extends Node3D
 # Runtime data
 var spire_positions: Array[Vector3] = []  # All spire world positions
 var hex_centers: Array[Vector2] = []  # Hex center positions (2D, xz plane)
+var hex_vertex_lists: Array = []  # Array of vertex position arrays (one per hex, 6 vertices each)
+var connector_edges: Array = []  # Array of [Vector3, Vector3] pairs for edge connector endpoints
 
 # Debug settings
 @export var show_ground_grid: bool = true
@@ -86,18 +109,26 @@ func generate_city():
 	# Clear existing
 	_clear_generated()
 
-	# Step 1: Generate hex grid and find all unique spire positions
+	# Step 1: Generate hex grid and find all unique spire positions + edges
 	_generate_hex_grid()
 
 	# Step 2: Create spires at each position
 	_generate_spires()
 
-	print("CityGenerator: Done! Generated %d spires" % spire_positions.size())
+	# Step 3: Create edge connectors between spires
+	_generate_connectors()
+
+	# Step 4: Create crosslink connectors within hexagons
+	_generate_crosslinks()
+
+	print("CityGenerator: Done! Generated %d spires, %d edge connections, %d hexagons" % [spire_positions.size(), connector_edges.size(), hex_vertex_lists.size()])
 
 
 func _clear_generated():
 	spire_positions.clear()
 	hex_centers.clear()
+	hex_vertex_lists.clear()
+	connector_edges.clear()
 
 	for child in spires_container.get_children():
 		child.queue_free()
@@ -121,8 +152,9 @@ func _generate_hex_grid():
 		var coords = _get_hex_ring(ring)
 		hex_coords.append_array(coords)
 
-	# Convert hex coords to world positions and collect unique vertices
+	# Convert hex coords to world positions and collect unique vertices + edges
 	var vertex_set: Dictionary = {}  # Use dict as set, key = snapped position string
+	var edge_set: Dictionary = {}  # Track unique edges, key = sorted endpoint keys
 
 	for coord in hex_coords:
 		var center = _axial_to_world(coord)
@@ -130,18 +162,41 @@ func _generate_hex_grid():
 
 		# Get the 6 vertices of this hexagon
 		var vertices = _get_hex_vertices(center)
+
+		# Store vertex list for this hex (as Vector3 for crosslinks later)
+		var vertex_list_3d: Array[Vector3] = []
 		for v in vertices:
+			vertex_list_3d.append(Vector3(v.x, 0, v.y))
+		hex_vertex_lists.append(vertex_list_3d)
+
+		for i in range(6):
+			var v = vertices[i]
 			# Snap to avoid floating point duplicates
 			var key = _snap_position_key(v)
 			if not vertex_set.has(key):
 				vertex_set[key] = v
 
-	# Convert to array
+			# Add edge to next vertex (wrapping around)
+			var v_next = vertices[(i + 1) % 6]
+			var key_next = _snap_position_key(v_next)
+			var edge_key = _make_edge_key(key, key_next)
+			if not edge_set.has(edge_key):
+				edge_set[edge_key] = [v, v_next]
+
+	# Convert vertices to array
 	for pos in vertex_set.values():
 		spire_positions.append(Vector3(pos.x, 0, pos.y))
 
+	# Convert edges to array (as Vector3 pairs at y=0)
+	for edge in edge_set.values():
+		connector_edges.append([
+			Vector3(edge[0].x, 0, edge[0].y),
+			Vector3(edge[1].x, 0, edge[1].y)
+		])
+
 	print("  Hex count: %d" % hex_centers.size())
 	print("  Unique vertices (spires): %d" % spire_positions.size())
+	print("  Unique edges (connectors): %d" % connector_edges.size())
 
 
 func _get_hex_ring(ring: int) -> Array[Vector2i]:
@@ -192,6 +247,14 @@ func _snap_position_key(pos: Vector2) -> String:
 	return "%d,%d" % [int(round(pos.x)), int(round(pos.y))]
 
 
+func _make_edge_key(key_a: String, key_b: String) -> String:
+	# Create a consistent key for an edge (order-independent)
+	if key_a < key_b:
+		return key_a + "|" + key_b
+	else:
+		return key_b + "|" + key_a
+
+
 func _generate_spires():
 	var biome_height = spire_height / biome_count
 
@@ -200,6 +263,113 @@ func _generate_spires():
 		var spire = _create_spire(pos, biome_height)
 		spire.name = "Spire_%d" % i
 		spires_container.add_child(spire)
+
+
+func _generate_connectors():
+	var biome_height = spire_height / biome_count
+	var connector_count = 0
+
+	for edge_idx in range(connector_edges.size()):
+		var edge = connector_edges[edge_idx]
+		var start_pos: Vector3 = edge[0]
+		var end_pos: Vector3 = edge[1]
+
+		# Create connectors at each biome level
+		for biome_idx in range(biome_count):
+			# Calculate heights for this biome's connectors
+			var biome_base = biome_height * biome_idx
+			for conn_idx in range(connectors_per_biome):
+				# Distribute connectors evenly within the biome
+				var height_offset = biome_height * (conn_idx + 0.5) / connectors_per_biome
+				var connector_y = biome_base + height_offset
+
+				var connector = _create_connector(start_pos, end_pos, connector_y, biome_idx)
+				connector.name = "EdgeConn_%d_B%d_%d" % [edge_idx, biome_idx, conn_idx]
+				connectors_container.add_child(connector)
+				connector_count += 1
+
+	print("  Generated %d edge connector beams" % connector_count)
+
+
+func _generate_crosslinks():
+	if enabled_patterns.is_empty():
+		print("  No crosslink patterns enabled")
+		return
+
+	var biome_height = spire_height / biome_count
+	var crosslink_count = 0
+
+	for hex_idx in range(hex_vertex_lists.size()):
+		var vertices = hex_vertex_lists[hex_idx]
+
+		# For each biome level, roll a pattern
+		for biome_idx in range(biome_count):
+			# Pick random pattern
+			var pattern_name = enabled_patterns[randi() % enabled_patterns.size()]
+			var pattern = CROSSLINK_PATTERNS.get(pattern_name, [])
+
+			if pattern.is_empty():
+				continue
+
+			# Pick random rotation (0-5)
+			var rotation = randi() % 6
+
+			# Calculate height for this biome's crosslinks
+			var biome_base = biome_height * biome_idx
+			for conn_idx in range(connectors_per_biome):
+				var height_offset = biome_height * (conn_idx + 0.5) / connectors_per_biome
+				var connector_y = biome_base + height_offset
+
+				# Generate each connection in the pattern
+				for pair in pattern:
+					# Apply rotation to vertex indices
+					var v1_idx = (pair[0] + rotation) % 6
+					var v2_idx = (pair[1] + rotation) % 6
+
+					var start_pos = vertices[v1_idx]
+					var end_pos = vertices[v2_idx]
+
+					var connector = _create_connector(start_pos, end_pos, connector_y, biome_idx)
+					connector.name = "Crosslink_%d_B%d_%s_%d" % [hex_idx, biome_idx, pattern_name, crosslink_count]
+					connectors_container.add_child(connector)
+					crosslink_count += 1
+
+	print("  Generated %d crosslink beams" % crosslink_count)
+
+
+func _create_connector(start: Vector3, end: Vector3, height: float, biome_idx: int) -> Node3D:
+	var connector_root = Node3D.new()
+
+	# Calculate position and rotation
+	var start_3d = Vector3(start.x, height, start.z)
+	var end_3d = Vector3(end.x, height, end.z)
+	var midpoint = (start_3d + end_3d) / 2.0
+	var direction = end_3d - start_3d
+	var length = direction.length()
+
+	connector_root.position = midpoint
+
+	# Create cylinder mesh (horizontal)
+	var mesh_instance = MeshInstance3D.new()
+	var cylinder = CylinderMesh.new()
+	cylinder.top_radius = connector_radius
+	cylinder.bottom_radius = connector_radius
+	cylinder.height = length - spire_radius * 2  # Subtract spire radius from each end
+	mesh_instance.mesh = cylinder
+
+	# Rotate to align with edge direction (cylinder is vertical by default)
+	# We need to rotate it to be horizontal and point in the right direction
+	mesh_instance.rotation.x = PI / 2  # Lay flat
+	connector_root.rotation.y = atan2(direction.x, direction.z)  # Point toward end
+
+	# Material - slightly darker than spire biome color
+	var mat = StandardMaterial3D.new()
+	var base_color = biome_colors[biome_idx] if biome_idx < biome_colors.size() else Color.GRAY
+	mat.albedo_color = base_color.darkened(0.2)
+	mesh_instance.material_override = mat
+
+	connector_root.add_child(mesh_instance)
+	return connector_root
 
 
 func _create_spire(pos: Vector3, biome_height: float) -> Node3D:

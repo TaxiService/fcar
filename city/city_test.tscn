@@ -49,6 +49,7 @@ script = ExtResource("1_generator")
 hex_edge_length = 420.0
 grid_rings = 3
 spire_radius = 30.0
+connector_radius = 20.0
 fcar_spawn_height = 750.0
 
 [node name="Camera3D" type="Camera3D" parent="." node_paths=PackedStringArray("target")]
