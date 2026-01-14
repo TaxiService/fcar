@@ -86,6 +86,13 @@ func _reset_camera_to_default():
 	is_mouselooking = false
 	consistent_velocity_time = 0.0
 
+	# Snap camera_yaw to car's current heading to avoid stale rotation
+	if target:
+		var target_forward = -target.global_transform.basis.z
+		var target_yaw_forward = Vector3(target_forward.x, 0, target_forward.z).normalized()
+		if target_yaw_forward.length() > 0.01:
+			camera_yaw = atan2(target_yaw_forward.x, target_yaw_forward.z)
+
 	# Normalize yaw offset to take shortest path
 	while mouse_yaw_offset > PI:
 		mouse_yaw_offset -= TAU
