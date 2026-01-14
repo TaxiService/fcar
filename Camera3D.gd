@@ -33,6 +33,11 @@ extends Camera3D
 @export var default_position_threshold: float = 0.05  # Radians - how close to 0 to count as "default"
 @export var manual_reset_speed: float = 5.0  # How fast camera returns when right-clicking to reset
 
+# Velocity look-ahead
+@export var velocity_look_ahead: float = 0.5  # How much to look towards velocity (0 = at car, 1 = full velocity direction)
+@export var velocity_look_ahead_distance: float = 20.0  # Max distance to offset look target
+@export var velocity_look_min_speed: float = 10.0  # Min speed before look-ahead kicks in
+
 # Internal state
 var camera_yaw: float = 0.0  # Current camera yaw angle (radians)
 var mouse_yaw_offset: float = 0.0  # Mouse look yaw offset (radians)
@@ -230,13 +235,26 @@ func _physics_process(delta):
 		# No pitch offset, use base position
 		global_position = global_position.lerp(base_camera_position, position_lerp_speed * delta)
 
-	# Calculate final camera orientation - always look at the car
-	var direction_to_car = (target.global_position - global_position).normalized()
+	# Calculate look-at target with velocity look-ahead
+	var look_target = target.global_position
 
-	# Build final basis looking at car
-	if direction_to_car.length() > 0.01:
+	if velocity_look_ahead > 0:
+		var velocity = target.linear_velocity if "linear_velocity" in target else Vector3.ZERO
+		var speed = velocity.length()
+
+		if speed > velocity_look_min_speed:
+			# Scale look-ahead by speed (faster = more look-ahead)
+			var speed_factor = clamp((speed - velocity_look_min_speed) / 50.0, 0.0, 1.0)
+			var look_offset = velocity.normalized() * velocity_look_ahead_distance * speed_factor * velocity_look_ahead
+			look_target = target.global_position + look_offset
+
+	# Calculate final camera orientation
+	var direction_to_target = (look_target - global_position).normalized()
+
+	# Build final basis looking at target
+	if direction_to_target.length() > 0.01:
 		# Use look_at style basis construction
-		var right = direction_to_car.cross(Vector3.UP).normalized()
-		var up = right.cross(direction_to_car).normalized()
-		var final_basis = Basis(right, up, -direction_to_car)
+		var right = direction_to_target.cross(Vector3.UP).normalized()
+		var up = right.cross(direction_to_target).normalized()
+		var final_basis = Basis(right, up, -direction_to_target)
 		global_transform.basis = final_basis
