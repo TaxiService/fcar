@@ -25,7 +25,7 @@ extends Camera3D
 @export var use_velocity_based_reset: bool = true  # If true, reset when moving fast; if false, reset after delay
 @export var auto_return_delay: float = 2.0  # (Time-based) Seconds of no mouse input before auto-return
 @export var velocity_reset_threshold: float = 15.0  # (Velocity-based) Min speed to trigger reset
-@export var velocity_consistency_time: float = 1.0  # (Velocity-based) How long to move consistently before reset
+@export var velocity_consistency_time: float = 3.0  # (Velocity-based) How long to move consistently before reset
 @export var direction_consistency_threshold: float = 0.9  # (Velocity-based) Dot product for "same direction" (~25 deg)
 
 # Click vs hold detection
@@ -37,6 +37,7 @@ extends Camera3D
 @export var velocity_look_ahead: float = 0.5  # How much to look towards velocity (0 = at car, 1 = full velocity direction)
 @export var velocity_look_ahead_distance: float = 20.0  # Max distance to offset look target
 @export var velocity_look_min_speed: float = 10.0  # Min speed before look-ahead kicks in
+@export var velocity_look_smoothing: float = 3.0  # How smoothly the look-ahead transitions
 
 # Internal state
 var camera_yaw: float = 0.0  # Current camera yaw angle (radians)
@@ -49,6 +50,7 @@ var last_velocity_direction: Vector3 = Vector3.ZERO  # Previous frame's velocity
 var right_click_start_time: float = 0.0  # When right-click was pressed
 var right_click_mouse_moved: bool = false  # Whether mouse moved during right-click
 var manual_reset_active: bool = false  # Whether we're smoothly resetting from a right-click
+var current_look_offset: Vector3 = Vector3.ZERO  # Smoothed velocity look-ahead offset
 
 func _ready():
 	# Start with mouse visible - only capture when right-click is held
@@ -236,7 +238,7 @@ func _physics_process(delta):
 		global_position = global_position.lerp(base_camera_position, position_lerp_speed * delta)
 
 	# Calculate look-at target with velocity look-ahead
-	var look_target = target.global_position
+	var target_look_offset = Vector3.ZERO
 
 	if velocity_look_ahead > 0:
 		var velocity = target.linear_velocity if "linear_velocity" in target else Vector3.ZERO
@@ -245,8 +247,11 @@ func _physics_process(delta):
 		if speed > velocity_look_min_speed:
 			# Scale look-ahead by speed (faster = more look-ahead)
 			var speed_factor = clamp((speed - velocity_look_min_speed) / 50.0, 0.0, 1.0)
-			var look_offset = velocity.normalized() * velocity_look_ahead_distance * speed_factor * velocity_look_ahead
-			look_target = target.global_position + look_offset
+			target_look_offset = velocity.normalized() * velocity_look_ahead_distance * speed_factor * velocity_look_ahead
+
+	# Smoothly interpolate the look offset
+	current_look_offset = current_look_offset.lerp(target_look_offset, velocity_look_smoothing * delta)
+	var look_target = target.global_position + current_look_offset
 
 	# Calculate final camera orientation
 	var direction_to_target = (look_target - global_position).normalized()
