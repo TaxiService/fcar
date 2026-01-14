@@ -59,6 +59,7 @@ target = NodePath("../FCar")
 
 [node name="FCar" parent="." instance=ExtResource("2_tegu2")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1500, 0)
+booster_preset_forward = Vector2(-55, 45)
 
 [node name="FreeCam" type="Camera3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 0.965, 0.259, 0, -0.259, 0.965, 0, 500, 800)

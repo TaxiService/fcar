@@ -102,8 +102,8 @@ var _smoothed_pitch_input: float = 0.0  # Smoothed pitch input to avoid bobbing
 @export var booster_roll_offset_limited: bool = true  # If false, offset can go beyond limit (testing)
 @export var booster_roll_speed: float = 60.0  # How fast the differential builds (deg/sec)
 @export var booster_pitch_up_torque: float = 50000.0  # Torque strength for pitching nose up
-@export var booster_pitch_down_torque: float = 50000.0  # Torque strength for pitching nose down
-@export var booster_pitch_smoothing: float = 10.0  # How fast pitch force ramps up/down (higher = snappier)
+@export var booster_pitch_down_torque: float = 75000.0  # Torque strength for pitching nose down
+@export var booster_pitch_smoothing: float = 2.0  # How fast pitch force ramps up/down (higher = snappier)
 
 @export_category("passengers")
 @export var cargo_capacity: int = 2
