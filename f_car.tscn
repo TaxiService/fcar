@@ -1,0 +1,234 @@
+[gd_scene load_steps=22 format=3 uid="uid://cycok6yqmtjes"]
+
+[ext_resource type="Script" uid="uid://c7m1dsqpdck13" path="res://FCar.gd" id="1_uqo8e"]
+[ext_resource type="Script" uid="uid://bbg344k4s2ltu" path="res://ui/UIController.gd" id="2_ko0cq"]
+[ext_resource type="Material" uid="uid://cc37tlrahc1tj" path="res://yellow.tres" id="3_rue2e"]
+[ext_resource type="Material" uid="uid://ce3eavktn35d4" path="res://grey.tres" id="4_myg2s"]
+
+[sub_resource type="PhysicsMaterial" id="PhysicsMaterial_elbkq"]
+friction = 0.5
+bounce = 0.5
+absorbent = true
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_eaf57"]
+size = Vector3(1, 0.8, 2)
+
+[sub_resource type="ConvexPolygonShape3D" id="ConvexPolygonShape3D_1juei"]
+points = PackedVector3Array(0.5, 0, 1, -0.5, 0, 1, -0.3, -0.2, 0.6, 0.3, -0.2, 0.6, 0.3, -0.2, -0.6, 0.5, 0, -1, -0.5, 0, -1, -0.3, -0.2, -0.6)
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_h2yge"]
+radial_segments = 5
+rings = 3
+
+[sub_resource type="SphereMesh" id="SphereMesh_h2yge"]
+radius = 0.345
+height = 0.615
+radial_segments = 7
+rings = 2
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_1bvp3"]
+albedo_color = Color(0.41960785, 0.9529412, 1, 1)
+metallic = 0.3
+metallic_specular = 0.44
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_feaec"]
+radial_segments = 7
+rings = 1
+
+[sub_resource type="BoxMesh" id="BoxMesh_5vw27"]
+size = Vector3(0.1, 0.1, 0.1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_h2yge"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_7mycd"]
+albedo_color = Color(0.17716414, 0.17716414, 0.12428273, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_kek77"]
+size = Vector3(0.66, 0.06, 0.12)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_4c57u"]
+albedo_color = Color(1.353256, 0, 0, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_272bh"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_5vw27"]
+albedo_color = Color(1.8566039, 4.415934, 0.18679522, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_h2yge"]
+material = ExtResource("3_rue2e")
+top_radius = 0.295
+bottom_radius = 0.495
+height = 0.2
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_1bvp3"]
+material = ExtResource("3_rue2e")
+top_radius = 0.125
+bottom_radius = 0.235
+height = 0.185
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_lquwl"]
+material = ExtResource("4_myg2s")
+top_radius = 0.09
+bottom_radius = 0.06
+height = 0.25
+radial_segments = 6
+
+[node name="FCar" type="RigidBody3D"]
+mass = 5000.0
+physics_material_override = SubResource("PhysicsMaterial_elbkq")
+gravity_scale = 2.0
+center_of_mass_mode = 1
+center_of_mass = Vector3(0, -0.3, -0.1)
+can_sleep = false
+continuous_cd = true
+contact_monitor = true
+max_contacts_reported = 10
+linear_damp = 1.0
+angular_damp = 1.0
+script = ExtResource("1_uqo8e")
+hover_thrust = 3.0
+heightlock_thrust = 5.0
+roll_differential = 0.5
+yaw_acceleration = 1.8
+booster_default_thigh_angle = -119.75
+booster_preset_forward = Vector2(-57, 45)
+booster_preset_backward = Vector2(-180, 20)
+booster_roll_offset = 60.0
+booster_roll_speed = 120.0
+debug_thrusters = true
+
+[node name="UIController" type="Node" parent="."]
+script = ExtResource("2_ko0cq")
+car_node_path = NodePath("..")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("BoxShape3D_eaf57")
+
+[node name="CollisionShape3D2" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.4, 0)
+shape = SubResource("ConvexPolygonShape3D_1juei")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 0, 0)
+mesh = SubResource("CapsuleMesh_h2yge")
+surface_material_override/0 = ExtResource("3_rue2e")
+
+[node name="MeshInstance3D3" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -0.23896559, 0.9829226, 0, -1.276408, -0.18402006, 0, 0.17065963, -0.6605717)
+mesh = SubResource("SphereMesh_h2yge")
+skeleton = NodePath("../MeshInstance3D")
+surface_material_override/0 = SubResource("StandardMaterial3D_1bvp3")
+
+[node name="MeshInstance3D2" type="MeshInstance3D" parent="."]
+transform = Transform3D(1.00635, 0, 0, 0, -4.3225e-08, -0.670446, 0, 0.988872, -2.93061e-08, 0, -0.336463, 0)
+mesh = SubResource("CapsuleMesh_feaec")
+surface_material_override/0 = ExtResource("4_myg2s")
+
+[node name="WheelFrontLeft" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.1, -1)
+
+[node name="WheelFrontRight" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0.1, -1)
+
+[node name="WheelBackLeft" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.1, 1)
+
+[node name="WheelBackRight" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0.1, 1)
+
+[node name="directionlights" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.45707715, 0.012311399)
+
+[node name="forwards" type="MeshInstance3D" parent="directionlights"]
+transform = Transform3D(0.70710677, 0, 0.70710677, 0, 1, 0, -0.70710677, 0, 0.70710677, 0, -0.0037791133, -0.10059936)
+mesh = SubResource("BoxMesh_5vw27")
+
+[node name="leftwards" type="MeshInstance3D" parent="directionlights"]
+transform = Transform3D(0.6750423, -0.24371019, 0.69636416, 0.17101005, 0.96984625, 0.17364816, -0.71768606, 0.0018654242, 0.69636416, -0.10173495, -0.03320676, 0)
+mesh = SubResource("BoxMesh_5vw27")
+
+[node name="backwards" type="MeshInstance3D" parent="directionlights"]
+transform = Transform3D(0.70710677, 0, 0.70710677, 0, 1, 0, -0.70710677, 0, 0.70710677, 0, -0.0037791133, 0.10080342)
+mesh = SubResource("BoxMesh_5vw27")
+
+[node name="rightwards" type="MeshInstance3D" parent="directionlights"]
+transform = Transform3D(0.6750423, 0.24371019, 0.69636416, -0.17101005, 0.96984625, -0.17364816, -0.71768606, -0.0018654242, 0.69636416, 0.10227362, -0.03320676, 0)
+mesh = SubResource("BoxMesh_5vw27")
+
+[node name="statuslights" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.99301744)
+
+[node name="autohover" type="MeshInstance3D" parent="statuslights"]
+transform = Transform3D(0.21165748, 0, 0, 0, 0.042190384, 0.018301047, 0, -0.024047405, 0.032108586, 0, -0.30908442, -0.042146683)
+mesh = SubResource("BoxMesh_h2yge")
+surface_material_override/0 = SubResource("StandardMaterial3D_7mycd")
+
+[node name="handbrake" type="MeshInstance3D" parent="statuslights"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.29044384, -0.16976327)
+mesh = SubResource("BoxMesh_kek77")
+surface_material_override/0 = SubResource("StandardMaterial3D_4c57u")
+
+[node name="heightlock" type="Node3D" parent="statuslights"]
+transform = Transform3D(1.061411, 0, 0, 0, 1.2396407, 0, 0, 0, 1, 0, 0, 0)
+
+[node name="+2" type="MeshInstance3D" parent="statuslights/heightlock"]
+transform = Transform3D(0.22272772, 0, 0, 0, 0.025750296, 0, 0, 0, 0.2940546, 0, 0.15930629, -0.13936377)
+mesh = SubResource("BoxMesh_272bh")
+skeleton = NodePath("../..")
+surface_material_override/0 = SubResource("StandardMaterial3D_7mycd")
+
+[node name="+1" type="MeshInstance3D" parent="statuslights/heightlock"]
+transform = Transform3D(0.30593187, 0, 0, 0, 0.025750296, 0, 0, 0, 0.2940546, 0, 0.09539145, -0.13936377)
+mesh = SubResource("BoxMesh_272bh")
+skeleton = NodePath("../..")
+surface_material_override/0 = SubResource("StandardMaterial3D_7mycd")
+
+[node name="0" type="MeshInstance3D" parent="statuslights/heightlock"]
+transform = Transform3D(0.3829149, 0, 0, 0, 0.025750296, 0, 0, 0, 0.2940546, 0, 0.039858878, -0.13936377)
+mesh = SubResource("BoxMesh_272bh")
+skeleton = NodePath("../..")
+surface_material_override/0 = SubResource("StandardMaterial3D_5vw27")
+
+[node name="-1" type="MeshInstance3D" parent="statuslights/heightlock"]
+transform = Transform3D(0.30593187, 0, 0, 0, 0.025750296, 0, 0, 0, 0.2940546, 0, -0.017243862, -0.13936377)
+mesh = SubResource("BoxMesh_272bh")
+skeleton = NodePath("../..")
+surface_material_override/0 = SubResource("StandardMaterial3D_7mycd")
+
+[node name="-2" type="MeshInstance3D" parent="statuslights/heightlock"]
+transform = Transform3D(0.22272772, 0, 0, 0, 0.025750296, 0, 0, 0, 0.2940546, 0, -0.080904245, -0.13936377)
+mesh = SubResource("BoxMesh_272bh")
+skeleton = NodePath("../..")
+surface_material_override/0 = SubResource("StandardMaterial3D_7mycd")
+
+[node name="booster-R" type="Node3D" parent="."]
+transform = Transform3D(0.35836798, 0.9335804, 0, -0.9335804, 0.35836798, 0, 0, 0, 1, 0.5, 0, 0)
+
+[node name="thigh" type="MeshInstance3D" parent="booster-R"]
+transform = Transform3D(0.64278764, 0, 0.76604444, 0, 1, 0, -0.76604444, 0, 0.64278764, 0, 0, 0)
+mesh = SubResource("CylinderMesh_h2yge")
+
+[node name="shin" type="MeshInstance3D" parent="booster-R/thigh"]
+transform = Transform3D(0.81915206, 0, -0.57357645, 0, 1, 0, 0.57357645, 0, 0.81915206, 0, 0.02184683, 0.25598168)
+mesh = SubResource("CylinderMesh_1bvp3")
+skeleton = NodePath("../..")
+
+[node name="exhaust" type="MeshInstance3D" parent="booster-R/thigh/shin"]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, -0.021846801, 0.23164213)
+mesh = SubResource("CylinderMesh_lquwl")
+
+[node name="booster-L" type="Node3D" parent="."]
+transform = Transform3D(0.35836798, -0.9335804, 0, 0.9335804, 0.35836798, 0, 0, 0, 1, -0.5, 0, 0)
+
+[node name="thigh" type="MeshInstance3D" parent="booster-L"]
+transform = Transform3D(0.64278764, 0, -0.76604444, 0, 1, 0, 0.76604444, 0, 0.64278764, 0, 0, 0)
+mesh = SubResource("CylinderMesh_h2yge")
+
+[node name="shin" type="MeshInstance3D" parent="booster-L/thigh"]
+transform = Transform3D(0.81915206, 0, 0.57357645, 0, 1, 0, -0.57357645, 0, 0.81915206, 0, 0.02184683, 0.25598168)
+mesh = SubResource("CylinderMesh_1bvp3")
+skeleton = NodePath("../..")
+
+[node name="exhaust" type="MeshInstance3D" parent="booster-L/thigh/shin"]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, -0.021846801, 0.23164213)
+mesh = SubResource("CylinderMesh_lquwl")

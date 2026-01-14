@@ -1,0 +1,66 @@
+[gd_scene load_steps=8 format=3 uid="uid://c8xqj5kvmyxrf"]
+
+[ext_resource type="Script" uid="uid://crluh2jxfkkv4" path="res://city/CityGenerator.gd" id="1_generator"]
+[ext_resource type="Script" uid="uid://3q1pdbpv0cvt" path="res://city/FreeCam.gd" id="2_freecam"]
+[ext_resource type="PackedScene" uid="uid://cycok6yqmtjes" path="res://f_car.tscn" id="2_tegu2"]
+[ext_resource type="Script" uid="uid://313aqakyo1m1" path="res://Camera3D.gd" id="3_yage8"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
+sky_top_color = Color(0.2, 0.3, 0.5, 1)
+sky_horizon_color = Color(0.5, 0.55, 0.6, 1)
+ground_bottom_color = Color(0.1, 0.1, 0.15, 1)
+ground_horizon_color = Color(0.3, 0.35, 0.4, 1)
+
+[sub_resource type="Sky" id="Sky_main"]
+sky_material = SubResource("ProceduralSkyMaterial_sky")
+
+[sub_resource type="Environment" id="Environment_main"]
+background_mode = 2
+sky = SubResource("Sky_main")
+ambient_light_source = 2
+ambient_light_color = Color(0.4, 0.45, 0.5, 1)
+ambient_light_energy = 0.35
+fog_enabled = true
+fog_light_color = Color(0.53502804, 0.40771616, 0.2974955, 1)
+fog_density = 0.0005
+fog_aerial_perspective = 1.0
+fog_depth_curve = 1.0352657
+fog_depth_begin = 591.4
+fog_depth_end = 1045.5
+volumetric_fog_enabled = true
+volumetric_fog_density = 0.0001
+volumetric_fog_albedo = Color(0.36025748, 0.48578697, 0.4706965, 1)
+volumetric_fog_emission = Color(0.20505151, 0.17763427, 0.12100499, 1)
+volumetric_fog_length = 800.0
+
+[node name="CityTest" type="Node3D"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_main")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866, -0.25, 0.433, 0, 0.866, 0.5, -0.5, -0.433, 0.75, 0, 1000, 0)
+light_energy = 1.2
+shadow_enabled = true
+directional_shadow_max_distance = 10000.0
+
+[node name="CityGenerator" type="Node3D" parent="."]
+script = ExtResource("1_generator")
+hex_edge_length = 420.0
+grid_rings = 3
+spire_radius = 30.0
+fcar_spawn_height = 750.0
+
+[node name="Camera3D" type="Camera3D" parent="." node_paths=PackedStringArray("target")]
+transform = Transform3D(1, 0, 0, 0, 0.9961948, 0.08715568, 0, -0.08715568, 0.9961948, -2.2765515, 2.07618, 7.6534176)
+script = ExtResource("3_yage8")
+target = NodePath("../FCar")
+
+[node name="FCar" parent="." instance=ExtResource("2_tegu2")]
+
+[node name="FreeCam" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.965, 0.259, 0, -0.259, 0.965, 0, 500, 800)
+visible = false
+far = 50000.0
+script = ExtResource("2_freecam")
+move_speed = 200.0
