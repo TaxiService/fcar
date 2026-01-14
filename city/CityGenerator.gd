@@ -14,25 +14,53 @@ extends Node3D
 @export var biome_count: int = 4  # Number of vertical sections
 
 # Connector settings
-@export var connector_radius: float = 10.0  # 20m diameter beams
+@export var edge_connector_radius: float = 4.0  # Edge connectors (along hex edges)
+@export var crosslink_radius: float = 12.0  # Crosslinks (internal pattern connectors)
 @export var connectors_per_biome: int = 1  # How many connector levels per biome section
+
+# Edge connector patterns - which hex edges to connect (vertices 0-5, edges are adjacent pairs)
+const EDGE_PATTERNS = {
+	"none": [],
+	"full": [[0,1], [1,2], [2,3], [3,4], [4,5], [5,0]],  # all 6 edges
+	"half_a": [[0,1], [2,3], [4,5]],  # alternating
+	"half_b": [[1,2], [3,4], [5,0]],  # alternating offset
+	"single": [[0,1]],  # just one edge
+}
+
+# Per-biome edge patterns (index = biome, from bottom to top)
+# Each biome uses exactly the pattern specified here
+@export var biome_edge_patterns: Array[String] = ["none", "none", "none", "full"]
 
 # Crosslink pattern library - vertex pairs within a hexagon (vertices 0-5)
 # These connect non-adjacent spires inside each hex
 const CROSSLINK_PATTERNS = {
-	"empty": [],
-	"cross": [[0, 3], [1, 4]],
-	"cross_alt": [[0, 3], [2, 5]],
-	"dagger": [[0, 3], [1, 5], [2, 4]],  # All opposite pairs
-	"triangle": [[0, 2], [2, 4], [4, 0]],
-	"triangle_alt": [[1, 3], [3, 5], [5, 1]],
-	"star": [[0, 2], [1, 3], [2, 4], [3, 5], [4, 0], [5, 1]],
-	"rect": [[0, 1], [1, 3], [3, 4], [4, 0]],
-	"single": [[0, 3]],  # Just one through line
+	"empty": [], # an empty gridblock
+	"full": [[0,1], [1,2], [2,3], [3,4], [4,5], [5,0]], # a full hexagon
+	"single": [[0, 3]],  # just one through line
+	"double":[[0, 4], [1, 3]], # two parallel lines
+	"cross": [[0, 3], [1, 4]], # two crossing lines
+	"dagger": [[0, 3], [1, 5]], # typographic dagger
+	"dagger_strk": [[0, 3], [1, 5], [2, 4]], # double dagger
+	"tri_norm": [[0, 2], [2, 4], [4, 0]], # a triangle
+	"tri_strk": [[1, 3], [3, 5], [5, 1], [2, 4]], # a triangle struck by a line
+	"zed_strk": [[0, 3], [1, 2], [4, 5], [5, 2]], # a Z shape struck by a line
+	"rect": [[0, 1], [1, 3], [3, 4], [4, 0]], # a rectangle
+	"kite": [[0, 2], [2, 4] , [4, 5], [5, 0]], # a kite
+	
 }
 
-# Which patterns to use (can be customized)
-@export var enabled_patterns: Array[String] = ["empty", "cross", "dagger", "triangle", "single"]
+# Pattern weights - which patterns to use and how likely (higher = more common)
+# Only patterns listed here will be used; missing = not used
+@export var pattern_weights: Dictionary = {
+	"empty": 3.0,       # more common - open spaces
+	"single": 2.0,
+	"double": 2.0,
+	"dagger": 0.5,
+	"dagger_strk": 0.5, # less common
+	"zed_strk": 0.5,
+	"rect": 1.0,
+	"kite": 1.0,
+}
 
 # Visual settings
 @export var biome_colors: Array[Color] = [
@@ -47,6 +75,9 @@ var spire_positions: Array[Vector3] = []  # All spire world positions
 var hex_centers: Array[Vector2] = []  # Hex center positions (2D, xz plane)
 var hex_vertex_lists: Array = []  # Array of vertex position arrays (one per hex, 6 vertices each)
 var connector_edges: Array = []  # Array of [Vector3, Vector3] pairs for edge connector endpoints
+
+# Track used edges per hex per biome to avoid overlaps: { hex_idx: { biome_idx: Set of "v1,v2" strings } }
+var used_edges: Dictionary = {}
 
 # Debug settings
 @export var show_ground_grid: bool = true
@@ -129,6 +160,7 @@ func _clear_generated():
 	hex_centers.clear()
 	hex_vertex_lists.clear()
 	connector_edges.clear()
+	used_edges.clear()
 
 	for child in spires_container.get_children():
 		child.queue_free()
@@ -266,46 +298,94 @@ func _generate_spires():
 
 
 func _generate_connectors():
+	if biome_edge_patterns.is_empty():
+		print("  Edge connectors disabled (no patterns configured)")
+		return
+
 	var biome_height = spire_height / biome_count
 	var connector_count = 0
 
-	for edge_idx in range(connector_edges.size()):
-		var edge = connector_edges[edge_idx]
-		var start_pos: Vector3 = edge[0]
-		var end_pos: Vector3 = edge[1]
+	# Generate per-hex per-biome
+	for hex_idx in range(hex_vertex_lists.size()):
+		var vertices = hex_vertex_lists[hex_idx]
 
-		# Create connectors at each biome level
+		# Initialize used_edges tracking for this hex
+		if not used_edges.has(hex_idx):
+			used_edges[hex_idx] = {}
+
 		for biome_idx in range(biome_count):
-			# Calculate heights for this biome's connectors
+			# Initialize biome tracking
+			if not used_edges[hex_idx].has(biome_idx):
+				used_edges[hex_idx][biome_idx] = {}
+
+			# Get pattern for this biome (use "none" if index out of bounds)
+			var pattern_name = biome_edge_patterns[biome_idx] if biome_idx < biome_edge_patterns.size() else "none"
+			var pattern = EDGE_PATTERNS.get(pattern_name, [])
+
+			if pattern.is_empty():
+				continue
+
+			# Calculate height for this biome
 			var biome_base = biome_height * biome_idx
 			for conn_idx in range(connectors_per_biome):
-				# Distribute connectors evenly within the biome
 				var height_offset = biome_height * (conn_idx + 0.5) / connectors_per_biome
 				var connector_y = biome_base + height_offset
 
-				var connector = _create_connector(start_pos, end_pos, connector_y, biome_idx)
-				connector.name = "EdgeConn_%d_B%d_%d" % [edge_idx, biome_idx, conn_idx]
-				connectors_container.add_child(connector)
-				connector_count += 1
+				for pair in pattern:
+					var v1_idx = pair[0]
+					var v2_idx = pair[1]
+
+					# Mark this edge as used
+					var edge_key = _make_edge_key_indices(v1_idx, v2_idx)
+					used_edges[hex_idx][biome_idx][edge_key] = true
+
+					var start_pos = vertices[v1_idx]
+					var end_pos = vertices[v2_idx]
+
+					var connector = _create_connector(start_pos, end_pos, connector_y, biome_idx, edge_connector_radius)
+					connector.name = "EdgeConn_%d_B%d_%s_%d" % [hex_idx, biome_idx, pattern_name, connector_count]
+					connectors_container.add_child(connector)
+					connector_count += 1
 
 	print("  Generated %d edge connector beams" % connector_count)
 
 
+func _make_edge_key_indices(v1: int, v2: int) -> String:
+	# Consistent key regardless of order
+	if v1 < v2:
+		return "%d-%d" % [v1, v2]
+	else:
+		return "%d-%d" % [v2, v1]
+
+
 func _generate_crosslinks():
-	if enabled_patterns.is_empty():
+	if pattern_weights.is_empty():
 		print("  No crosslink patterns enabled")
 		return
 
 	var biome_height = spire_height / biome_count
 	var crosslink_count = 0
+	var skipped_count = 0
+
+	# Precompute total weight for weighted random selection
+	var total_weight = 0.0
+	for pattern_name in pattern_weights:
+		total_weight += pattern_weights[pattern_name]
 
 	for hex_idx in range(hex_vertex_lists.size()):
 		var vertices = hex_vertex_lists[hex_idx]
 
+		# Initialize used_edges tracking if not already done
+		if not used_edges.has(hex_idx):
+			used_edges[hex_idx] = {}
+
 		# For each biome level, roll a pattern
 		for biome_idx in range(biome_count):
-			# Pick random pattern
-			var pattern_name = enabled_patterns[randi() % enabled_patterns.size()]
+			if not used_edges[hex_idx].has(biome_idx):
+				used_edges[hex_idx][biome_idx] = {}
+
+			# Pick random pattern using weights
+			var pattern_name = _pick_weighted_pattern(total_weight)
 			var pattern = CROSSLINK_PATTERNS.get(pattern_name, [])
 
 			if pattern.is_empty():
@@ -326,18 +406,40 @@ func _generate_crosslinks():
 					var v1_idx = (pair[0] + rotation) % 6
 					var v2_idx = (pair[1] + rotation) % 6
 
+					# Check if this edge is already used (by edge connectors)
+					var edge_key = _make_edge_key_indices(v1_idx, v2_idx)
+					if used_edges[hex_idx][biome_idx].has(edge_key):
+						skipped_count += 1
+						continue
+
+					# Mark as used to avoid duplicate crosslinks too
+					used_edges[hex_idx][biome_idx][edge_key] = true
+
 					var start_pos = vertices[v1_idx]
 					var end_pos = vertices[v2_idx]
 
-					var connector = _create_connector(start_pos, end_pos, connector_y, biome_idx)
+					var connector = _create_connector(start_pos, end_pos, connector_y, biome_idx, crosslink_radius)
 					connector.name = "Crosslink_%d_B%d_%s_%d" % [hex_idx, biome_idx, pattern_name, crosslink_count]
 					connectors_container.add_child(connector)
 					crosslink_count += 1
 
-	print("  Generated %d crosslink beams" % crosslink_count)
+	print("  Generated %d crosslink beams (skipped %d overlaps)" % [crosslink_count, skipped_count])
 
 
-func _create_connector(start: Vector3, end: Vector3, height: float, biome_idx: int) -> Node3D:
+func _pick_weighted_pattern(total_weight: float) -> String:
+	var roll = randf() * total_weight
+	var cumulative = 0.0
+
+	for pattern_name in pattern_weights:
+		cumulative += pattern_weights[pattern_name]
+		if roll <= cumulative:
+			return pattern_name
+
+	# Fallback (shouldn't happen)
+	return pattern_weights.keys()[0] if not pattern_weights.is_empty() else "empty"
+
+
+func _create_connector(start: Vector3, end: Vector3, height: float, biome_idx: int, radius: float) -> Node3D:
 	var connector_root = Node3D.new()
 
 	# Calculate position and rotation
@@ -352,8 +454,8 @@ func _create_connector(start: Vector3, end: Vector3, height: float, biome_idx: i
 	# Create cylinder mesh (horizontal)
 	var mesh_instance = MeshInstance3D.new()
 	var cylinder = CylinderMesh.new()
-	cylinder.top_radius = connector_radius
-	cylinder.bottom_radius = connector_radius
+	cylinder.top_radius = radius
+	cylinder.bottom_radius = radius
 	cylinder.height = length - spire_radius * 2  # Subtract spire radius from each end
 	mesh_instance.mesh = cylinder
 

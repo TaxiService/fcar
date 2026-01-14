@@ -49,15 +49,16 @@ script = ExtResource("1_generator")
 hex_edge_length = 420.0
 grid_rings = 3
 spire_radius = 30.0
-connector_radius = 20.0
-fcar_spawn_height = 750.0
+biome_edge_patterns = Array[String](["none", "single", "none", "half_a"])
+fcar_spawn_height = 1750.0
 
 [node name="Camera3D" type="Camera3D" parent="." node_paths=PackedStringArray("target")]
-transform = Transform3D(1, 0, 0, 0, 0.9961948, 0.08715568, 0, -0.08715568, 0.9961948, -2.2765515, 2.07618, 7.6534176)
+transform = Transform3D(1, 0, 0, 0, 0.9961948, 0.08715568, 0, -0.08715568, 0.9961948, -2.2765515, 1500, 7.6534176)
 script = ExtResource("3_yage8")
 target = NodePath("../FCar")
 
 [node name="FCar" parent="." instance=ExtResource("2_tegu2")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1500, 0)
 
 [node name="FreeCam" type="Camera3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 0.965, 0.259, 0, -0.259, 0.965, 0, 500, 800)
