@@ -22,6 +22,7 @@ var current_yaw: float = 0.0
 # Booster assist state
 var _alt_was_pressed: bool = false  # For detecting Alt key press
 var _booster_roll_differential: float = 0.0  # Current shin offset (left - right)
+var _smoothed_pitch_input: float = 0.0  # Smoothed pitch input to avoid bobbing
 
 # ===== EXPORT PARAMETERS =====
 @export_category("thrust")
@@ -100,7 +101,9 @@ var _booster_roll_differential: float = 0.0  # Current shin offset (left - right
 @export var booster_roll_offset: float = 15.0  # Max differential shin offset in degrees
 @export var booster_roll_offset_limited: bool = true  # If false, offset can go beyond limit (testing)
 @export var booster_roll_speed: float = 60.0  # How fast the differential builds (deg/sec)
-@export var booster_pitch_torque: float = 50000.0  # Torque strength for pitch control
+@export var booster_pitch_up_torque: float = 50000.0  # Torque strength for pitching nose up
+@export var booster_pitch_down_torque: float = 50000.0  # Torque strength for pitching nose down
+@export var booster_pitch_smoothing: float = 10.0  # How fast pitch force ramps up/down (higher = snappier)
 
 @export_category("passengers")
 @export var cargo_capacity: int = 2
@@ -819,16 +822,20 @@ func _update_booster_assist(delta: float):
 		_booster_roll_differential = move_toward(_booster_roll_differential, 0.0, booster_roll_speed * delta)
 
 	# === Up/Down arrows: Pitch via direct torque ===
-	var pitch_input = 0.0
+	var target_pitch_input = 0.0
 	if Input.is_key_pressed(KEY_UP):
-		pitch_input = -1.0  # Pitch nose down
+		target_pitch_input = -1.0  # Pitch nose down
 	elif Input.is_key_pressed(KEY_DOWN):
-		pitch_input = 1.0  # Pitch nose up
+		target_pitch_input = 1.0  # Pitch nose up
 
-	if pitch_input != 0.0:
+	# Smooth the pitch input to avoid bobbing
+	_smoothed_pitch_input = move_toward(_smoothed_pitch_input, target_pitch_input, booster_pitch_smoothing * delta)
+
+	if abs(_smoothed_pitch_input) > 0.01:
 		# Apply torque around the car's local X axis (pitch axis)
 		var pitch_axis = global_transform.basis.x
-		apply_torque(pitch_axis * pitch_input * booster_pitch_torque)
+		var torque_strength = booster_pitch_up_torque if _smoothed_pitch_input > 0 else booster_pitch_down_torque
+		apply_torque(pitch_axis * _smoothed_pitch_input * torque_strength)
 
 	# === Apply angles ===
 	var needs_update = has_preset_input or _booster_roll_differential != 0.0
