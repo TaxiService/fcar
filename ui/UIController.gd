@@ -12,6 +12,10 @@ var window_manager: WindowManager
 var car_ref: Node
 var shift_manager: Node
 
+# Window references (for toggling)
+var debug_window: UIWindow = null
+var score_window: UIWindow = null
+
 
 func _ready():
 	# Find the car
@@ -75,52 +79,48 @@ func open_debug_window() -> UIWindow:
 	if not window_manager:
 		return null
 
-	# Create content first to get its preferred title
+	# Already open?
+	if is_instance_valid(debug_window):
+		window_manager.bring_window_to_front(debug_window)
+		return debug_window
+
 	var content = DebugWindow.new()
 	if car_ref:
 		content.set_car(car_ref)
 
-	# Check if already open (using content's title)
-	var existing = window_manager.get_window_by_title(content.window_title)
-	if existing:
-		window_manager.bring_window_to_front(existing)
-		content.queue_free()  # Don't need this instance
-		return existing
-
-	var window = window_manager.create_window_with_content(
+	debug_window = window_manager.create_window_with_content(
 		content.window_title,
 		content,
 		Vector2(20, 20),
 		Vector2(220, 260)
 	)
-	window.min_size = Vector2(180, 240)
-	return window
+	debug_window.min_size = Vector2(180, 240)
+	debug_window.closed.connect(func(): debug_window = null)
+	return debug_window
 
 
 func open_score_window() -> UIWindow:
 	if not window_manager:
 		return null
 
-	# Create content first to get its preferred title
+	# Already open?
+	if is_instance_valid(score_window):
+		window_manager.bring_window_to_front(score_window)
+		return score_window
+
 	var content = ScoreWindow.new()
 	if shift_manager:
 		content.set_shift_manager(shift_manager)
 
-	# Check if already open (using content's title)
-	var existing = window_manager.get_window_by_title(content.window_title)
-	if existing:
-		window_manager.bring_window_to_front(existing)
-		content.queue_free()
-		return existing
-
-	var window = window_manager.create_window_with_content(
+	score_window = window_manager.create_window_with_content(
 		content.window_title,
 		content,
 		Vector2(20, 300),  # Below the debug window
 		Vector2(180, 140)
 	)
-	window.min_size = Vector2(150, 120)
-	return window
+	score_window.min_size = Vector2(150, 120)
+	score_window.closed.connect(func(): score_window = null)
+	return score_window
 
 
 func open_custom_window(title: String, content: Control, pos: Vector2 = Vector2(100, 100), win_size: Vector2 = Vector2(300, 200)) -> UIWindow:
@@ -148,11 +148,10 @@ func toggle_debug_window():
 	if not window_manager:
 		return
 
-	# Check if window exists by looking for the title
-	var existing = window_manager.get_window_by_title("Car status")
-	if existing:
-		existing.closed.emit()  # Notify WindowManager to remove from tracking
-		existing.queue_free()
+	if is_instance_valid(debug_window):
+		var window = debug_window
+		window.closed.emit()  # This sets debug_window = null via our handler
+		window.queue_free()
 	else:
 		open_debug_window()
 
@@ -161,9 +160,9 @@ func toggle_score_window():
 	if not window_manager:
 		return
 
-	var existing = window_manager.get_window_by_title("Shift")
-	if existing:
-		existing.closed.emit()  # Notify WindowManager to remove from tracking
-		existing.queue_free()
+	if is_instance_valid(score_window):
+		var window = score_window
+		window.closed.emit()  # This sets score_window = null via our handler
+		window.queue_free()
 	else:
 		open_score_window()
