@@ -27,9 +27,15 @@ const EDGE_PATTERNS = {
 	"single": [[0,1]],  # just one edge
 }
 
-# Per-biome edge patterns (index = biome, from bottom to top)
-# Each biome uses exactly the pattern specified here
-@export var biome_edge_patterns: Array[String] = ["none", "none", "none", "full"]
+# Per-biome edge pattern weights (index = biome, from bottom to top)
+# Each biome has a dictionary of pattern_name: weight for weighted random selection
+@export var biome_edge_patterns: Array[Dictionary] = [
+	{"none": 1.0},  # biome 0 (bottom)
+	{"single": 1.0},  # biome 1
+	{"none": 1.0},  # biome 2
+	{"half_a": 1.0},  # biome 3 (top)
+]
+
 
 # Crosslink pattern library - vertex pairs within a hexagon (vertices 0-5)
 # These connect non-adjacent spires inside each hex
@@ -49,18 +55,14 @@ const CROSSLINK_PATTERNS = {
 	
 }
 
-# Pattern weights - which patterns to use and how likely (higher = more common)
-# Only patterns listed here will be used; missing = not used
-@export var pattern_weights: Dictionary = {
-	"empty": 3.0,       # more common - open spaces
-	"single": 2.0,
-	"double": 2.0,
-	"dagger": 0.5,
-	"dagger_strk": 0.5, # less common
-	"zed_strk": 0.5,
-	"rect": 1.0,
-	"kite": 1.0,
-}
+# Per-biome crosslink pattern weights (index = biome, from bottom to top)
+# Each biome has a dictionary of pattern_name: weight for weighted random selection
+@export var biome_crosslink_patterns: Array[Dictionary] = [
+	{"full": 1.0, "empty": 0.5},  # biome 0 (bottom)
+	{"empty": 2.0, "single": 1.0, "rect":1.0, "tri-norm":0.5, "tri-strk":0.5,},  # biome 1
+	{"empty": 2.0, "single": 1.0, "cross":1.0, "dagger":0.5, "dagger_strk":0.5},  # biome 2
+	{"empty": 2.0, "zed_strk": 1.0, "kite":1.0, "dagger_strk":0.5, "cross":0.5},  # biome 3 (top)
+]
 
 # Visual settings
 @export var biome_colors: Array[Color] = [
@@ -318,8 +320,9 @@ func _generate_connectors():
 			if not used_edges[hex_idx].has(biome_idx):
 				used_edges[hex_idx][biome_idx] = {}
 
-			# Get pattern for this biome (use "none" if index out of bounds)
-			var pattern_name = biome_edge_patterns[biome_idx] if biome_idx < biome_edge_patterns.size() else "none"
+			# Get pattern weights for this biome
+			var weights = biome_edge_patterns[biome_idx] if biome_idx < biome_edge_patterns.size() else {"none": 1.0}
+			var pattern_name = _pick_weighted_from_dict(weights)
 			var pattern = EDGE_PATTERNS.get(pattern_name, [])
 
 			if pattern.is_empty():
@@ -358,19 +361,35 @@ func _make_edge_key_indices(v1: int, v2: int) -> String:
 		return "%d-%d" % [v2, v1]
 
 
+func _pick_weighted_from_dict(weights: Dictionary) -> String:
+	if weights.is_empty():
+		return ""
+
+	# Calculate total weight
+	var total_weight = 0.0
+	for pattern_name in weights:
+		total_weight += weights[pattern_name]
+
+	# Roll and pick
+	var roll = randf() * total_weight
+	var cumulative = 0.0
+	for pattern_name in weights:
+		cumulative += weights[pattern_name]
+		if roll <= cumulative:
+			return pattern_name
+
+	# Fallback to first key
+	return weights.keys()[0]
+
+
 func _generate_crosslinks():
-	if pattern_weights.is_empty():
-		print("  No crosslink patterns enabled")
+	if biome_crosslink_patterns.is_empty():
+		print("  Crosslinks disabled (no patterns configured)")
 		return
 
 	var biome_height = spire_height / biome_count
 	var crosslink_count = 0
 	var skipped_count = 0
-
-	# Precompute total weight for weighted random selection
-	var total_weight = 0.0
-	for pattern_name in pattern_weights:
-		total_weight += pattern_weights[pattern_name]
 
 	for hex_idx in range(hex_vertex_lists.size()):
 		var vertices = hex_vertex_lists[hex_idx]
@@ -379,13 +398,14 @@ func _generate_crosslinks():
 		if not used_edges.has(hex_idx):
 			used_edges[hex_idx] = {}
 
-		# For each biome level, roll a pattern
+		# For each biome level, pick from weighted patterns
 		for biome_idx in range(biome_count):
 			if not used_edges[hex_idx].has(biome_idx):
 				used_edges[hex_idx][biome_idx] = {}
 
-			# Pick random pattern using weights
-			var pattern_name = _pick_weighted_pattern(total_weight)
+			# Get pattern weights for this biome
+			var weights = biome_crosslink_patterns[biome_idx] if biome_idx < biome_crosslink_patterns.size() else {"empty": 1.0}
+			var pattern_name = _pick_weighted_from_dict(weights)
 			var pattern = CROSSLINK_PATTERNS.get(pattern_name, [])
 
 			if pattern.is_empty():
@@ -424,19 +444,6 @@ func _generate_crosslinks():
 					crosslink_count += 1
 
 	print("  Generated %d crosslink beams (skipped %d overlaps)" % [crosslink_count, skipped_count])
-
-
-func _pick_weighted_pattern(total_weight: float) -> String:
-	var roll = randf() * total_weight
-	var cumulative = 0.0
-
-	for pattern_name in pattern_weights:
-		cumulative += pattern_weights[pattern_name]
-		if roll <= cumulative:
-			return pattern_name
-
-	# Fallback (shouldn't happen)
-	return pattern_weights.keys()[0] if not pattern_weights.is_empty() else "empty"
 
 
 func _create_connector(start: Vector3, end: Vector3, height: float, biome_idx: int, radius: float) -> Node3D:

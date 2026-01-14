@@ -28,10 +28,11 @@ fog_depth_curve = 1.0352657
 fog_depth_begin = 591.4
 fog_depth_end = 1045.5
 volumetric_fog_enabled = true
-volumetric_fog_density = 0.0001
-volumetric_fog_albedo = Color(0.36025748, 0.48578697, 0.4706965, 1)
+volumetric_fog_density = 0.0016
+volumetric_fog_albedo = Color(0.33533785, 0.84833395, 0.9312275, 1)
 volumetric_fog_emission = Color(0.20505151, 0.17763427, 0.12100499, 1)
-volumetric_fog_length = 800.0
+volumetric_fog_emission_energy = 2.0
+volumetric_fog_length = 2500.0
 
 [node name="CityTest" type="Node3D"]
 
@@ -49,7 +50,6 @@ script = ExtResource("1_generator")
 hex_edge_length = 420.0
 grid_rings = 3
 spire_radius = 30.0
-biome_edge_patterns = Array[String](["none", "single", "none", "half_a"])
 fcar_spawn_height = 1750.0
 
 [node name="Camera3D" type="Camera3D" parent="." node_paths=PackedStringArray("target")]
