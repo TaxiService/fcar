@@ -740,9 +740,9 @@ func _update_booster_manual(delta: float):
 		thigh_input = 1.0
 
 	if Input.is_key_pressed(KEY_UP):
-		shin_input = -1.0
-	elif Input.is_key_pressed(KEY_DOWN):
 		shin_input = 1.0
+	elif Input.is_key_pressed(KEY_DOWN):
+		shin_input = -1.0
 
 	# Apply rotation (90 deg/sec for thigh, 50 deg/sec for shin)
 	if thigh_input != 0.0 or shin_input != 0.0:
@@ -821,9 +821,9 @@ func _update_booster_assist(delta: float):
 	# === Up/Down arrows: Pitch via direct torque ===
 	var pitch_input = 0.0
 	if Input.is_key_pressed(KEY_UP):
-		pitch_input = 1.0  # Pitch nose up
-	elif Input.is_key_pressed(KEY_DOWN):
 		pitch_input = -1.0  # Pitch nose down
+	elif Input.is_key_pressed(KEY_DOWN):
+		pitch_input = 1.0  # Pitch nose up
 
 	if pitch_input != 0.0:
 		# Apply torque around the car's local X axis (pitch axis)
