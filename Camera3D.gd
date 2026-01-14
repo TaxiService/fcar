@@ -7,7 +7,7 @@ extends Camera3D
 @export var position_lerp_speed: float = 25.0  # How fast camera position follows car
 
 # Camera yaw lag (creates over/understeer feel)
-@export var camera_yaw_lag_speed: float = 5.0  # How fast camera catches up to car's rotation (lower = more lag)
+@export var camera_yaw_lag_speed: float = 2.0  # How fast camera catches up to car's rotation (lower = more lag)
 
 # Rotation speed during crash/tumble
 @export var crash_rotation_lerp_speed: float = 3.0
