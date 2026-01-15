@@ -50,6 +50,15 @@ func _load_block_library():
 				# Cache block metadata
 				var instance = scene.instantiate()
 				if instance is BuildingBlock:
+					# Check which sizes this block supports
+					var has_small = false
+					var has_medium = false
+					var has_large = false
+					for conn in instance.get_connection_points():
+						if conn.size_small: has_small = true
+						if conn.size_medium: has_medium = true
+						if conn.size_large: has_large = true
+
 					block_data.append({
 						"scene": scene,
 						"path": path,
@@ -58,7 +67,10 @@ func _load_block_library():
 						"weight": instance.spawn_weight,
 						"min_biome": instance.min_biome,
 						"max_biome": instance.max_biome,
-						"connection_count": instance.get_connection_points().size()
+						"connection_count": instance.get_connection_points().size(),
+						"has_small": has_small,
+						"has_medium": has_medium,
+						"has_large": has_large,
 					})
 				instance.queue_free()
 		file_name = dir.get_next()
@@ -92,7 +104,8 @@ func generate_on_connector(start_pos: Vector3, end_pos: Vector3, biome_idx: int)
 
 
 # Grow a building structure from a seed point
-func _grow_from_seed(position: Vector3, direction: Vector3, biome_idx: int, depth: int):
+# size_filter: "small", "medium", "large", or "any" - only used at depth 0
+func _grow_from_seed(position: Vector3, direction: Vector3, biome_idx: int, depth: int, size_filter: String = "any"):
 	# Hard limits
 	if depth >= max_growth_depth:
 		return
@@ -103,6 +116,18 @@ func _grow_from_seed(position: Vector3, direction: Vector3, biome_idx: int, dept
 	var valid_blocks = _get_valid_blocks(biome_idx, depth)
 	if valid_blocks.is_empty():
 		return
+
+	# At depth 0, filter by required connection size (uses cached data)
+	if depth == 0 and size_filter != "any":
+		valid_blocks = valid_blocks.filter(func(b):
+			match size_filter:
+				"small": return b.has_small
+				"medium": return b.has_medium
+				"large": return b.has_large
+				_: return true
+		)
+		if valid_blocks.is_empty():
+			return
 
 	# Weight selection towards floors if we're deep in the structure
 	var force_floor = depth > 0 and _rng.randf() < floor_probability

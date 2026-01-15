@@ -100,6 +100,8 @@ var buildings_container: Node3D
 @export var building_max_total: int = 200  # Hard limit on total building blocks
 @export var buildings_on_crosslinks: bool = true  # Spawn on crosslinks (internal connectors)
 @export var buildings_on_edges: bool = false  # Spawn on edge connectors
+@export var crosslink_seed_size: String = "large"  # Size filter for crosslink seeds: "small", "medium", "large", or "any"
+@export var edge_seed_size: String = "medium"  # Size filter for edge seeds
 
 var building_generator: BuildingGenerator
 
@@ -648,8 +650,11 @@ func _generate_buildings():
 			# Count blocks before
 			var before = building_generator.get_child_count()
 
+			# Determine size filter based on connector type
+			var size_filter = crosslink_seed_size if not is_edge else edge_seed_size
+
 			# Grow building from this seed
-			building_generator._grow_from_seed(seed_pos, side, biome_idx, 0)
+			building_generator._grow_from_seed(seed_pos, side, biome_idx, 0, size_filter)
 
 			# Count blocks placed
 			var placed = building_generator.get_child_count() - before
