@@ -93,9 +93,11 @@ var buildings_container: Node3D
 # Building generation
 @export_category("Buildings")
 @export var generate_buildings: bool = true
-@export var building_seed_spacing: float = 30.0  # Seed points every 30m along connectors
-@export var building_max_depth: int = 4  # Max blocks from seed
-@export var building_branch_chance: float = 0.3  # Chance to branch at each connection
+@export var building_seed_spacing: float = 90.0  # Seed points every Nm along connectors
+@export var building_seed_probability: float = 0.3  # Chance to actually place a seed (sparsity)
+@export var building_max_depth: int = 3  # Max blocks from seed
+@export var building_branch_chance: float = 0.2  # Chance to branch at each connection
+@export var building_max_total: int = 200  # Hard limit on total building blocks
 
 var building_generator: BuildingGenerator
 
@@ -584,12 +586,20 @@ func _generate_buildings():
 	# Configure generator
 	building_generator.max_growth_depth = building_max_depth
 	building_generator.branch_probability = building_branch_chance
+	building_generator.max_blocks_total = building_max_total
+	building_generator.reset_counter()
 
 	var seed_count = 0
-	var building_count_before = buildings_container.get_child_count()
+	var blocks_placed = 0
 
-	# Generate seed points at 30m intervals along each connector
+	print("  Starting building generation (max %d blocks)..." % building_max_total)
+
+	# Generate seed points along each connector
 	for conn in connector_data:
+		# Check total limit
+		if blocks_placed >= building_max_total:
+			break
+
 		var start: Vector3 = conn.start
 		var end: Vector3 = conn.end
 		var biome_idx: int = conn.biome_idx
@@ -599,16 +609,23 @@ func _generate_buildings():
 		var dir_normalized = direction.normalized()
 
 		# Calculate seed points at building_seed_spacing intervals
-		# Skip first and last 30m (near spires)
-		var usable_length = length - spire_radius * 2 - building_seed_spacing * 2
+		var usable_length = length - spire_radius * 2 - building_seed_spacing
 		if usable_length <= 0:
 			continue
 
 		var num_seeds = int(usable_length / building_seed_spacing)
-		var start_offset = spire_radius + building_seed_spacing
+		var start_offset = spire_radius + building_seed_spacing * 0.5
 
 		for i in range(num_seeds):
-			var t = start_offset + building_seed_spacing * (i + 0.5)
+			# Check total limit
+			if blocks_placed >= building_max_total:
+				break
+
+			# Random chance to skip this seed (sparsity control)
+			if randf() > building_seed_probability:
+				continue
+
+			var t = start_offset + building_seed_spacing * i
 			var seed_pos = start + dir_normalized * t
 
 			# Perpendicular direction for growth (alternate sides)
@@ -617,12 +634,18 @@ func _generate_buildings():
 			if i % 2 == 1:
 				side = -side
 
+			# Count blocks before
+			var before = building_generator.get_child_count()
+
 			# Grow building from this seed
 			building_generator._grow_from_seed(seed_pos, side, biome_idx, 0)
+
+			# Count blocks placed
+			var placed = building_generator.get_child_count() - before
+			blocks_placed += placed
 			seed_count += 1
 
-	var buildings_created = buildings_container.get_child_count() - building_count_before
-	print("  Generated buildings from %d seed points (%d blocks placed)" % [seed_count, buildings_created])
+	print("  Generated %d blocks from %d seeds" % [blocks_placed, seed_count])
 
 
 # Public API for regeneration

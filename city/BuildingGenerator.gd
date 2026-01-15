@@ -12,16 +12,22 @@ var block_data: Array[Dictionary] = []  # Cached block info for quick filtering
 @export var max_growth_depth: int = 5  # Max blocks from seed point
 @export var branch_probability: float = 0.3  # Chance to use multiple connections
 @export var floor_probability: float = 0.2  # Chance to force a floor block
+@export var max_blocks_total: int = 500  # Hard limit to prevent freezing
 
 @export_category("Seed Points")
 @export var seeds_per_connector: int = 2  # How many buildings per connector beam
 @export var seed_height_variance: float = 50.0  # Random height offset for seeds
 
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
+var _blocks_placed: int = 0  # Counter for hard limit
 
 
 func _ready():
 	_load_block_library()
+
+
+func reset_counter():
+	_blocks_placed = 0
 
 
 func _load_block_library():
@@ -87,7 +93,10 @@ func generate_on_connector(start_pos: Vector3, end_pos: Vector3, biome_idx: int)
 
 # Grow a building structure from a seed point
 func _grow_from_seed(position: Vector3, direction: Vector3, biome_idx: int, depth: int):
+	# Hard limits
 	if depth >= max_growth_depth:
+		return
+	if _blocks_placed >= max_blocks_total:
 		return
 
 	# Pick a block that fits this biome
@@ -113,6 +122,7 @@ func _grow_from_seed(position: Vector3, direction: Vector3, biome_idx: int, dept
 		return
 
 	add_child(block_instance)
+	_blocks_placed += 1
 
 	# Position the block - align first available connection to seed point
 	var connections = block_instance.get_connection_points()
