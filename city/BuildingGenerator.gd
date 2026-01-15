@@ -21,6 +21,11 @@ var block_data: Array[Dictionary] = []  # Cached block info for quick filtering
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _blocks_placed: int = 0  # Counter for hard limit
 var _recursion_count: int = 0  # Debug counter for catching infinite loops
+var _placed_aabbs: Array[AABB] = []  # Track placed block bounds for overlap detection
+
+@export_category("Overlap Detection")
+@export var check_overlaps: bool = true  # Enable/disable overlap checking
+@export var overlap_margin: float = 1.0  # Shrink AABBs by this much to allow slight overlaps
 
 
 func _ready():
@@ -30,6 +35,7 @@ func _ready():
 func reset_counter():
 	_blocks_placed = 0
 	_recursion_count = 0
+	_placed_aabbs.clear()
 
 
 func _load_block_library():
@@ -109,7 +115,8 @@ func generate_on_connector(start_pos: Vector3, end_pos: Vector3, biome_idx: int)
 
 # Grow a building structure from a seed point
 # size_filter: "small", "medium", "large", or "any" - used at all depths
-func _grow_from_seed(position: Vector3, direction: Vector3, biome_idx: int, depth: int, size_filter: String = "any"):
+# base_heading: Y-rotation (radians) to align with connector direction (only used at depth 0)
+func _grow_from_seed(position: Vector3, direction: Vector3, biome_idx: int, depth: int, size_filter: String = "any", base_heading: float = 0.0):
 	_recursion_count += 1
 	if _recursion_count > 10000:
 		push_error("BuildingGenerator: Recursion limit hit!")
@@ -162,6 +169,14 @@ func _grow_from_seed(position: Vector3, direction: Vector3, biome_idx: int, dept
 	var connections = block_instance.get_connection_points()
 	if connections.is_empty():
 		block_instance.global_position = position
+		# Check overlaps for directly positioned blocks too
+		if check_overlaps:
+			var block_aabb = _get_block_aabb(block_instance)
+			if _overlaps_existing(block_aabb):
+				block_instance.queue_free()
+				_blocks_placed -= 1
+				return
+			_placed_aabbs.append(block_aabb)
 	else:
 		# Find a connection point that can connect (matching size, compatible direction)
 		var target_dir = -direction  # We want to connect TO the seed
@@ -174,8 +189,17 @@ func _grow_from_seed(position: Vector3, direction: Vector3, biome_idx: int, dept
 			return
 
 		# Rotate block to align connection with incoming direction
-		_align_block_to_direction(block_instance, anchor, position, target_dir)
+		_align_block_to_direction(block_instance, anchor, position, target_dir, base_heading)
 		block_instance.mark_connection_used(anchor)
+
+	# Check for overlaps with existing blocks
+	if check_overlaps:
+		var block_aabb = _get_block_aabb(block_instance)
+		if _overlaps_existing(block_aabb):
+			block_instance.queue_free()
+			_blocks_placed -= 1
+			return
+		_placed_aabbs.append(block_aabb)
 
 	# Maybe branch to other connections
 	var remaining = block_instance.get_available_connections()
@@ -184,15 +208,24 @@ func _grow_from_seed(position: Vector3, direction: Vector3, biome_idx: int, dept
 			var world_pos = block_instance.get_connection_world_position(conn)
 			var world_dir = block_instance.get_connection_world_direction(conn)
 			block_instance.mark_connection_used(conn)
-			# Determine size filter from parent connection (use largest available)
-			var child_size_filter = "any"
-			if conn.size_large:
-				child_size_filter = "large"
-			elif conn.size_medium:
-				child_size_filter = "medium"
-			elif conn.size_small:
-				child_size_filter = "small"
+			# Determine size filter from parent connection (randomly pick from available)
+			var child_size_filter = _pick_random_size(conn)
 			_grow_from_seed(world_pos, world_dir, biome_idx, depth + 1, child_size_filter)
+
+
+# Randomly pick a size from available options on a connection point
+func _pick_random_size(conn: ConnectionPoint) -> String:
+	var available: Array[String] = []
+	if conn.size_small:
+		available.append("small")
+	if conn.size_medium:
+		available.append("medium")
+	if conn.size_large:
+		available.append("large")
+
+	if available.is_empty():
+		return "any"
+	return available[_rng.randi() % available.size()]
 
 
 # Find a connection point that matches size and can align with target direction
@@ -237,7 +270,8 @@ func _find_compatible_connection(connections: Array[ConnectionPoint], target_dir
 
 # Align a block so its connection point is at target_pos facing target_dir
 # Only rotates around Y axis - connection point markers encode their own angles
-func _align_block_to_direction(block: BuildingBlock, conn: ConnectionPoint, target_pos: Vector3, target_dir: Vector3):
+# base_heading: For vertical connections, use this as the Y rotation (align with connector)
+func _align_block_to_direction(block: BuildingBlock, conn: ConnectionPoint, target_pos: Vector3, target_dir: Vector3, base_heading: float = 0.0):
 	# target_dir points from parent TOWARD child position (= -direction passed to _grow_from_seed)
 	# Child's connection INWARD direction (cone) should point INTO child = same as target_dir
 	# This ensures child is positioned BEYOND the connection point, not inside parent
@@ -252,7 +286,9 @@ func _align_block_to_direction(block: BuildingBlock, conn: ConnectionPoint, targ
 		var target_yaw = atan2(target_dir.x, target_dir.z)
 		var conn_yaw = atan2(conn_local_dir.x, conn_local_dir.z)
 		block.rotation.y = target_yaw - conn_yaw
-	# For vertical connections, keep default rotation (no Y rotation needed)
+	else:
+		# For vertical connections, use base_heading to align with connector direction
+		block.rotation.y = base_heading
 
 	# Position block so connection point lands at target_pos
 	var rotated_offset = block.basis * conn.position
@@ -307,3 +343,89 @@ func generate_test(count: int = 5):
 		var dir = Vector3(_rng.randf_range(-1, 1), 0, _rng.randf_range(-1, 1)).normalized()
 		_grow_from_seed(pos, dir, _rng.randi_range(0, 3), 0)
 	print("BuildingGenerator: Generated %d test structures" % count)
+
+
+# Get world-space AABB for a block (from collision shapes or meshes)
+func _get_block_aabb(block: Node3D) -> AABB:
+	var combined_aabb = AABB()
+	var first = true
+
+	# Look for collision shapes first (more accurate for gameplay)
+	for child in block.get_children():
+		if child is CollisionShape3D and child.shape:
+			var shape_aabb = _get_shape_aabb(child.shape)
+			# Transform to world space
+			var world_aabb = _transform_aabb(shape_aabb, child.global_transform)
+			if first:
+				combined_aabb = world_aabb
+				first = false
+			else:
+				combined_aabb = combined_aabb.merge(world_aabb)
+		elif child is MeshInstance3D and child.mesh:
+			var mesh_aabb = child.mesh.get_aabb()
+			var world_aabb = _transform_aabb(mesh_aabb, child.global_transform)
+			if first:
+				combined_aabb = world_aabb
+				first = false
+			else:
+				combined_aabb = combined_aabb.merge(world_aabb)
+
+	# If no shapes/meshes found, use a default box around the block position
+	if first:
+		combined_aabb = AABB(block.global_position - Vector3(5, 5, 5), Vector3(10, 10, 10))
+
+	return combined_aabb
+
+
+# Get AABB for various collision shape types
+func _get_shape_aabb(shape: Shape3D) -> AABB:
+	if shape is BoxShape3D:
+		var half = shape.size / 2
+		return AABB(-half, shape.size)
+	elif shape is SphereShape3D:
+		var r = shape.radius
+		return AABB(Vector3(-r, -r, -r), Vector3(r * 2, r * 2, r * 2))
+	elif shape is CylinderShape3D:
+		var r = shape.radius
+		var h = shape.height / 2
+		return AABB(Vector3(-r, -h, -r), Vector3(r * 2, shape.height, r * 2))
+	elif shape is CapsuleShape3D:
+		var r = shape.radius
+		var h = shape.height / 2
+		return AABB(Vector3(-r, -h, -r), Vector3(r * 2, shape.height, r * 2))
+	else:
+		# Fallback for unknown shapes
+		return AABB(Vector3(-5, -5, -5), Vector3(10, 10, 10))
+
+
+# Transform a local AABB to world space (approximation using corners)
+func _transform_aabb(local_aabb: AABB, xform: Transform3D) -> AABB:
+	# Transform all 8 corners and create new AABB
+	var corners: Array[Vector3] = []
+	var pos = local_aabb.position
+	var size = local_aabb.size
+
+	corners.append(xform * (pos))
+	corners.append(xform * (pos + Vector3(size.x, 0, 0)))
+	corners.append(xform * (pos + Vector3(0, size.y, 0)))
+	corners.append(xform * (pos + Vector3(0, 0, size.z)))
+	corners.append(xform * (pos + Vector3(size.x, size.y, 0)))
+	corners.append(xform * (pos + Vector3(size.x, 0, size.z)))
+	corners.append(xform * (pos + Vector3(0, size.y, size.z)))
+	corners.append(xform * (pos + size))
+
+	var result = AABB(corners[0], Vector3.ZERO)
+	for i in range(1, 8):
+		result = result.expand(corners[i])
+	return result
+
+
+# Check if an AABB overlaps any existing placed blocks
+func _overlaps_existing(new_aabb: AABB) -> bool:
+	# Shrink the AABB by margin to allow slight overlaps
+	var test_aabb = new_aabb.grow(-overlap_margin)
+
+	for existing in _placed_aabbs:
+		if test_aabb.intersects(existing):
+			return true
+	return false

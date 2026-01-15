@@ -1,0 +1,85 @@
+[gd_scene load_steps=10 format=3 uid="uid://dj5nr8k7tjehq"]
+
+[ext_resource type="Script" uid="uid://cmafag82uyxu7" path="res://city/BuildingBlock.gd" id="1_0hgq2"]
+[ext_resource type="Material" uid="uid://c84qehqsj2tk1" path="res://mats/floor_small.tres" id="2_1fevv"]
+[ext_resource type="Material" uid="uid://d1752hlai3xtn" path="res://mats/floor.tres" id="3_8ensv"]
+[ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://city/ConnectionPoint.gd" id="4_in80i"]
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_sqhew"]
+height = 15.0
+radius = 10.0
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_vs7fu"]
+radius = 10.0
+height = 42.777
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_vb8vo"]
+material = ExtResource("2_1fevv")
+top_radius = 10.0
+bottom_radius = 10.01
+height = 15.0
+radial_segments = 6
+rings = 0
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_fiy0h"]
+material = ExtResource("2_1fevv")
+top_radius = 10.0
+bottom_radius = 10.0
+height = 24.0
+radial_segments = 6
+rings = 0
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_g4pyu"]
+material = ExtResource("3_8ensv")
+top_radius = 5.0
+bottom_radius = 5.0
+height = 3.375
+radial_segments = 5
+rings = 0
+
+[node name="FloorSmall5" type="StaticBody3D"]
+script = ExtResource("1_0hgq2")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 10, 20)
+shape = SubResource("CylinderShape3D_sqhew")
+
+[node name="CollisionShape3D2" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.49999997, -0.86602545, 0, 0.86602545, 0.49999997, 0, -1.4661369, 10.10457)
+shape = SubResource("CapsuleShape3D_vs7fu")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 10, 20)
+mesh = SubResource("CylinderMesh_vb8vo")
+
+[node name="MeshInstance3D2" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.49999997, -0.86602545, 0, 0.86602545, 0.49999997, 0, -1.5206792, 10.366105)
+mesh = SubResource("CylinderMesh_fiy0h")
+
+[node name="MeshInstance3D3" type="MeshInstance3D" parent="."]
+transform = Transform3D(-4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 0, 0, 1, 0, 1.1639552, 25.046196)
+mesh = SubResource("CylinderMesh_g4pyu")
+
+[node name="Conn_Plug_Large" type="Marker3D" parent="."]
+transform = Transform3D(-1, -8.742278e-08, 3.821371e-15, 0, -4.371139e-08, -1, 8.742278e-08, -1, 4.371139e-08, 0, -7.5, 0)
+script = ExtResource("4_in80i")
+size_medium = false
+size_large = true
+
+[node name="Conn_Plug_Large2" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 17.5, 20)
+script = ExtResource("4_in80i")
+size_medium = false
+size_large = true
+
+[node name="Marker3D" type="Marker3D" parent="."]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 8.66, -0.035593987, 12.0069275)
+script = ExtResource("4_in80i")
+size_small = true
+size_medium = false
+
+[node name="Marker3D2" type="Marker3D" parent="."]
+transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, -8.66, -0.035593987, 12.0069275)
+script = ExtResource("4_in80i")
+size_small = true
+size_medium = false

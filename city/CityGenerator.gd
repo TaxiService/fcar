@@ -644,6 +644,9 @@ func _generate_buildings():
 			# Growth direction: UP for vertical pillars/floors to stack on connectors
 			var growth_dir = Vector3.UP
 
+			# Pass connector heading so buildings align with the connector
+			var connector_heading = atan2(dir_normalized.x, dir_normalized.z)
+
 			# Count blocks before
 			var before = building_generator.get_child_count()
 
@@ -651,7 +654,7 @@ func _generate_buildings():
 			var size_filter = crosslink_seed_size if not is_edge else edge_seed_size
 
 			# Grow building from this seed
-			building_generator._grow_from_seed(seed_pos, growth_dir, biome_idx, 0, size_filter)
+			building_generator._grow_from_seed(seed_pos, growth_dir, biome_idx, 0, size_filter, connector_heading)
 
 			# Count blocks placed
 			var placed = building_generator.get_child_count() - before
