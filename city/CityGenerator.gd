@@ -88,8 +88,21 @@ var used_edges: Dictionary = {}
 # Containers for generated geometry
 var spires_container: Node3D
 var connectors_container: Node3D
+var buildings_container: Node3D
 
+# Building generation
+@export_category("Buildings")
+@export var generate_buildings: bool = true
+@export var building_seed_spacing: float = 30.0  # Seed points every 30m along connectors
+@export var building_max_depth: int = 4  # Max blocks from seed
+@export var building_branch_chance: float = 0.3  # Chance to branch at each connection
 
+var building_generator: BuildingGenerator
+
+# Stored connector data for building generation: [{start, end, height, biome_idx}]
+var connector_data: Array[Dictionary] = []
+
+@export_category("Spawning")
 @export var spawn_fcar: bool = true
 @export var fcar_spawn_height: float = 500.0  # Spawn car at this height
 
@@ -133,6 +146,15 @@ func _create_containers():
 	connectors_container.name = "Connectors"
 	add_child(connectors_container)
 
+	buildings_container = Node3D.new()
+	buildings_container.name = "Buildings"
+	add_child(buildings_container)
+
+	# Create building generator
+	building_generator = BuildingGenerator.new()
+	building_generator.name = "BuildingGenerator"
+	buildings_container.add_child(building_generator)
+
 
 func generate_city():
 	print("CityGenerator: Starting city generation...")
@@ -154,6 +176,10 @@ func generate_city():
 	# Step 4: Create crosslink connectors within hexagons
 	_generate_crosslinks()
 
+	# Step 5: Generate buildings on connectors
+	if generate_buildings:
+		_generate_buildings()
+
 	print("CityGenerator: Done! Generated %d spires, %d edge connections, %d hexagons" % [spire_positions.size(), connector_edges.size(), hex_vertex_lists.size()])
 
 
@@ -163,11 +189,16 @@ func _clear_generated():
 	hex_vertex_lists.clear()
 	connector_edges.clear()
 	used_edges.clear()
+	connector_data.clear()
 
 	for child in spires_container.get_children():
 		child.queue_free()
 	for child in connectors_container.get_children():
 		child.queue_free()
+	# Clear buildings but keep the generator
+	for child in buildings_container.get_children():
+		if child != building_generator:
+			child.queue_free()
 
 
 func _generate_hex_grid():
@@ -350,6 +381,13 @@ func _generate_connectors():
 					connectors_container.add_child(connector)
 					connector_count += 1
 
+					# Store for building generation
+					connector_data.append({
+						"start": Vector3(start_pos.x, connector_y, start_pos.z),
+						"end": Vector3(end_pos.x, connector_y, end_pos.z),
+						"biome_idx": biome_idx
+					})
+
 	print("  Generated %d edge connector beams" % connector_count)
 
 
@@ -443,6 +481,13 @@ func _generate_crosslinks():
 					connectors_container.add_child(connector)
 					crosslink_count += 1
 
+					# Store for building generation
+					connector_data.append({
+						"start": Vector3(start_pos.x, connector_y, start_pos.z),
+						"end": Vector3(end_pos.x, connector_y, end_pos.z),
+						"biome_idx": biome_idx
+					})
+
 	print("  Generated %d crosslink beams (skipped %d overlaps)" % [crosslink_count, skipped_count])
 
 
@@ -529,6 +574,55 @@ func _create_ground_grid():
 
 	ground.position.y = -1  # Slightly below origin
 	add_child(ground)
+
+
+func _generate_buildings():
+	if not building_generator:
+		push_error("CityGenerator: BuildingGenerator not initialized")
+		return
+
+	# Configure generator
+	building_generator.max_growth_depth = building_max_depth
+	building_generator.branch_probability = building_branch_chance
+
+	var seed_count = 0
+	var building_count_before = buildings_container.get_child_count()
+
+	# Generate seed points at 30m intervals along each connector
+	for conn in connector_data:
+		var start: Vector3 = conn.start
+		var end: Vector3 = conn.end
+		var biome_idx: int = conn.biome_idx
+
+		var direction = end - start
+		var length = direction.length()
+		var dir_normalized = direction.normalized()
+
+		# Calculate seed points at building_seed_spacing intervals
+		# Skip first and last 30m (near spires)
+		var usable_length = length - spire_radius * 2 - building_seed_spacing * 2
+		if usable_length <= 0:
+			continue
+
+		var num_seeds = int(usable_length / building_seed_spacing)
+		var start_offset = spire_radius + building_seed_spacing
+
+		for i in range(num_seeds):
+			var t = start_offset + building_seed_spacing * (i + 0.5)
+			var seed_pos = start + dir_normalized * t
+
+			# Perpendicular direction for growth (alternate sides)
+			var up = Vector3.UP
+			var side = dir_normalized.cross(up).normalized()
+			if i % 2 == 1:
+				side = -side
+
+			# Grow building from this seed
+			building_generator._grow_from_seed(seed_pos, side, biome_idx, 0)
+			seed_count += 1
+
+	var buildings_created = buildings_container.get_child_count() - building_count_before
+	print("  Generated buildings from %d seed points (%d blocks placed)" % [seed_count, buildings_created])
 
 
 # Public API for regeneration
