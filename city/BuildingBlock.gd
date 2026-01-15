@@ -1,7 +1,6 @@
 # BuildingBlock.gd - Attach to root of each modular building block scene
-# Connection points are defined as child Marker3D nodes
-# Marker's -Z axis points outward (connection direction)
-# Name format: "Conn_GENDER_SIZE" e.g. "Conn_Socket_Medium", "Conn_Plug_Large"
+# Connection points are defined as child ConnectionPoint nodes (Marker3D with script)
+# Each ConnectionPoint has size flags and shows a visual cone in editor
 class_name BuildingBlock
 extends Node3D
 
@@ -10,17 +9,6 @@ enum BlockType {
 	FLOOR,       # Has surface where people can spawn
 	CAP,         # Decorative terminator (antenna, dome, etc.)
 	JUNCTION,    # Allows branching/sideways connections
-}
-
-enum ConnectorGender {
-	PLUG,    # Male - inserts into socket
-	SOCKET,  # Female - receives plug
-}
-
-enum ConnectorSize {
-	SMALL,   # Small connections (railings, antennas)
-	MEDIUM,  # Standard building connections
-	LARGE,   # Major structural connections
 }
 
 # Grid constants for alignment
@@ -38,45 +26,32 @@ const GRID_V: float = 2.5    # Vertical grid (heightlock compatible)
 @export var allowed_connections: Array[BlockType] = []  # Empty = allow all
 
 
-# Get all connection points defined as child Marker3D nodes
-func get_connection_points() -> Array[Dictionary]:
-	var points: Array[Dictionary] = []
+# Get all ConnectionPoint children
+func get_connection_points() -> Array[ConnectionPoint]:
+	var points: Array[ConnectionPoint] = []
 	for child in get_children():
-		if child is Marker3D and child.name.begins_with("Conn_"):
-			var parts = child.name.split("_")
-			if parts.size() >= 3:
-				points.append({
-					"node": child,
-					"position": child.position,
-					"direction": -child.basis.z.normalized(),  # -Z = outward
-					"gender": _parse_gender(parts[1]),
-					"size": _parse_size(parts[2]),
-					"used": false,
-				})
+		if child is ConnectionPoint:
+			points.append(child)
 	return points
 
 
-# Get only unused (available) connection points
-func get_available_connections() -> Array[Dictionary]:
-	return get_connection_points().filter(func(p): return not p.used)
+# Get connection points that haven't been used yet
+func get_available_connections() -> Array[ConnectionPoint]:
+	var available: Array[ConnectionPoint] = []
+	for point in get_connection_points():
+		if not point.get_meta("used", false):
+			available.append(point)
+	return available
 
 
-# Check if two connection points can connect
-static func can_connect(point_a: Dictionary, point_b: Dictionary) -> bool:
-	# Genders must be opposite (plug into socket)
-	if point_a.gender == point_b.gender:
-		return false
+# Mark a connection point as used
+func mark_connection_used(point: ConnectionPoint):
+	point.set_meta("used", true)
 
-	# Sizes must match
-	if point_a.size != point_b.size:
-		return false
 
-	# Directions must be roughly opposite (facing each other)
-	var dot = point_a.direction.dot(point_b.direction)
-	if dot > -0.9:  # Should be close to -1 (opposite directions)
-		return false
-
-	return true
+# Check if two connection points can connect (delegates to ConnectionPoint)
+static func can_connect(point_a: ConnectionPoint, point_b: ConnectionPoint) -> bool:
+	return point_a.is_compatible_with(point_b)
 
 
 # Snap a position to the building grid
@@ -107,31 +82,10 @@ static func snap_vertical(pos: Vector3) -> Vector3:
 
 
 # Get world position of a connection point
-func get_connection_world_position(point: Dictionary) -> Vector3:
-	return global_transform * point.position
+func get_connection_world_position(point: ConnectionPoint) -> Vector3:
+	return point.global_position
 
 
 # Get world direction of a connection point
-func get_connection_world_direction(point: Dictionary) -> Vector3:
-	return global_transform.basis * point.direction
-
-
-func _parse_gender(s: String) -> ConnectorGender:
-	match s.to_lower():
-		"plug": return ConnectorGender.PLUG
-		_: return ConnectorGender.SOCKET
-
-
-func _parse_size(s: String) -> ConnectorSize:
-	match s.to_lower():
-		"small": return ConnectorSize.SMALL
-		"large": return ConnectorSize.LARGE
-		_: return ConnectorSize.MEDIUM
-
-
-# Debug: draw connection points in editor
-func _draw_debug_connections():
-	for point in get_connection_points():
-		var color = Color.BLUE if point.gender == ConnectorGender.SOCKET else Color.RED
-		# Would need immediate geometry or debug draw here
-		pass
+func get_connection_world_direction(point: ConnectionPoint) -> Vector3:
+	return point.get_world_direction()
