@@ -1,6 +1,9 @@
 # ConnectionPoint.gd - Visual connection point for modular buildings
-# Attach to Marker3D nodes. Shows direction cone in editor.
-# The marker's -Z axis is the connection direction (outward).
+# Shows a colored cone in editor. Colors: Red=Small, Green=Medium, Blue=Large
+#
+# Direction convention: Cone points INWARD (into the block).
+# When two blocks connect, their connection points meet at the interface,
+# with cones pointing into their respective blocks (opposite directions).
 @tool
 class_name ConnectionPoint
 extends Marker3D
@@ -58,7 +61,7 @@ func _create_debug_cone():
 
 	# Rotate so cone points in -Z (the connection direction)
 	_cone_mesh.rotation.x = -PI / 2
-	_cone_mesh.position.z = -cone_length / 2
+	_cone_mesh.position.z = -(cone_length*2) + (cone_length/0.5)
 
 	# Material
 	var mat = StandardMaterial3D.new()
@@ -87,7 +90,7 @@ func _update_cone():
 	if cone:
 		cone.height = cone_length
 		cone.bottom_radius = cone_length * 0.3
-		_cone_mesh.position.z = -cone_length / 2
+		_cone_mesh.position.z = cone_length / 1
 
 	# Update color based on sizes enabled
 	var mat = _cone_mesh.material_override as StandardMaterial3D
@@ -96,12 +99,18 @@ func _update_cone():
 
 
 func _get_size_color() -> Color:
-	var enabled_count = int(size_small) + int(size_medium) + int(size_large)
-	match enabled_count:
-		1: return Color(0.2, 0.6, 1.0, 0.7)   # Blue - single
-		2: return Color(0.2, 1.0, 0.6, 0.7)   # Green - dual
-		3: return Color(1.0, 1.0, 0.2, 0.7)   # Yellow - all
-		_: return Color(1.0, 0.2, 0.2, 0.7)   # Red - none!
+	# RGB = Small/Medium/Large
+	# Red = small, Green = medium, Blue = large
+	# Combos blend naturally: S+M = yellow, M+L = cyan, S+L = magenta, all = white
+	var r = 1.0 if size_small else 0.15
+	var g = 1.0 if size_medium else 0.15
+	var b = 1.0 if size_large else 0.15
+
+	# If nothing enabled, dark red warning
+	if not size_small and not size_medium and not size_large:
+		return Color(0.4, 0.0, 0.0, 0.9)
+
+	return Color(r, g, b, 0.85)
 
 
 # Check if this point can connect to another
