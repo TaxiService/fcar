@@ -21,7 +21,7 @@ script = ExtResource("1_jbuvr")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5432281, 0)
 script = ExtResource("2_fkvty")
 enabled = true
-max_people = 23
+max_people = 7
 color_set_index = 2
 bounds_size = Vector3(30, 0, 30)
 

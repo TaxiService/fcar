@@ -21,7 +21,7 @@ script = ExtResource("1_2l77p")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5432281, 0)
 script = ExtResource("2_c3me5")
 enabled = true
-max_people = 69
+max_people = 21
 bounds_size = Vector3(80, 0, 25)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]

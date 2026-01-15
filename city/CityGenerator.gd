@@ -641,11 +641,8 @@ func _generate_buildings():
 			var t = start_offset + building_seed_spacing * i
 			var seed_pos = start + dir_normalized * t
 
-			# Perpendicular direction for growth (alternate sides)
-			var up = Vector3.UP
-			var side = dir_normalized.cross(up).normalized()
-			if i % 2 == 1:
-				side = -side
+			# Growth direction: UP for vertical pillars/floors to stack on connectors
+			var growth_dir = Vector3.UP
 
 			# Count blocks before
 			var before = building_generator.get_child_count()
@@ -654,7 +651,7 @@ func _generate_buildings():
 			var size_filter = crosslink_seed_size if not is_edge else edge_seed_size
 
 			# Grow building from this seed
-			building_generator._grow_from_seed(seed_pos, side, biome_idx, 0, size_filter)
+			building_generator._grow_from_seed(seed_pos, growth_dir, biome_idx, 0, size_filter)
 
 			# Count blocks placed
 			var placed = building_generator.get_child_count() - before

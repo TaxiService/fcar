@@ -20,6 +20,7 @@ var block_data: Array[Dictionary] = []  # Cached block info for quick filtering
 
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _blocks_placed: int = 0  # Counter for hard limit
+var _recursion_count: int = 0  # Debug counter for catching infinite loops
 
 
 func _ready():
@@ -28,9 +29,11 @@ func _ready():
 
 func reset_counter():
 	_blocks_placed = 0
+	_recursion_count = 0
 
 
 func _load_block_library():
+	print("BuildingGenerator: Loading blocks from %s..." % blocks_folder)
 	block_library.clear()
 	block_data.clear()
 
@@ -44,6 +47,7 @@ func _load_block_library():
 	while file_name != "":
 		if file_name.ends_with(".tscn"):
 			var path = blocks_folder + file_name
+			print("  Loading: %s" % file_name)
 			var scene = load(path) as PackedScene
 			if scene:
 				block_library.append(scene)
@@ -75,7 +79,7 @@ func _load_block_library():
 				instance.queue_free()
 		file_name = dir.get_next()
 
-	print("BuildingGenerator: Loaded %d blocks from %s" % [block_library.size(), blocks_folder])
+	print("BuildingGenerator: Loaded %d blocks" % block_library.size())
 	for data in block_data:
 		print("  - %s (type=%d, connections=%d)" % [data.path.get_file(), data.type, data.connection_count])
 
@@ -104,8 +108,13 @@ func generate_on_connector(start_pos: Vector3, end_pos: Vector3, biome_idx: int)
 
 
 # Grow a building structure from a seed point
-# size_filter: "small", "medium", "large", or "any" - only used at depth 0
+# size_filter: "small", "medium", "large", or "any" - used at all depths
 func _grow_from_seed(position: Vector3, direction: Vector3, biome_idx: int, depth: int, size_filter: String = "any"):
+	_recursion_count += 1
+	if _recursion_count > 10000:
+		push_error("BuildingGenerator: Recursion limit hit!")
+		return
+
 	# Hard limits
 	if depth >= max_growth_depth:
 		return
@@ -117,8 +126,8 @@ func _grow_from_seed(position: Vector3, direction: Vector3, biome_idx: int, dept
 	if valid_blocks.is_empty():
 		return
 
-	# At depth 0, filter by required connection size (uses cached data)
-	if depth == 0 and size_filter != "any":
+	# Filter by required connection size (uses cached data)
+	if size_filter != "any":
 		valid_blocks = valid_blocks.filter(func(b):
 			match size_filter:
 				"small": return b.has_small
@@ -156,7 +165,7 @@ func _grow_from_seed(position: Vector3, direction: Vector3, biome_idx: int, dept
 	else:
 		# Find a connection point that can connect (matching size, compatible direction)
 		var target_dir = -direction  # We want to connect TO the seed
-		var anchor = _find_compatible_connection(connections, target_dir, size_filter if depth == 0 else "any")
+		var anchor = _find_compatible_connection(connections, target_dir, size_filter)
 
 		if anchor == null:
 			# No compatible connection - remove block and abort
@@ -175,7 +184,15 @@ func _grow_from_seed(position: Vector3, direction: Vector3, biome_idx: int, dept
 			var world_pos = block_instance.get_connection_world_position(conn)
 			var world_dir = block_instance.get_connection_world_direction(conn)
 			block_instance.mark_connection_used(conn)
-			_grow_from_seed(world_pos, world_dir, biome_idx, depth + 1)
+			# Determine size filter from parent connection (use largest available)
+			var child_size_filter = "any"
+			if conn.size_large:
+				child_size_filter = "large"
+			elif conn.size_medium:
+				child_size_filter = "medium"
+			elif conn.size_small:
+				child_size_filter = "small"
+			_grow_from_seed(world_pos, world_dir, biome_idx, depth + 1, child_size_filter)
 
 
 # Find a connection point that matches size and can align with target direction
@@ -221,16 +238,21 @@ func _find_compatible_connection(connections: Array[ConnectionPoint], target_dir
 # Align a block so its connection point is at target_pos facing target_dir
 # Only rotates around Y axis - connection point markers encode their own angles
 func _align_block_to_direction(block: BuildingBlock, conn: ConnectionPoint, target_pos: Vector3, target_dir: Vector3):
-	# Get Y-angle of target direction (where we're connecting FROM)
-	var target_yaw = atan2(target_dir.x, target_dir.z)
+	# target_dir points from parent TOWARD child position (= -direction passed to _grow_from_seed)
+	# Child's connection INWARD direction (cone) should point INTO child = same as target_dir
+	# This ensures child is positioned BEYOND the connection point, not inside parent
 
-	# Get Y-angle of connection point's local direction
-	var conn_local_dir = -conn.basis.z  # Connection points face inward, so negate
-	var conn_yaw = atan2(conn_local_dir.x, conn_local_dir.z)
+	# Get horizontal components for Y-rotation calculation
+	var target_horiz = Vector2(target_dir.x, target_dir.z)
+	var conn_local_dir = -conn.basis.z  # Local inward direction
+	var conn_horiz = Vector2(conn_local_dir.x, conn_local_dir.z)
 
-	# Rotate block around Y to align connection with target
-	# We want conn direction to face OPPOSITE to target (they meet in the middle)
-	block.rotation.y = target_yaw - conn_yaw + PI
+	# Only rotate if there's meaningful horizontal component (skip for pure vertical)
+	if target_horiz.length() > 0.1 and conn_horiz.length() > 0.1:
+		var target_yaw = atan2(target_dir.x, target_dir.z)
+		var conn_yaw = atan2(conn_local_dir.x, conn_local_dir.z)
+		block.rotation.y = target_yaw - conn_yaw
+	# For vertical connections, keep default rotation (no Y rotation needed)
 
 	# Position block so connection point lands at target_pos
 	var rotated_offset = block.basis * conn.position

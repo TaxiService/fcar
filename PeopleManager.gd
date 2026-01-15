@@ -256,7 +256,12 @@ func get_random_point_on_surface(surface: SpawnSurface) -> Vector3:
 
 
 func _try_spawn_on_surfaces():
+	# Clean up stale references (surfaces from freed building blocks)
+	registered_surfaces = registered_surfaces.filter(func(s): return is_instance_valid(s))
+
 	for surface in registered_surfaces:
+		if not surface.enabled:
+			continue
 		if surface.can_spawn_more():
 			# Decide: spawn solo person or group?
 			var wants_destination = randf() < spawn_with_destination_chance
