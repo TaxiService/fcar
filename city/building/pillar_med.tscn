@@ -1,0 +1,32 @@
+[gd_scene load_steps=6 format=3 uid="uid://3g4er5rdumw4"]
+
+[ext_resource type="Script" uid="uid://cmafag82uyxu7" path="res://city/BuildingBlock.gd" id="1_it6v4"]
+[ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://city/ConnectionPoint.gd" id="3_1hy1k"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_5dwv6"]
+size = Vector3(5, 15, 5)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_c3qcp"]
+albedo_color = Color(0.160784, 0.184314, 0.156863, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_nrjh1"]
+material = SubResource("StandardMaterial3D_c3qcp")
+size = Vector3(5, 15, 5)
+
+[node name="FloorSmall5" type="StaticBody3D"]
+script = ExtResource("1_it6v4")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("BoxShape3D_5dwv6")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+mesh = SubResource("BoxMesh_nrjh1")
+
+[node name="Conn_Plug_Large" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, -7.5, 0)
+script = ExtResource("3_1hy1k")
+
+[node name="Conn_Plug_Large2" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 7.5, 0)
+script = ExtResource("3_1hy1k")
+size_small = true

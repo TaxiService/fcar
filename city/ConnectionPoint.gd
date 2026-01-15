@@ -90,7 +90,7 @@ func _update_cone():
 	if cone:
 		cone.height = cone_length
 		cone.bottom_radius = cone_length * 0.3
-		_cone_mesh.position.z = cone_length / 1
+		_cone_mesh.position.z = -(cone_length*2) + (cone_length/0.5)
 
 	# Update color based on sizes enabled
 	var mat = _cone_mesh.material_override as StandardMaterial3D

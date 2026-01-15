@@ -1,6 +1,7 @@
-[gd_scene load_steps=8 format=3 uid="uid://c8xqj5kvmyxrf"]
+[gd_scene load_steps=9 format=3 uid="uid://c8xqj5kvmyxrf"]
 
 [ext_resource type="Script" uid="uid://crluh2jxfkkv4" path="res://city/CityGenerator.gd" id="1_generator"]
+[ext_resource type="Script" uid="uid://dvu3f10fe6r2" path="res://PeopleManager.gd" id="1_yage8"]
 [ext_resource type="Script" uid="uid://3q1pdbpv0cvt" path="res://city/FreeCam.gd" id="2_freecam"]
 [ext_resource type="PackedScene" uid="uid://cycok6yqmtjes" path="res://f_car.tscn" id="2_tegu2"]
 [ext_resource type="Script" uid="uid://313aqakyo1m1" path="res://Camera3D.gd" id="3_yage8"]
@@ -39,6 +40,9 @@ volumetric_fog_length = 2500.0
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Environment_main")
 
+[node name="PeopleManager" type="Node" parent="."]
+script = ExtResource("1_yage8")
+
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
 transform = Transform3D(0.866, -0.25, 0.433, 0, 0.866, 0.5, -0.5, -0.433, 0.75, 0, 1000, 0)
 light_energy = 1.2
@@ -50,6 +54,8 @@ script = ExtResource("1_generator")
 hex_edge_length = 420.0
 grid_rings = 3
 spire_radius = 30.0
+building_branch_chance = 0.3
+building_max_total = 420
 fcar_spawn_height = 1750.0
 
 [node name="Camera3D" type="Camera3D" parent="." node_paths=PackedStringArray("target")]
