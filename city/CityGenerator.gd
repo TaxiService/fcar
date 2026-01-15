@@ -98,6 +98,8 @@ var buildings_container: Node3D
 @export var building_max_depth: int = 3  # Max blocks from seed
 @export var building_branch_chance: float = 0.2  # Chance to branch at each connection
 @export var building_max_total: int = 200  # Hard limit on total building blocks
+@export var buildings_on_crosslinks: bool = true  # Spawn on crosslinks (internal connectors)
+@export var buildings_on_edges: bool = false  # Spawn on edge connectors
 
 var building_generator: BuildingGenerator
 
@@ -387,7 +389,8 @@ func _generate_connectors():
 					connector_data.append({
 						"start": Vector3(start_pos.x, connector_y, start_pos.z),
 						"end": Vector3(end_pos.x, connector_y, end_pos.z),
-						"biome_idx": biome_idx
+						"biome_idx": biome_idx,
+						"is_edge": true
 					})
 
 	print("  Generated %d edge connector beams" % connector_count)
@@ -487,7 +490,8 @@ func _generate_crosslinks():
 					connector_data.append({
 						"start": Vector3(start_pos.x, connector_y, start_pos.z),
 						"end": Vector3(end_pos.x, connector_y, end_pos.z),
-						"biome_idx": biome_idx
+						"biome_idx": biome_idx,
+						"is_edge": false
 					})
 
 	print("  Generated %d crosslink beams (skipped %d overlaps)" % [crosslink_count, skipped_count])
@@ -599,6 +603,13 @@ func _generate_buildings():
 		# Check total limit
 		if blocks_placed >= building_max_total:
 			break
+
+		# Filter by connector type
+		var is_edge: bool = conn.get("is_edge", true)
+		if is_edge and not buildings_on_edges:
+			continue
+		if not is_edge and not buildings_on_crosslinks:
+			continue
 
 		var start: Vector3 = conn.start
 		var end: Vector3 = conn.end

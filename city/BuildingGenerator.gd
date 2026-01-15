@@ -147,20 +147,21 @@ func _grow_from_seed(position: Vector3, direction: Vector3, biome_idx: int, dept
 
 
 # Align a block so its connection point is at target_pos facing target_dir
+# Only rotates around Y axis - connection point markers encode their own angles
 func _align_block_to_direction(block: BuildingBlock, conn: ConnectionPoint, target_pos: Vector3, target_dir: Vector3):
-	# Get connection's local offset from block origin
-	var local_offset = conn.position
+	# Get Y-angle of target direction (where we're connecting FROM)
+	var target_yaw = atan2(target_dir.x, target_dir.z)
 
-	# Calculate rotation to align connection direction with target
-	var conn_local_dir = -conn.basis.z  # Connection's forward direction
-	var rotation_axis = conn_local_dir.cross(target_dir)
+	# Get Y-angle of connection point's local direction
+	var conn_local_dir = -conn.basis.z  # Connection points face inward, so negate
+	var conn_yaw = atan2(conn_local_dir.x, conn_local_dir.z)
 
-	if rotation_axis.length() > 0.001:
-		var angle = conn_local_dir.angle_to(target_dir)
-		block.rotate(rotation_axis.normalized(), angle)
+	# Rotate block around Y to align connection with target
+	# We want conn direction to face OPPOSITE to target (they meet in the middle)
+	block.rotation.y = target_yaw - conn_yaw + PI
 
 	# Position block so connection point lands at target_pos
-	var rotated_offset = block.basis * local_offset
+	var rotated_offset = block.basis * conn.position
 	block.global_position = target_pos - rotated_offset
 
 
