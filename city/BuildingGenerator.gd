@@ -149,15 +149,22 @@ func _grow_from_seed(position: Vector3, direction: Vector3, biome_idx: int, dept
 	add_child(block_instance)
 	_blocks_placed += 1
 
-	# Position the block - align first available connection to seed point
+	# Position the block - find a compatible connection point to anchor
 	var connections = block_instance.get_connection_points()
 	if connections.is_empty():
 		block_instance.global_position = position
 	else:
-		# Use first connection point as anchor
-		var anchor = connections[0]
-		# Rotate block to align connection with incoming direction
+		# Find a connection point that can connect (matching size, compatible direction)
 		var target_dir = -direction  # We want to connect TO the seed
+		var anchor = _find_compatible_connection(connections, target_dir, size_filter if depth == 0 else "any")
+
+		if anchor == null:
+			# No compatible connection - remove block and abort
+			block_instance.queue_free()
+			_blocks_placed -= 1
+			return
+
+		# Rotate block to align connection with incoming direction
 		_align_block_to_direction(block_instance, anchor, position, target_dir)
 		block_instance.mark_connection_used(anchor)
 
@@ -169,6 +176,46 @@ func _grow_from_seed(position: Vector3, direction: Vector3, biome_idx: int, dept
 			var world_dir = block_instance.get_connection_world_direction(conn)
 			block_instance.mark_connection_used(conn)
 			_grow_from_seed(world_pos, world_dir, biome_idx, depth + 1)
+
+
+# Find a connection point that matches size and can align with target direction
+func _find_compatible_connection(connections: Array[ConnectionPoint], target_dir: Vector3, size_filter: String) -> ConnectionPoint:
+	# Target direction is where we're coming FROM (the parent's outward direction)
+	# We need a connection that faces roughly opposite (since cones point inward)
+	# After Y-rotation, the connection should face opposite to target_dir
+
+	for conn in connections:
+		# Check size compatibility
+		if size_filter != "any":
+			var size_ok = false
+			match size_filter:
+				"small": size_ok = conn.size_small
+				"medium": size_ok = conn.size_medium
+				"large": size_ok = conn.size_large
+			if not size_ok:
+				continue
+
+		# Check direction compatibility
+		# Connection points face INWARD, so -Z of the marker points into the block
+		# We need to check if this connection can be rotated (Y-only) to face target_dir
+		var conn_dir = -conn.basis.z  # Local direction the connection faces
+
+		# For Y-only rotation, we can only align if both directions are mostly horizontal
+		# Check if the connection direction has a significant vertical component
+		var conn_vertical = abs(conn_dir.y)
+		var target_vertical = abs(target_dir.y)
+
+		# If connection is mostly vertical (pointing up/down), it can only connect to vertical targets
+		# If connection is mostly horizontal, it can only connect to horizontal targets
+		if conn_vertical > 0.7 and target_vertical < 0.3:
+			continue  # Vertical connection can't match horizontal target
+		if conn_vertical < 0.3 and target_vertical > 0.7:
+			continue  # Horizontal connection can't match vertical target
+
+		# This connection is compatible
+		return conn
+
+	return null
 
 
 # Align a block so its connection point is at target_pos facing target_dir
