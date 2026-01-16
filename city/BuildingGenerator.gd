@@ -23,9 +23,18 @@ var _blocks_placed: int = 0  # Counter for hard limit
 var _recursion_count: int = 0  # Debug counter for catching infinite loops
 var _placed_aabbs: Array[AABB] = []  # Track placed block bounds for overlap detection
 
+# Debug counters
+var _overlap_rejects: int = 0
+var _no_anchor_rejects: int = 0
+var _size_filter_rejects: int = 0
+var _max_depth_reached: int = 0
+
 @export_category("Overlap Detection")
 @export var check_overlaps: bool = true  # Enable/disable overlap checking
 @export var overlap_margin: float = 1.0  # Shrink AABBs by this much to allow slight overlaps
+
+@export_category("Connection Matching")
+@export var check_direction: bool = false  # Require vertical/horizontal direction match (disable for Y-rotatable blocks)
 
 
 func _ready():
@@ -36,6 +45,19 @@ func reset_counter():
 	_blocks_placed = 0
 	_recursion_count = 0
 	_placed_aabbs.clear()
+	_overlap_rejects = 0
+	_no_anchor_rejects = 0
+	_size_filter_rejects = 0
+	_max_depth_reached = 0
+
+
+func print_debug_stats():
+	print("BuildingGenerator stats:")
+	print("  Blocks placed: %d" % _blocks_placed)
+	print("  Overlap rejects: %d" % _overlap_rejects)
+	print("  No anchor rejects: %d" % _no_anchor_rejects)
+	print("  Size filter rejects: %d" % _size_filter_rejects)
+	print("  Max depth reached: %d times" % _max_depth_reached)
 
 
 func _load_block_library():
@@ -124,6 +146,7 @@ func _grow_from_seed(position: Vector3, direction: Vector3, biome_idx: int, dept
 
 	# Hard limits
 	if depth >= max_growth_depth:
+		_max_depth_reached += 1
 		return
 	if _blocks_placed >= max_blocks_total:
 		return
@@ -143,6 +166,7 @@ func _grow_from_seed(position: Vector3, direction: Vector3, biome_idx: int, dept
 				_: return true
 		)
 		if valid_blocks.is_empty():
+			_size_filter_rejects += 1
 			return
 
 	# Weight selection towards floors if we're deep in the structure
@@ -186,6 +210,7 @@ func _grow_from_seed(position: Vector3, direction: Vector3, biome_idx: int, dept
 			# No compatible connection - remove block and abort
 			block_instance.queue_free()
 			_blocks_placed -= 1
+			_no_anchor_rejects += 1
 			return
 
 		# Rotate block to align connection with incoming direction
@@ -198,6 +223,7 @@ func _grow_from_seed(position: Vector3, direction: Vector3, biome_idx: int, dept
 			if _overlaps_existing(block_aabb):
 				block_instance.queue_free()
 				_blocks_placed -= 1
+				_overlap_rejects += 1
 				return
 			_placed_aabbs.append(block_aabb)
 		elif check_overlaps:
@@ -254,22 +280,21 @@ func _find_compatible_connection(connections: Array[ConnectionPoint], target_dir
 			if not size_ok:
 				continue
 
-		# Check direction compatibility
-		# Connection points face INWARD, so -Z of the marker points into the block
-		# We need to check if this connection can be rotated (Y-only) to face target_dir
-		var conn_dir = -conn.basis.z  # Local direction the connection faces
+		# Check direction compatibility (optional - disable for Y-rotatable block designs)
+		if check_direction:
+			# Connection points face INWARD, so -Z of the marker points into the block
+			var conn_dir = -conn.basis.z  # Local direction the connection faces
 
-		# For Y-only rotation, we can only align if both directions are mostly horizontal
-		# Check if the connection direction has a significant vertical component
-		var conn_vertical = abs(conn_dir.y)
-		var target_vertical = abs(target_dir.y)
+			# For Y-only rotation, we can only align if both directions are mostly horizontal
+			var conn_vertical = abs(conn_dir.y)
+			var target_vertical = abs(target_dir.y)
 
-		# If connection is mostly vertical (pointing up/down), it can only connect to vertical targets
-		# If connection is mostly horizontal, it can only connect to horizontal targets
-		if conn_vertical > 0.7 and target_vertical < 0.3:
-			continue  # Vertical connection can't match horizontal target
-		if conn_vertical < 0.3 and target_vertical > 0.7:
-			continue  # Horizontal connection can't match vertical target
+			# If connection is mostly vertical (pointing up/down), it can only connect to vertical targets
+			# If connection is mostly horizontal, it can only connect to horizontal targets
+			if conn_vertical > 0.7 and target_vertical < 0.3:
+				continue  # Vertical connection can't match horizontal target
+			if conn_vertical < 0.3 and target_vertical > 0.7:
+				continue  # Horizontal connection can't match vertical target
 
 		# This connection is compatible
 		return conn

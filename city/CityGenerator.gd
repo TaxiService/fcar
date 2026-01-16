@@ -600,8 +600,12 @@ func _generate_buildings():
 
 	print("  Starting building generation (max %d blocks)..." % building_max_total)
 
+	# Shuffle connector order so all biomes get fair access to block budget
+	var shuffled_connectors = connector_data.duplicate()
+	shuffled_connectors.shuffle()
+
 	# Generate seed points along each connector
-	for conn in connector_data:
+	for conn in shuffled_connectors:
 		# Check total limit
 		if blocks_placed >= building_max_total:
 			break
@@ -662,6 +666,7 @@ func _generate_buildings():
 			seed_count += 1
 
 	print("  Generated %d blocks from %d seeds" % [blocks_placed, seed_count])
+	building_generator.print_debug_stats()
 
 
 # Public API for regeneration

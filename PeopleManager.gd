@@ -44,6 +44,9 @@ extends Node
 @export_category("Color Sets")
 @export_dir var color_sets_folder: String = "res://color_sets"
 
+@export_category("Debug")
+@export var verbose_logging: bool = false  # Print individual spawn messages
+
 # Loaded color sets (populated from text files)
 var color_sets: Array[PackedColorArray] = []
 
@@ -89,11 +92,14 @@ func _load_color_sets():
 		var colors = _parse_color_file(color_sets_folder + "/" + fname)
 		if colors.size() > 0:
 			color_sets.append(colors)
-			print("PeopleManager: Loaded color set '", fname, "' with ", colors.size(), " colors")
+			if verbose_logging:
+				print("PeopleManager: Loaded color set '", fname, "' with ", colors.size(), " colors")
 
 	if color_sets.size() == 0:
 		push_warning("PeopleManager: No color sets loaded, adding default")
 		color_sets.append(PackedColorArray([Color.BLACK]))
+
+	print("PeopleManager: Loaded %d color sets" % color_sets.size())
 
 
 func _parse_color_file(path: String) -> PackedColorArray:
@@ -204,7 +210,6 @@ func reload_sprites():
 func register_surface(surface: SpawnSurface):
 	if surface not in registered_surfaces:
 		registered_surfaces.append(surface)
-		print("PeopleManager: Registered spawn surface")
 
 
 func unregister_surface(surface: SpawnSurface):
@@ -214,7 +219,8 @@ func unregister_surface(surface: SpawnSurface):
 func register_poi(poi: PointOfInterest):
 	if poi not in registered_pois:
 		registered_pois.append(poi)
-		print("PeopleManager: Registered POI '", poi.poi_name, "'")
+		if verbose_logging:
+			print("PeopleManager: Registered POI '", poi.poi_name, "'")
 
 
 func unregister_poi(poi: PointOfInterest):
@@ -327,7 +333,8 @@ func _spawn_group_on_surface(surface: SpawnSurface, group_size: int):
 			person.in_a_hurry = true
 			person.hurry_timer = hurry_time
 
-	print("Group ", group_id, " spawned with ", group_members.size(), " members. In a hurry: ", is_hurry)
+	if verbose_logging:
+		print("Group ", group_id, " spawned with ", group_members.size(), " members. In a hurry: ", is_hurry)
 
 
 func _find_valid_destination(person: Person, _source_surface: SpawnSurface) -> Node:
@@ -431,7 +438,8 @@ func _assign_destination(person: Person, source_surface: SpawnSurface):
 		dest_name = "another person"
 	elif target is PointOfInterest:
 		dest_name = "POI: " + target.poi_name
-	print("Solo person spawned with destination: ", dest_name, " | In a hurry: ", person.in_a_hurry)
+	if verbose_logging:
+		print("Solo person spawned with destination: ", dest_name, " | In a hurry: ", person.in_a_hurry)
 
 
 func spawn_person_at(position: Vector3, bounds_min: Vector3 = Vector3.ZERO, bounds_max: Vector3 = Vector3.ZERO) -> Person:
@@ -500,5 +508,7 @@ func print_status():
 	print("  Sprites loaded: ", spritesheet.get_frame_count() if spritesheet else 0)
 	print("  Registered surfaces: ", registered_surfaces.size())
 	print("  Active people: ", get_people_count())
-	for surface in registered_surfaces:
-		print("    Surface enabled=", surface.enabled, " people=", surface.get_people_count(), "/", surface.max_people)
+	if verbose_logging:
+		for surface in registered_surfaces:
+			if is_instance_valid(surface):
+				print("    Surface enabled=", surface.enabled, " people=", surface.get_people_count(), "/", surface.max_people)

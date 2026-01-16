@@ -1,9 +1,10 @@
-[gd_scene load_steps=7 format=3 uid="uid://cvcd05trq83yw"]
+[gd_scene load_steps=9 format=3 uid="uid://cvcd05trq83yw"]
 
 [ext_resource type="Script" uid="uid://cmafag82uyxu7" path="res://city/BuildingBlock.gd" id="1_kcqwc"]
 [ext_resource type="Script" uid="uid://c72sj768vn5do" path="res://SpawnSurface.gd" id="2_eng5m"]
 [ext_resource type="Material" uid="uid://d1752hlai3xtn" path="res://mats/floor.tres" id="3_yna4i"]
 [ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://city/ConnectionPoint.gd" id="4_j0ed5"]
+[ext_resource type="Material" uid="uid://c84qehqsj2tk1" path="res://mats/floor_small.tres" id="5_eng5m"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_5dwv6"]
 size = Vector3(10, 5, 10)
@@ -11,6 +12,12 @@ size = Vector3(10, 5, 10)
 [sub_resource type="BoxMesh" id="BoxMesh_nrjh1"]
 material = ExtResource("3_yna4i")
 size = Vector3(10, 5, 10)
+
+[sub_resource type="TorusMesh" id="TorusMesh_yna4i"]
+inner_radius = 3.105
+outer_radius = 5.0
+rings = 5
+ring_segments = 3
 
 [node name="FloorSmall5" type="StaticBody3D"]
 script = ExtResource("1_kcqwc")
@@ -44,3 +51,8 @@ transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0
 script = ExtResource("4_j0ed5")
 size_small = true
 size_medium = false
+
+[node name="MeshInstance3D2" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 3.48, 5)
+mesh = SubResource("TorusMesh_yna4i")
+surface_material_override/0 = ExtResource("5_eng5m")

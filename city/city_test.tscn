@@ -52,11 +52,34 @@ directional_shadow_max_distance = 10000.0
 [node name="CityGenerator" type="Node3D" parent="."]
 script = ExtResource("1_generator")
 hex_edge_length = 420.0
+grid_rings = 3
 spire_radius = 30.0
-building_seed_spacing = 120.0
-building_max_depth = 8
+biome_crosslink_patterns = Array[Dictionary]([{
+"empty": 0.5,
+"full": 1.0
+}, {
+"empty": 1.5,
+"rect": 1.0,
+"single": 1.0,
+"tri-norm": 0.5,
+"tri-strk": 0.5
+}, {
+"cross": 1.0,
+"dagger": 0.5,
+"dagger_strk": 0.5,
+"empty": 1.0,
+"single": 1.0
+}, {
+"cross": 0.5,
+"dagger_strk": 0.5,
+"empty": 2.5,
+"kite": 1.0,
+"zed_strk": 1.0
+}])
+building_seed_spacing = 60.0
+building_max_depth = 7
 building_branch_chance = 0.5
-building_max_total = 420
+building_max_total = 1260
 spawn_fcar = false
 fcar_spawn_height = 1750.0
 

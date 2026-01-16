@@ -1,9 +1,10 @@
-[gd_scene load_steps=7 format=3 uid="uid://5wk70s313e55"]
+[gd_scene load_steps=9 format=3 uid="uid://5wk70s313e55"]
 
 [ext_resource type="Script" uid="uid://cmafag82uyxu7" path="res://city/BuildingBlock.gd" id="1_jbuvr"]
 [ext_resource type="Script" uid="uid://c72sj768vn5do" path="res://SpawnSurface.gd" id="2_fkvty"]
 [ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://city/ConnectionPoint.gd" id="3_ivjda"]
 [ext_resource type="Material" uid="uid://d1752hlai3xtn" path="res://mats/floor.tres" id="3_n62i2"]
+[ext_resource type="Material" uid="uid://c84qehqsj2tk1" path="res://mats/floor_small.tres" id="5_yal8c"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_5dwv6"]
 size = Vector3(30, 5, 30)
@@ -11,6 +12,10 @@ size = Vector3(30, 5, 30)
 [sub_resource type="BoxMesh" id="BoxMesh_nrjh1"]
 material = ExtResource("3_n62i2")
 size = Vector3(30, 5, 30)
+
+[sub_resource type="BoxMesh" id="BoxMesh_l0srl"]
+material = ExtResource("5_yal8c")
+size = Vector3(1, 2, 1)
 
 [node name="FloorSmall5" type="StaticBody3D"]
 script = ExtResource("1_jbuvr")
@@ -55,3 +60,7 @@ transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0
 script = ExtResource("3_ivjda")
 size_small = true
 is_plug = false
+
+[node name="MeshInstance3D2" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -13, 3.5, -13)
+mesh = SubResource("BoxMesh_l0srl")

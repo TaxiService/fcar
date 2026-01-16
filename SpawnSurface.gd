@@ -117,23 +117,39 @@ func _find_in_tree(node: Node) -> Node:
 
 
 func get_bounds_world() -> Dictionary:
-	# Returns world-space min/max bounds
+	# Returns world-space AABB by transforming all 4 corners
+	# This gives a bounding box that contains the rotated surface
 	var half_size = bounds_size / 2.0
-	var center = global_position
+	var corners: Array[Vector3] = [
+		global_transform * Vector3(-half_size.x, 0, -half_size.z),
+		global_transform * Vector3(half_size.x, 0, -half_size.z),
+		global_transform * Vector3(-half_size.x, 0, half_size.z),
+		global_transform * Vector3(half_size.x, 0, half_size.z),
+	]
 
-	return {
-		"min": Vector3(center.x - half_size.x, center.y, center.z - half_size.z),
-		"max": Vector3(center.x + half_size.x, center.y, center.z + half_size.z)
-	}
+	var min_pos = corners[0]
+	var max_pos = corners[0]
+	for corner in corners:
+		min_pos.x = min(min_pos.x, corner.x)
+		min_pos.y = min(min_pos.y, corner.y)
+		min_pos.z = min(min_pos.z, corner.z)
+		max_pos.x = max(max_pos.x, corner.x)
+		max_pos.y = max(max_pos.y, corner.y)
+		max_pos.z = max(max_pos.z, corner.z)
+
+	return {"min": min_pos, "max": max_pos}
 
 
 func get_random_spawn_position() -> Vector3:
-	var bounds = get_bounds_world()
-	return Vector3(
-		randf_range(bounds.min.x, bounds.max.x),
-		global_position.y + spawn_height_offset,
-		randf_range(bounds.min.z, bounds.max.z)
+	# Generate random position in LOCAL space, then transform to world
+	var half_size = bounds_size / 2.0
+	var local_pos = Vector3(
+		randf_range(-half_size.x, half_size.x),
+		spawn_height_offset,
+		randf_range(-half_size.z, half_size.z)
 	)
+	# Transform to world space (respects rotation)
+	return global_transform * local_pos
 
 
 func can_spawn_more() -> bool:

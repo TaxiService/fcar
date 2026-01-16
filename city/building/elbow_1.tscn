@@ -69,7 +69,7 @@ is_socket = false
 ignores_collision = true
 
 [node name="Conn_Plug_Large2" type="Marker3D" parent="."]
-transform = Transform3D(-4.371139e-08, 1, 4.371139e-08, 0, -4.371139e-08, 1, 1, 4.371139e-08, 1.9106855e-15, -19.999998, 17.5, -8.7422785e-07)
+transform = Transform3D(-1, 8.742278e-08, 0, 3.821371e-15, 4.371139e-08, 1, 8.742278e-08, 1, -4.371139e-08, -19.999998, 17.5, -8.7422785e-07)
 script = ExtResource("4_in80i")
 size_medium = false
 size_large = true
