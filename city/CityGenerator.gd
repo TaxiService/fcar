@@ -110,7 +110,7 @@ var connector_data: Array[Dictionary] = []
 
 @export_category("Spawning")
 @export var spawn_fcar: bool = true
-@export var fcar_spawn_height: float = 500.0  # Spawn car at this height
+@export var fcar_spawn_height: float = 1660.0  # Spawn car at this height
 
 func _ready():
 	_create_containers()
@@ -125,7 +125,7 @@ func _ready():
 
 func _try_spawn_fcar():
 	# Look for FCar scene (user needs to save it from main.tscn first)
-	var fcar_path = "res://FCar.tscn"
+	var fcar_path = "res://f_car.tscn"
 	if ResourceLoader.exists(fcar_path):
 		var fcar_scene = load(fcar_path)
 		var fcar = fcar_scene.instantiate()

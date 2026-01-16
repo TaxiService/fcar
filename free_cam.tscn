@@ -1,0 +1,10 @@
+[gd_scene load_steps=2 format=3 uid="uid://ctktauacq45qg"]
+
+[ext_resource type="Script" uid="uid://3q1pdbpv0cvt" path="res://FreeCam.gd" id="1_y1vnx"]
+
+[node name="FreeCam" type="Camera3D"]
+transform = Transform3D(1, 0, 0, 0, 0.965, 0.259, 0, -0.259, 0.965, 0, 0, 0)
+visible = false
+far = 50000.0
+script = ExtResource("1_y1vnx")
+move_speed = 200.0

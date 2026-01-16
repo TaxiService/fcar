@@ -1,10 +1,8 @@
-[gd_scene load_steps=9 format=3 uid="uid://c8xqj5kvmyxrf"]
+[gd_scene load_steps=7 format=3 uid="uid://c8xqj5kvmyxrf"]
 
 [ext_resource type="Script" uid="uid://crluh2jxfkkv4" path="res://city/CityGenerator.gd" id="1_generator"]
 [ext_resource type="Script" uid="uid://dvu3f10fe6r2" path="res://PeopleManager.gd" id="1_yage8"]
-[ext_resource type="Script" uid="uid://3q1pdbpv0cvt" path="res://city/FreeCam.gd" id="2_freecam"]
-[ext_resource type="PackedScene" uid="uid://cycok6yqmtjes" path="res://f_car.tscn" id="2_tegu2"]
-[ext_resource type="Script" uid="uid://313aqakyo1m1" path="res://Camera3D.gd" id="3_yage8"]
+[ext_resource type="PackedScene" uid="uid://ctktauacq45qg" path="res://free_cam.tscn" id="3_ao2hm"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
 sky_top_color = Color(0.2, 0.3, 0.5, 1)
@@ -80,21 +78,5 @@ building_seed_spacing = 60.0
 building_max_depth = 7
 building_branch_chance = 0.5
 building_max_total = 1260
-spawn_fcar = false
-fcar_spawn_height = 1750.0
 
-[node name="Camera3D" type="Camera3D" parent="." node_paths=PackedStringArray("target")]
-transform = Transform3D(1, 0, 0, 0, 0.9961948, 0.08715568, 0, -0.08715568, 0.9961948, -2.2765515, 1500, 7.6534176)
-script = ExtResource("3_yage8")
-target = NodePath("../FCar")
-
-[node name="FCar" parent="." instance=ExtResource("2_tegu2")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1500, 0)
-booster_preset_forward = Vector2(-55, 45)
-
-[node name="FreeCam" type="Camera3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 0.965, 0.259, 0, -0.259, 0.965, 0, 500, 800)
-visible = false
-far = 50000.0
-script = ExtResource("2_freecam")
-move_speed = 200.0
+[node name="FreeCam" parent="." instance=ExtResource("3_ao2hm")]

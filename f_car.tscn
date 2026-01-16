@@ -1,7 +1,8 @@
-[gd_scene load_steps=22 format=3 uid="uid://cycok6yqmtjes"]
+[gd_scene load_steps=23 format=3 uid="uid://cycok6yqmtjes"]
 
 [ext_resource type="Script" uid="uid://c7m1dsqpdck13" path="res://FCar.gd" id="1_uqo8e"]
 [ext_resource type="Script" uid="uid://bbg344k4s2ltu" path="res://ui/UIController.gd" id="2_ko0cq"]
+[ext_resource type="Script" uid="uid://313aqakyo1m1" path="res://Camera3D.gd" id="2_rue2e"]
 [ext_resource type="Material" uid="uid://cc37tlrahc1tj" path="res://mats/yellow.tres" id="3_rue2e"]
 [ext_resource type="Material" uid="uid://ce3eavktn35d4" path="res://mats/grey.tres" id="4_myg2s"]
 
@@ -96,6 +97,12 @@ booster_preset_backward = Vector2(-180, 20)
 booster_roll_offset = 60.0
 booster_roll_speed = 120.0
 debug_thrusters = true
+
+[node name="FCam" type="Camera3D" parent="." node_paths=PackedStringArray("target")]
+transform = Transform3D(1, 0, 0, 0, 0.9961948, 0.08715568, 0, -0.08715568, 0.9961948, -2.2765515, 2.07618, 7.6534176)
+script = ExtResource("2_rue2e")
+target = NodePath("..")
+use_velocity_based_reset = false
 
 [node name="UIController" type="Node" parent="."]
 script = ExtResource("2_ko0cq")
