@@ -23,6 +23,11 @@ extends Marker3D
 		size_large = v
 		_update_cone()
 
+@export_category("Connection Behavior")
+@export var is_plug: bool = true      # Can be used as anchor (other blocks connect TO this)
+@export var is_socket: bool = true    # Can branch children (this spawns other blocks)
+@export var ignores_collision: bool = false  # Bypasses AABB overlap check during generation
+
 @export_category("Debug")
 @export var cone_length: float = 3.0:   # Visual cone size
 	set(v):

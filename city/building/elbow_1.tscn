@@ -22,7 +22,7 @@ radial_segments = 6
 rings = 0
 
 [sub_resource type="CylinderMesh" id="CylinderMesh_fiy0h"]
-material = ExtResource("2_1fevv")
+material = ExtResource("3_8ensv")
 top_radius = 10.0
 bottom_radius = 10.0
 height = 24.0
@@ -30,7 +30,7 @@ radial_segments = 6
 rings = 0
 
 [sub_resource type="CylinderMesh" id="CylinderMesh_g4pyu"]
-material = ExtResource("3_8ensv")
+material = ExtResource("2_1fevv")
 top_radius = 5.0
 bottom_radius = 5.0
 height = 3.375
@@ -41,45 +41,50 @@ rings = 0
 script = ExtResource("1_0hgq2")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 10, 20)
+transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, -20, 10, -8.7422785e-07)
 shape = SubResource("CylinderShape3D_sqhew")
 
 [node name="CollisionShape3D2" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 0.49999997, -0.86602545, 0, 0.86602545, 0.49999997, 0, -1.4661369, 10.10457)
+transform = Transform3D(-4.371139e-08, -0.86602545, -0.49999997, 0, 0.49999997, -0.86602545, 1, -3.7855173e-08, -2.185569e-08, -10.10457, -1.4661369, -4.416848e-07)
 shape = SubResource("CapsuleShape3D_vs7fu")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 10, 20)
+transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, -20, 10, -8.7422785e-07)
 mesh = SubResource("CylinderMesh_vb8vo")
 
 [node name="MeshInstance3D2" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 0.49999997, -0.86602545, 0, 0.86602545, 0.49999997, 0, -1.5206792, 10.366105)
+transform = Transform3D(-4.371139e-08, -0.86602545, -0.49999997, 0, 0.49999997, -0.86602545, 1, -3.7855173e-08, -2.185569e-08, -10.366105, -1.520679, -4.5311685e-07)
 mesh = SubResource("CylinderMesh_fiy0h")
 
 [node name="MeshInstance3D3" type="MeshInstance3D" parent="."]
-transform = Transform3D(-4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 0, 0, 1, 0, 1.1639552, 25.046196)
+transform = Transform3D(0, -4.3711392e-08, -1, -1, -4.371139e-08, 0, -4.371139e-08, 1, -4.371139e-08, -25.046196, 1.1639547, -1.094804e-06)
 mesh = SubResource("CylinderMesh_g4pyu")
 
 [node name="Conn_Plug_Large" type="Marker3D" parent="."]
-transform = Transform3D(-1, -8.742278e-08, 3.821371e-15, 0, -4.371139e-08, -1, 8.742278e-08, -1, 4.371139e-08, 0, -7.5, 0)
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 0, -7.5, 0)
 script = ExtResource("4_in80i")
 size_medium = false
 size_large = true
+is_socket = false
+ignores_collision = true
 
 [node name="Conn_Plug_Large2" type="Marker3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 17.5, 20)
+transform = Transform3D(-4.371139e-08, 1, 4.371139e-08, 0, -4.371139e-08, 1, 1, 4.371139e-08, 1.9106855e-15, -19.999998, 17.5, -8.7422785e-07)
 script = ExtResource("4_in80i")
 size_medium = false
 size_large = true
+is_plug = false
 
 [node name="Marker3D" type="Marker3D" parent="."]
-transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 8.66, -0.035593987, 12.0069275)
+transform = Transform3D(1, 0, -8.351872e-23, 0, 1, 0, -8.351872e-23, 0, 1, -12.006928, -0.035593987, 8.66)
 script = ExtResource("4_in80i")
 size_small = true
 size_medium = false
+is_plug = false
 
 [node name="Marker3D2" type="Marker3D" parent="."]
-transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, -8.66, -0.035593987, 12.0069275)
+transform = Transform3D(-1, 0, 8.742277e-08, 0, 1, 4.2351647e-22, -8.742277e-08, 0, -1, -12.006927, -0.035593987, -8.66)
 script = ExtResource("4_in80i")
 size_small = true
 size_medium = false
+is_plug = false

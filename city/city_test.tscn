@@ -52,10 +52,12 @@ directional_shadow_max_distance = 10000.0
 [node name="CityGenerator" type="Node3D" parent="."]
 script = ExtResource("1_generator")
 hex_edge_length = 420.0
-grid_rings = 3
 spire_radius = 30.0
-building_branch_chance = 0.3
+building_seed_spacing = 120.0
+building_max_depth = 8
+building_branch_chance = 0.5
 building_max_total = 420
+spawn_fcar = false
 fcar_spawn_height = 1750.0
 
 [node name="Camera3D" type="Camera3D" parent="." node_paths=PackedStringArray("target")]

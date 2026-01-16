@@ -35,22 +35,26 @@ transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 20, 
 script = ExtResource("3_ok4mr")
 size_medium = false
 size_large = true
+is_socket = false
 
 [node name="Conn_Plug_Large2" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, -20, -2.5, 0)
 script = ExtResource("3_ok4mr")
 size_medium = false
 size_large = true
+is_socket = false
 
 [node name="Conn_Plug_Large3" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 20, 2.5, 0)
 script = ExtResource("3_ok4mr")
 size_small = true
+is_plug = false
 
 [node name="Conn_Plug_Large4" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -20, 2.5, 0)
 script = ExtResource("3_ok4mr")
 size_small = true
+is_plug = false
 
 [node name="Conn_Plug_Medium" type="Marker3D" parent="."]
 transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 45, 0, 0)

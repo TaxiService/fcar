@@ -192,18 +192,24 @@ func _grow_from_seed(position: Vector3, direction: Vector3, biome_idx: int, dept
 		_align_block_to_direction(block_instance, anchor, position, target_dir, base_heading)
 		block_instance.mark_connection_used(anchor)
 
-	# Check for overlaps with existing blocks
-	if check_overlaps:
-		var block_aabb = _get_block_aabb(block_instance)
-		if _overlaps_existing(block_aabb):
-			block_instance.queue_free()
-			_blocks_placed -= 1
-			return
-		_placed_aabbs.append(block_aabb)
+		# Check for overlaps (unless anchor ignores collision)
+		if check_overlaps and not anchor.ignores_collision:
+			var block_aabb = _get_block_aabb(block_instance)
+			if _overlaps_existing(block_aabb):
+				block_instance.queue_free()
+				_blocks_placed -= 1
+				return
+			_placed_aabbs.append(block_aabb)
+		elif check_overlaps:
+			# Still track AABB even if we ignored collision for this block
+			_placed_aabbs.append(_get_block_aabb(block_instance))
 
-	# Maybe branch to other connections
+	# Maybe branch to other connections (only from sockets)
 	var remaining = block_instance.get_available_connections()
 	for conn in remaining:
+		# Only sockets can spawn children
+		if not conn.is_socket:
+			continue
 		if _rng.randf() < branch_probability or depth == 0:
 			var world_pos = block_instance.get_connection_world_position(conn)
 			var world_dir = block_instance.get_connection_world_direction(conn)
@@ -235,6 +241,9 @@ func _find_compatible_connection(connections: Array[ConnectionPoint], target_dir
 	# After Y-rotation, the connection should face opposite to target_dir
 
 	for conn in connections:
+		# Must be a plug (can receive connections)
+		if not conn.is_plug:
+			continue
 		# Check size compatibility
 		if size_filter != "any":
 			var size_ok = false
