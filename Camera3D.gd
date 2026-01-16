@@ -39,10 +39,17 @@ extends Camera3D
 @export var velocity_look_min_speed: float = 10.0  # Min speed before look-ahead kicks in
 @export var velocity_look_smoothing: float = 3.0  # How smoothly the look-ahead transitions
 
+# Camera pitch following car
+@export_category("Pitch Following")
+@export var follow_car_pitch: bool = true  # Camera tilts with car's pitch
+@export var pitch_follow_amount: float = 0.5  # How much to follow car pitch (0 = none, 1 = full)
+@export var pitch_follow_smoothing: float = 5.0  # How smoothly pitch follows
+
 # Internal state
 var camera_yaw: float = 0.0  # Current camera yaw angle (radians)
 var mouse_yaw_offset: float = 0.0  # Mouse look yaw offset (radians)
 var mouse_pitch_offset: float = 0.0  # Mouse look pitch offset (radians)
+var current_car_pitch: float = 0.0  # Smoothed car pitch for camera follow
 var time_since_mouse_input: float = 0.0  # Timer for auto-return (time-based mode)
 var is_mouselooking: bool = false  # Whether mouselook is active
 var consistent_velocity_time: float = 0.0  # How long car has moved in same direction (velocity-based mode)
@@ -247,11 +254,28 @@ func _physics_process(delta):
 		if speed > velocity_look_min_speed:
 			# Scale look-ahead by speed (faster = more look-ahead)
 			var speed_factor = clamp((speed - velocity_look_min_speed) / 50.0, 0.0, 1.0)
-			target_look_offset = velocity.normalized() * velocity_look_ahead_distance * speed_factor * velocity_look_ahead
+
+			# Reduce look-ahead when looking backwards (prevents instability)
+			var camera_forward = -global_transform.basis.z
+			var velocity_dir = velocity.normalized()
+			var look_alignment = camera_forward.dot(velocity_dir)  # 1 = looking forward, -1 = looking back
+
+			# Fade out look-ahead as we look backwards
+			var look_ahead_factor = clamp((look_alignment + 1.0) / 2.0, 0.0, 1.0)  # Map -1..1 to 0..1
+
+			target_look_offset = velocity_dir * velocity_look_ahead_distance * speed_factor * velocity_look_ahead * look_ahead_factor
 
 	# Smoothly interpolate the look offset
 	current_look_offset = current_look_offset.lerp(target_look_offset, velocity_look_smoothing * delta)
 	var look_target = target.global_position + current_look_offset
+
+	# Calculate car pitch for camera following
+	var car_pitch_offset: float = 0.0
+	if follow_car_pitch:
+		var car_forward = -target.global_transform.basis.z
+		var car_pitch = asin(clamp(car_forward.y, -1.0, 1.0))  # Positive Y = nose up = camera tilts up
+		current_car_pitch = lerp(current_car_pitch, car_pitch * pitch_follow_amount, pitch_follow_smoothing * delta)
+		car_pitch_offset = current_car_pitch
 
 	# Calculate final camera orientation
 	var direction_to_target = (look_target - global_position).normalized()
@@ -262,4 +286,9 @@ func _physics_process(delta):
 		var right = direction_to_target.cross(Vector3.UP).normalized()
 		var up = right.cross(direction_to_target).normalized()
 		var final_basis = Basis(right, up, -direction_to_target)
+
+		# Apply car pitch offset
+		if abs(car_pitch_offset) > 0.001:
+			final_basis = final_basis.rotated(right, car_pitch_offset)
+
 		global_transform.basis = final_basis
