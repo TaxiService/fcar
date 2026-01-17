@@ -75,8 +75,9 @@ biome_crosslink_patterns = Array[Dictionary]([{
 "zed_strk": 1.0
 }])
 building_seed_spacing = 60.0
+building_seed_probability = 0.8
 building_max_depth = 7
-building_branch_chance = 0.5
+building_branch_chance = 0.8
 building_max_total = 1260
 
 [node name="FreeCam" parent="." instance=ExtResource("3_ao2hm")]

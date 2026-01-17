@@ -256,9 +256,9 @@ func _create_destination_marker():
 			var dist = cx + cy
 			if dist <= 14:
 				if dist >= 11:
-					img.set_pixel(x, y, Color(1.0, 1.0, 1.0, 1.0))  # White border
+					img.set_pixel(x, y, Color(1.0, 0.472, 0.835, 1.0))  # White border
 				else:
-					img.set_pixel(x, y, Color(1.0, 0.2, 0.8, 0.95))  # Magenta fill
+					img.set_pixel(x, y, Color(1.0, 0.201, 0.798, 0.435))  # Magenta fill
 
 	var tex = ImageTexture.create_from_image(img)
 	marker_sprite.texture = tex
@@ -292,8 +292,8 @@ func _create_destination_marker():
 	marker_label.visible = false
 	marker_label.add_theme_font_size_override("font_size", 16)
 	marker_label.add_theme_color_override("font_color", Color(1.0, 0.2, 0.8, 1.0))  # Magenta
-	marker_label.add_theme_color_override("font_outline_color", Color(1.0, 1.0, 1.0, 1.0))  # White outline
-	marker_label.add_theme_constant_override("outline_size", 2)
+	marker_label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 1.0))  # White outline
+	marker_label.add_theme_constant_override("outline_size", 6)
 	destination_marker.add_child(marker_label)
 
 	# Start hidden
