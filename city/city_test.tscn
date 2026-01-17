@@ -50,34 +50,13 @@ directional_shadow_max_distance = 10000.0
 [node name="CityGenerator" type="Node3D" parent="."]
 script = ExtResource("1_generator")
 hex_edge_length = 420.0
-grid_rings = 3
+grid_rings = 2
 spire_radius = 30.0
-biome_crosslink_patterns = Array[Dictionary]([{
-"empty": 0.5,
-"full": 1.0
-}, {
-"empty": 1.5,
-"rect": 1.0,
-"single": 1.0,
-"tri-norm": 0.5,
-"tri-strk": 0.5
-}, {
-"cross": 1.0,
-"dagger": 0.5,
-"dagger_strk": 0.5,
-"empty": 1.0,
-"single": 1.0
-}, {
-"cross": 0.5,
-"dagger_strk": 0.5,
-"empty": 2.5,
-"kite": 1.0,
-"zed_strk": 1.0
-}])
 building_seed_spacing = 60.0
 building_seed_probability = 0.8
 building_max_depth = 7
-building_branch_chance = 0.8
+building_branch_chance = 1.0
 building_max_total = 1260
+fcar_spawn_height = 1300.0
 
 [node name="FreeCam" parent="." instance=ExtResource("3_ao2hm")]

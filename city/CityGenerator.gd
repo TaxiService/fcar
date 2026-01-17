@@ -48,20 +48,20 @@ const CROSSLINK_PATTERNS = {
 	"dagger": [[0, 3], [1, 5]], # typographic dagger
 	"dagger_strk": [[0, 3], [1, 5], [2, 4]], # double dagger
 	"tri_norm": [[0, 2], [2, 4], [4, 0]], # a triangle
-	"tri_strk": [[1, 3], [3, 5], [5, 1], [2, 4]], # a triangle struck by a line
-	"zed_strk": [[0, 3], [1, 2], [4, 5], [5, 2]], # a Z shape struck by a line
-	"rect": [[0, 1], [1, 3], [3, 4], [4, 0]], # a rectangle
-	"kite": [[0, 2], [2, 4] , [4, 5], [5, 0]], # a kite
+	"tri_strk": [[1, 3], [3, 5], [1, 5], [2, 4]], # a triangle struck by a line
+	"zed_strk": [[0, 3], [1, 2], [4, 5], [2, 5]], # a Z shape struck by a line
+	"rect": [[0, 1], [1, 3], [3, 4], [0, 4]], # a rectangle
+	"kite": [[0, 2], [2, 4] , [4, 5], [0, 5]], # a kite
 	
 }
 
 # Per-biome crosslink pattern weights (index = biome, from bottom to top)
 # Each biome has a dictionary of pattern_name: weight for weighted random selection
 @export var biome_crosslink_patterns: Array[Dictionary] = [
-	{"full": 1.0, "empty": 0.5},  # biome 0 (bottom)
-	{"empty": 2.0, "single": 1.0, "rect":1.0, "tri-norm":0.5, "tri-strk":0.5,},  # biome 1
-	{"empty": 2.0, "single": 1.0, "cross":1.0, "dagger":0.5, "dagger_strk":0.5},  # biome 2
-	{"empty": 2.0, "zed_strk": 1.0, "kite":1.0, "dagger_strk":0.5, "cross":0.5},  # biome 3 (top)
+	{"full": 1.0, "empty": 0.5, "tri-norm": 0.5},  # biome 0 (bottom)
+	{"empty": 1.0, "single": 1.0, "rect":1.0, "tri-norm":1.0, "tri-strk":1.0},  # biome 1
+	{"empty": 1.0, "single": 1.0, "cross":1.0, "dagger":1.0, "dagger_strk":1.0},  # biome 2
+	{"empty": 1.0, "zed_strk": 1.0, "kite":1.0, "dagger_strk":1.0, "cross":1.0},  # biome 3 (top)
 ]
 
 # Visual settings

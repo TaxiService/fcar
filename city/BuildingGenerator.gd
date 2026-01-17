@@ -57,7 +57,7 @@ func print_debug_stats():
 	print("  Overlap rejects: %d" % _overlap_rejects)
 	print("  No anchor rejects: %d" % _no_anchor_rejects)
 	print("  Size filter rejects: %d" % _size_filter_rejects)
-	print("  Max depth reached: %d times" % _max_depth_reached)
+	print("  Max depth (%d) reached: %d times" % [max_growth_depth, _max_depth_reached])
 
 
 func _load_block_library():
