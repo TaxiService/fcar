@@ -21,6 +21,7 @@ var marker_texture_targeted: ImageTexture  # Currently targeted (cyan/green)
 var marker_texture_out_of_range: ImageTexture  # Too far to select (small, gray)
 var marker_sprites: Array[Sprite2D] = []
 var distance_labels: Array[Label] = []
+var vertical_labels: Array[Label] = []  # Vertical distance indicators
 
 # Targeting state
 var current_groups: Array = []  # Updated each frame
@@ -106,6 +107,15 @@ func _create_marker_pool():
 		add_child(label)
 		distance_labels.append(label)
 
+		# Create vertical distance label
+		var vert_label = Label.new()
+		vert_label.visible = false
+		vert_label.add_theme_font_size_override("font_size", 12)
+		vert_label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 1.0))  # Black outline
+		vert_label.add_theme_constant_override("outline_size", 4)
+		add_child(vert_label)
+		vertical_labels.append(vert_label)
+
 
 func _process(_delta):
 	if not fcar or not people_manager:
@@ -175,19 +185,17 @@ func _update_markers_boarding_mode(groups: Array):
 	for i in range(1, max_markers):
 		marker_sprites[i].visible = false
 		distance_labels[i].visible = false
+		vertical_labels[i].visible = false
 
-	# Check if in front of camera
-	var cam_forward = -camera.global_transform.basis.z
-	var to_group = (marker_world_pos - camera.global_position).normalized()
-	var dot = cam_forward.dot(to_group)
-
-	if dot <= 0:
+	# Check if in front of camera (using stable projection)
+	if not MarkerUtils.is_in_front(camera, marker_world_pos):
 		marker_sprites[0].visible = false
 		distance_labels[0].visible = false
+		vertical_labels[0].visible = false
 		return
 
-	# Project to screen
-	var screen_pos = camera.unproject_position(marker_world_pos)
+	# Project to screen (stable projection - no pitch bobbing)
+	var screen_pos = MarkerUtils.project_position(camera, marker_world_pos)
 	var screen_size = get_viewport().get_visible_rect().size
 
 	# Clamp to screen edges if off-screen
@@ -207,8 +215,16 @@ func _update_markers_boarding_mode(groups: Array):
 		distance_labels[0].position = screen_pos + label_offset
 		distance_labels[0].add_theme_color_override("font_color", Color(0.2, 1.0, 0.6, 1.0))  # Cyan/green
 		distance_labels[0].visible = true
+
+		# Show vertical distance
+		var vert_info = MarkerUtils.format_vertical_distance(fcar.global_position.y, group.destination.global_position.y)
+		vertical_labels[0].text = vert_info.text
+		vertical_labels[0].add_theme_color_override("font_color", vert_info.color)
+		vertical_labels[0].position = screen_pos + label_offset + Vector2(0, 16)
+		vertical_labels[0].visible = true
 	else:
 		distance_labels[0].visible = false
+		vertical_labels[0].visible = false
 
 
 func _get_nearby_hailing_groups() -> Array:
@@ -282,36 +298,38 @@ func _update_markers(groups: Array):
 		if i >= groups.size():
 			marker_sprites[i].visible = false
 			distance_labels[i].visible = false
+			vertical_labels[i].visible = false
 			continue
 
 		var group = groups[i]
 		var marker_world_pos = group.position + Vector3(0, 2, 0)  # Slightly above group
 
-		# Check if in front of camera
-		var to_group = (marker_world_pos - camera.global_position).normalized()
-		var dot = cam_forward.dot(to_group)
-
-		if dot <= 0:
-			# Behind camera - hide
+		# Check if in front of camera (using stable projection)
+		if not MarkerUtils.is_in_front(camera, marker_world_pos):
 			marker_sprites[i].visible = false
 			distance_labels[i].visible = false
+			vertical_labels[i].visible = false
 			continue
 
-		# Project to screen
-		var screen_pos = camera.unproject_position(marker_world_pos)
+		# Project to screen (stable projection - no pitch bobbing)
+		var screen_pos = MarkerUtils.project_position(camera, marker_world_pos)
 
 		# Check if on screen (with small margin)
 		var margin = 20.0
 		if screen_pos.x < -margin or screen_pos.x > screen_size.x + margin:
 			marker_sprites[i].visible = false
 			distance_labels[i].visible = false
+			vertical_labels[i].visible = false
 			continue
 		if screen_pos.y < -margin or screen_pos.y > screen_size.y + margin:
 			marker_sprites[i].visible = false
 			distance_labels[i].visible = false
+			vertical_labels[i].visible = false
 			continue
 
-		# Calculate angle from camera forward
+		# Calculate angle from camera forward (for targeting)
+		var to_group = (marker_world_pos - camera.global_position).normalized()
+		var dot = cam_forward.dot(to_group)
 		var angle = rad_to_deg(acos(clamp(dot, -1.0, 1.0)))
 
 		# Calculate distance from car
@@ -335,8 +353,16 @@ func _update_markers(groups: Array):
 			distance_labels[i].text = _format_distance(dist_to_dest)
 			distance_labels[i].position = screen_pos + label_offset
 			distance_labels[i].visible = true
+
+			# Show vertical distance
+			var vert_info = MarkerUtils.format_vertical_distance(fcar.global_position.y, group.destination.global_position.y)
+			vertical_labels[i].text = vert_info.text
+			vertical_labels[i].add_theme_color_override("font_color", vert_info.color)
+			vertical_labels[i].position = screen_pos + label_offset + Vector2(0, 16)
+			vertical_labels[i].visible = true
 		else:
 			distance_labels[i].visible = false
+			vertical_labels[i].visible = false
 
 	# Determine target: closest to car wins, unless similar distance then angle breaks tie
 	# Only groups within selection_range can be targeted
@@ -392,17 +418,13 @@ func _update_markers(groups: Array):
 
 
 func _format_distance(dist: float) -> String:
-	if dist < 1000:
-		# Round to nearest 10 meters
-		var rounded = int(round(dist / 10.0) * 10)
-		return str(rounded) + "m"
-	else:
-		# Format as X.Xkm for kilometers
-		return str(snapped(dist / 1000.0, 0.1)) + "km"
+	return MarkerUtils.format_distance(dist)
 
 
 func _hide_all():
 	for sprite in marker_sprites:
 		sprite.visible = false
 	for label in distance_labels:
+		label.visible = false
+	for label in vertical_labels:
 		label.visible = false

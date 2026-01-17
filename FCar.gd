@@ -113,16 +113,6 @@ var _smoothed_pitch_input: float = 0.0  # Smoothed pitch input to avoid bobbing
 @export var delivered_wander_radius: float = 8.0  # How far delivered people can wander from drop-off
 @export var explicit_boarding_consent: bool = true  # If true, player must target and confirm groups
 
-@export_category("waypoint marker")
-@export var marker_scale_max: float = 2.0  # Scale when very close (on-screen)
-@export var marker_scale_min: float = 0.7  # Scale when far (on-screen)
-@export var marker_scale_edge: float = 1.5  # Scale when projected to screen edge (off-screen)
-@export var marker_close_distance: float = 2.0  # Distance where marker is at max scale
-@export var marker_far_distance: float = 20.0  # Distance where marker reaches min scale
-@export var marker_edge_margin: float = 45.0  # How far from screen edge the marker sits
-@export var arrow_edge_offset: float = -55.0  # Additional outward offset for arrow (to separate from marker)
-@export var label_edge_offset: float = -85.0  # Additional outward offset for label (beyond arrow)
-
 @export_category("debug")
 @export var debug_thrusters: bool = false
 @export var debug_boosters: bool = false
@@ -151,10 +141,7 @@ var direction_lights: DirectionLights
 # ===== PASSENGER SYSTEM =====
 var passengers: Array[Person] = []
 var people_manager: Node = null  # Reference to PeopleManager for finding hailing persons
-var destination_marker: CanvasLayer = null  # HUD layer for waypoint
-var marker_sprite: Sprite2D = null  # The actual waypoint indicator
-var marker_arrow: Sprite2D = null  # Arrow pointing to off-screen destination
-var marker_label: Label = null  # Distance text for destination
+var destination_marker: DestinationMarker = null  # HUD for passenger destination
 var hailing_markers: HailingMarkers = null  # Markers for nearby hailing groups
 var shift_manager: ShiftManager = null  # Scoring and shift tracking
 var is_ready_for_fares: bool = false  # Must be true for passengers to approach
@@ -236,70 +223,9 @@ func _create_shift_manager():
 
 
 func _create_destination_marker():
-	# Create a HUD layer for the waypoint (renders on top of everything)
-	destination_marker = CanvasLayer.new()
+	destination_marker = DestinationMarker.new()
 	destination_marker.name = "DestinationMarkerHUD"
-	destination_marker.layer = 100  # High layer to be on top
-
-	# Create the main waypoint sprite (diamond shape)
-	marker_sprite = Sprite2D.new()
-	marker_sprite.name = "WaypointSprite"
-
-	var img = Image.create(32, 32, false, Image.FORMAT_RGBA8)
-	img.fill(Color(0, 0, 0, 0))  # Start transparent
-
-	# Draw a diamond shape with border
-	for y in range(32):
-		for x in range(32):
-			var cx = abs(x - 16)
-			var cy = abs(y - 16)
-			var dist = cx + cy
-			if dist <= 14:
-				if dist >= 11:
-					img.set_pixel(x, y, Color(1.0, 0.472, 0.835, 1.0))  # White border
-				else:
-					img.set_pixel(x, y, Color(1.0, 0.201, 0.798, 0.435))  # Magenta fill
-
-	var tex = ImageTexture.create_from_image(img)
-	marker_sprite.texture = tex
-	marker_sprite.scale = Vector2(2.0, 2.0)  # Make it bigger on screen
-	destination_marker.add_child(marker_sprite)
-
-	# Create arrow for off-screen indication
-	marker_arrow = Sprite2D.new()
-	marker_arrow.name = "DirectionArrow"
-
-	var arrow_img = Image.create(32, 32, false, Image.FORMAT_RGBA8)
-	arrow_img.fill(Color(0, 0, 0, 0))
-
-	# Draw an arrow pointing right (we'll rotate it)
-	for y in range(32):
-		for x in range(32):
-			var cy = abs(y - 16)
-			# Arrow shape: triangle pointing right
-			if x > 8 and x < 28 and cy < (28 - x) / 1.5:
-				arrow_img.set_pixel(x, y, Color(1.0, 0.2, 0.8, 0.95))
-
-	var arrow_tex = ImageTexture.create_from_image(arrow_img)
-	marker_arrow.texture = arrow_tex
-	marker_arrow.scale = Vector2(1.5, 1.5)
-	marker_arrow.visible = false
-	destination_marker.add_child(marker_arrow)
-
-	# Create distance label
-	marker_label = Label.new()
-	marker_label.name = "DistanceLabel"
-	marker_label.visible = false
-	marker_label.add_theme_font_size_override("font_size", 16)
-	marker_label.add_theme_color_override("font_color", Color(1.0, 0.2, 0.8, 1.0))  # Magenta
-	marker_label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 1.0))  # White outline
-	marker_label.add_theme_constant_override("outline_size", 6)
-	destination_marker.add_child(marker_label)
-
-	# Start hidden
-	marker_sprite.visible = false
-
-	# Add to scene
+	destination_marker.fcar = self
 	get_tree().root.add_child.call_deferred(destination_marker)
 
 
@@ -919,9 +845,6 @@ func _update_passengers():
 	if is_available_for_pickup():
 		_detect_and_board_hailing_persons()
 
-	# Update destination marker
-	_update_destination_marker()
-
 
 func _check_boarding_arrivals():
 	# Find persons in BOARDING state who are close enough to board
@@ -1283,146 +1206,3 @@ func _eject_all_passengers():
 			if person.target_car == self:
 				person.target_car = null
 				person._enter_state(Person.State.HAILING)
-
-
-func _update_destination_marker():
-	if not marker_sprite or not marker_arrow or not marker_label:
-		return
-
-	# Find the first passenger with a valid destination
-	var dest: Node = null
-	for person in passengers:
-		if is_instance_valid(person) and is_instance_valid(person.destination):
-			dest = person.destination
-			break
-
-	if not dest:
-		marker_sprite.visible = false
-		marker_arrow.visible = false
-		marker_label.visible = false
-		return
-
-	# Get camera for projection
-	var camera = get_viewport().get_camera_3d()
-	if not camera:
-		marker_sprite.visible = false
-		marker_arrow.visible = false
-		marker_label.visible = false
-		return
-
-	var dest_pos = dest.global_position + Vector3(0, 2, 0)  # Slightly above destination
-	var screen_size = get_viewport().get_visible_rect().size
-
-	# Calculate distance from car to destination (for display)
-	var car_to_dest_distance = global_position.distance_to(dest.global_position)
-
-	# Calculate distance from camera to destination for scaling
-	var camera_distance = camera.global_position.distance_to(dest_pos)
-
-	# Calculate scale based on distance
-	# Close = max scale, Far = min scale, stays at min beyond far_distance
-	var scale_t = 0.0
-	if marker_far_distance > marker_close_distance:
-		scale_t = clamp(
-			(camera_distance - marker_close_distance) / (marker_far_distance - marker_close_distance),
-			0.0, 1.0
-		)
-	var current_scale = lerp(marker_scale_max, marker_scale_min, scale_t)
-	var scale_vec = Vector2(current_scale, current_scale)
-
-	# Check if destination is in front of camera
-	var cam_forward = -camera.global_transform.basis.z
-	var to_dest = (dest_pos - camera.global_position).normalized()
-	var is_in_front = cam_forward.dot(to_dest) > 0
-
-	# Project to screen
-	var screen_pos: Vector2
-	if is_in_front:
-		screen_pos = camera.unproject_position(dest_pos)
-	else:
-		# Behind camera - project to opposite side of screen
-		screen_pos = camera.unproject_position(dest_pos)
-		# Flip around screen center
-		screen_pos = screen_size - screen_pos
-
-	# Check if on screen (with margin)
-	var is_on_screen = (
-		screen_pos.x >= marker_edge_margin and screen_pos.x <= screen_size.x - marker_edge_margin and
-		screen_pos.y >= marker_edge_margin and screen_pos.y <= screen_size.y - marker_edge_margin and
-		is_in_front
-	)
-
-	# Format distance text
-	marker_label.text = _format_marker_distance(car_to_dest_distance)
-	marker_label.visible = true
-
-	if is_on_screen:
-		# Show marker at projected position (distance-based scaling)
-		marker_sprite.visible = true
-		marker_sprite.position = screen_pos
-		marker_sprite.scale = scale_vec
-		marker_arrow.visible = false
-		# Position label next to marker
-		marker_label.position = screen_pos + Vector2(20, -12)
-	else:
-		# Clamp to screen edge
-		var screen_center = screen_size / 2.0
-		var dir_to_marker = (screen_pos - screen_center).normalized()
-
-		# Find intersection with screen edge (for marker)
-		var max_x = screen_size.x / 2.0 - marker_edge_margin
-		var max_y = screen_size.y / 2.0 - marker_edge_margin
-
-		var marker_pos = screen_center
-		if abs(dir_to_marker.x) > 0.001 or abs(dir_to_marker.y) > 0.001:
-			var scale_x = max_x / abs(dir_to_marker.x) if abs(dir_to_marker.x) > 0.001 else 99999.0
-			var scale_y = max_y / abs(dir_to_marker.y) if abs(dir_to_marker.y) > 0.001 else 99999.0
-			var edge_scale = min(scale_x, scale_y)
-			marker_pos = screen_center + dir_to_marker * edge_scale
-
-		# Arrow position - further out toward edge
-		var arrow_max_x = screen_size.x / 2.0 - marker_edge_margin + arrow_edge_offset
-		var arrow_max_y = screen_size.y / 2.0 - marker_edge_margin + arrow_edge_offset
-		var arrow_pos = screen_center
-		if abs(dir_to_marker.x) > 0.001 or abs(dir_to_marker.y) > 0.001:
-			var scale_x = arrow_max_x / abs(dir_to_marker.x) if abs(dir_to_marker.x) > 0.001 else 99999.0
-			var scale_y = arrow_max_y / abs(dir_to_marker.y) if abs(dir_to_marker.y) > 0.001 else 99999.0
-			var edge_scale = min(scale_x, scale_y)
-			arrow_pos = screen_center + dir_to_marker * edge_scale
-
-		# Use edge scale for off-screen markers
-		var edge_scale_vec = Vector2(marker_scale_edge, marker_scale_edge)
-
-		# Show marker at edge
-		marker_sprite.visible = true
-		marker_sprite.position = marker_pos
-		marker_sprite.scale = edge_scale_vec
-
-		# Show arrow pointing toward destination
-		marker_arrow.visible = true
-		marker_arrow.position = arrow_pos
-		marker_arrow.rotation = dir_to_marker.angle()
-		marker_arrow.scale = edge_scale_vec
-
-		# Label position - even further out toward edge (beyond arrow)
-		var label_max_x = screen_size.x / 2.0 - marker_edge_margin + label_edge_offset
-		var label_max_y = screen_size.y / 2.0 - marker_edge_margin + label_edge_offset
-		var label_pos = screen_center
-		if abs(dir_to_marker.x) > 0.001 or abs(dir_to_marker.y) > 0.001:
-			var scale_x = label_max_x / abs(dir_to_marker.x) if abs(dir_to_marker.x) > 0.001 else 99999.0
-			var scale_y = label_max_y / abs(dir_to_marker.y) if abs(dir_to_marker.y) > 0.001 else 99999.0
-			var edge_scale = min(scale_x, scale_y)
-			label_pos = screen_center + dir_to_marker * edge_scale
-
-		# Center the label on its position
-		marker_label.position = label_pos - Vector2(marker_label.size.x / 2, marker_label.size.y / 2)
-
-
-func _format_marker_distance(dist: float) -> String:
-	if dist < 1000:
-		# Round to nearest 10 meters
-		var rounded = int(round(dist / 10.0) * 10)
-		return str(rounded) + "m"
-	else:
-		# Format as X.Xkm for kilometers
-		return str(snapped(dist / 1000.0, 0.1)) + "km"
