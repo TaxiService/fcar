@@ -26,6 +26,7 @@ fog_aerial_perspective = 1.0
 fog_depth_curve = 1.0352657
 fog_depth_begin = 591.4
 fog_depth_end = 1045.5
+volumetric_fog_enabled = true
 volumetric_fog_density = 0.0016
 volumetric_fog_albedo = Color(0.33533785, 0.84833395, 0.9312275, 1)
 volumetric_fog_emission = Color(0.20505151, 0.17763427, 0.12100499, 1)
@@ -44,19 +45,20 @@ directional_shadow_max_distance = 10000.0
 environment = SubResource("Environment_main")
 
 [node name="FreeCam" parent="." instance=ExtResource("3_ao2hm")]
-transform = Transform3D(1, 0, 0, 0, 0.9658184, 0.25921968, 0, -0.25921968, 0.9658184, 0, 0, 0)
+transform = Transform3D(1, 0, 0, 0, 0.9658184, 0.25921968, 0, -0.25921968, 0.9658184, 0, 250, 0)
 
 [node name="CityGenerator" type="Node3D" parent="."]
 script = ExtResource("1_generator")
 hex_edge_length = 420.0
-grid_rings = 2
+grid_rings = 3
+spire_height = 1600.0
 building_seed_spacing = 60.0
-building_seed_probability = 0.8
-building_max_depth = 5
+building_seed_probability = 0.2
+building_max_depth = 7
 building_branch_chance = 0.8
 building_max_total = 1260
 spawn_fcar = false
-fcar_spawn_height = 1300.0
+fcar_spawn_height = 580.0
 
 [node name="PeopleManager" type="Node" parent="."]
 script = ExtResource("1_yage8")

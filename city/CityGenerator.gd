@@ -64,10 +64,10 @@ const CROSSLINK_PATTERNS = {
 # Per-biome crosslink pattern weights (index = biome, from bottom to top)
 # Each biome has a dictionary of pattern_name: weight for weighted random selection
 @export var biome_crosslink_patterns: Array[Dictionary] = [
-	{"full": 0.6, "empty": 0.2, "tri-norm": 0.2},  # biome 0 (bottom)
-	{"empty": 0.3, "single": 0.2, "kite":0.1, "tri-norm":0.15, "tri-strk":0.15},  # biome 1
-	{"empty": 0.3, "single": 0.2, "cross":0.1, "dagger":0.15, "dagger_strk":0.15},  # biome 2
-	{"empty": 0.2, "zed_strk": 0.2, "rect":0.2, "dagger_strk":0.2, "cross":0.2},  # biome 3 (top)
+	{"full": 0.6, "empty": 0.2, "tri_norm": 0.2, "kite": 0.1},  # biome 0 (bottom)
+	{"empty": 0.3, "single": 0.2, "zed_strk":0.1, "dagger":0.15, "rect":0.15},  # biome 1
+	{"empty": 0.2, "single": 0.2, "cross":0.1, "tri_strk":0.15, "dagger_strk":0.15},  # biome 2
+	{"empty": 0.4, "zed_strk": 0.1, "tri_norm":0.1, "dagger_strk":0.1, "double":0.1},  # biome 3 (top)
 ]
 
 # Visual settings
@@ -524,7 +524,7 @@ func _create_connector(start: Vector3, end: Vector3, height: float, biome_idx: i
 	var cylinder = CylinderMesh.new()
 	cylinder.top_radius = radius
 	cylinder.bottom_radius = radius
-	cylinder.height = length - spire_base_radius * 2  # Subtract spire radius from each end
+	cylinder.height = length #- spire_base_radius * 2 # Subtract spire radius from each end
 	mesh_instance.mesh = cylinder
 
 	# Rotate to align with edge direction (cylinder is vertical by default)
@@ -546,6 +546,11 @@ func _create_spire(pos: Vector3, biome_height: float) -> Node3D:
 	var spire_root = Node3D.new()
 	spire_root.position = pos
 
+	# Create a StaticBody3D for collision
+	var collision_body = StaticBody3D.new()
+	collision_body.name = "SpireCollision"
+	spire_root.add_child(collision_body)
+
 	# Create a prism/cylinder mesh for each biome section
 	# Each biome has decreasing radius and sides going upward
 	for i in range(biome_count):
@@ -553,13 +558,18 @@ func _create_spire(pos: Vector3, biome_height: float) -> Node3D:
 		section.name = "Biome_%d" % i
 
 		# Calculate radius and sides for this biome level
-		var radius = spire_base_radius - (i * spire_radius_step)
+		var top_radius = spire_base_radius - (i * spire_radius_step)
 		var sides = maxi(spire_min_sides, spire_base_sides - (i * spire_sides_step))
+
+		# Bottom biome gets a tapered foundation (2x radius at base)
+		var bottom_radius = top_radius
+		if i == 0:
+			bottom_radius = top_radius * 1
 
 		# Create cylinder/prism mesh
 		var cylinder = CylinderMesh.new()
-		cylinder.top_radius = radius
-		cylinder.bottom_radius = radius
+		cylinder.top_radius = top_radius
+		cylinder.bottom_radius = bottom_radius
 		cylinder.height = biome_height
 		cylinder.radial_segments = sides
 		section.mesh = cylinder
@@ -573,6 +583,17 @@ func _create_spire(pos: Vector3, biome_height: float) -> Node3D:
 		section.material_override = mat
 
 		spire_root.add_child(section)
+
+		# Create collision shape for this section
+		var collision_shape = CollisionShape3D.new()
+		collision_shape.name = "Collision_%d" % i
+		var shape = CylinderShape3D.new()
+		# Use the larger radius for collision (safer)
+		shape.radius = min(top_radius, bottom_radius)
+		shape.height = biome_height
+		collision_shape.shape = shape
+		collision_shape.position.y = biome_height * i + biome_height / 2.0
+		collision_body.add_child(collision_shape)
 
 	return spire_root
 
