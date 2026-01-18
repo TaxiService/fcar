@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3 uid="uid://dj5nr8k7tjehq"]
+[gd_scene load_steps=11 format=3 uid="uid://dj5nr8k7tjehq"]
 
 [ext_resource type="Script" uid="uid://cmafag82uyxu7" path="res://city/BuildingBlock.gd" id="1_0hgq2"]
 [ext_resource type="Material" uid="uid://c84qehqsj2tk1" path="res://mats/floor_small.tres" id="2_1fevv"]
@@ -16,15 +16,23 @@ height = 42.777
 [sub_resource type="CylinderMesh" id="CylinderMesh_vb8vo"]
 material = ExtResource("2_1fevv")
 top_radius = 10.0
-bottom_radius = 10.01
+bottom_radius = 10.0
 height = 15.0
+radial_segments = 6
+rings = 0
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_0hgq2"]
+material = ExtResource("2_1fevv")
+top_radius = 12.0
+bottom_radius = 12.0
+height = 18.933
 radial_segments = 6
 rings = 0
 
 [sub_resource type="CylinderMesh" id="CylinderMesh_fiy0h"]
 material = ExtResource("3_8ensv")
-top_radius = 10.0
-bottom_radius = 10.0
+top_radius = 9.9
+bottom_radius = 9.9
 height = 24.0
 radial_segments = 6
 rings = 0
@@ -51,6 +59,10 @@ shape = SubResource("CapsuleShape3D_vs7fu")
 [node name="MeshInstance3D" type="MeshInstance3D" parent="."]
 transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, -20, 10, -8.7422785e-07)
 mesh = SubResource("CylinderMesh_vb8vo")
+
+[node name="MeshInstance3D4" type="MeshInstance3D" parent="."]
+transform = Transform3D(-5.9604645e-08, 7.319568e-16, -1, -1, -4.371139e-08, 5.9604645e-08, -4.371139e-08, 1, 2.283001e-15, 0, -7.5, 0)
+mesh = SubResource("CylinderMesh_0hgq2")
 
 [node name="MeshInstance3D2" type="MeshInstance3D" parent="."]
 transform = Transform3D(-4.371139e-08, -0.86602545, -0.49999997, 0, 0.49999997, -0.86602545, 1, -3.7855173e-08, -2.185569e-08, -10.366105, -1.520679, -4.5311685e-07)
