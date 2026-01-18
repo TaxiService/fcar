@@ -107,13 +107,13 @@ func _get_size_color() -> Color:
 	# RGB = Small/Medium/Large
 	# Red = small, Green = medium, Blue = large
 	# Combos blend naturally: S+M = yellow, M+L = cyan, S+L = magenta, all = white
-	var r = 1.0 if size_small else 0.15
-	var g = 1.0 if size_medium else 0.15
-	var b = 1.0 if size_large else 0.15
+	var r = 1.0 if size_small else 0.0
+	var g = 1.0 if size_medium else 0.0
+	var b = 1.0 if size_large else 0.0
 
 	# If nothing enabled, dark red warning
-	if not size_small and not size_medium and not size_large:
-		return Color(0.4, 0.0, 0.0, 0.9)
+	#if not size_small and not size_medium and not size_large:
+	#	return Color(0.3, 0.0, 0.0, 0.9)
 
 	return Color(r, g, b, 0.85)
 
@@ -132,8 +132,8 @@ func can_connect_to(other: ConnectionPoint) -> bool:
 
 # Check if directions are compatible (facing each other)
 func directions_compatible(other: ConnectionPoint) -> bool:
-	var my_dir = -global_basis.z.normalized()
-	var other_dir = -other.global_basis.z.normalized()
+	var my_dir = -global_basis.x.normalized()
+	var other_dir = -other.global_basis.x.normalized()
 	return my_dir.dot(other_dir) < -0.9  # Nearly opposite
 
 

@@ -6,11 +6,11 @@
 [ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://city/ConnectionPoint.gd" id="4_5g2un"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_5dwv6"]
-size = Vector3(1, 11.6710205, 3)
+size = Vector3(1, 7.5, 3)
 
 [sub_resource type="CylinderShape3D" id="CylinderShape3D_gra87"]
-height = 4.0
-radius = 2.0
+height = 3.76
+radius = 1.76
 
 [sub_resource type="CylinderMesh" id="CylinderMesh_h4pit"]
 top_radius = 2.0
@@ -32,11 +32,11 @@ rings = 2
 script = ExtResource("1_gra87")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.8355103, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 5.8502665, 0)
 shape = SubResource("BoxShape3D_5dwv6")
 
 [node name="CollisionShape3D2" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 0.010072947, 0)
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 0.17, 0)
 shape = SubResource("CylinderShape3D_gra87")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="."]
@@ -58,16 +58,13 @@ mesh = SubResource("SphereMesh_j0xe6")
 surface_material_override/0 = ExtResource("3_fubs0")
 
 [node name="Conn_Plug_Large" type="Marker3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, -1.6376082, 0)
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, -1.7, 0)
 script = ExtResource("4_5g2un")
-size_medium = false
 is_socket = false
-ignores_collision = true
 
 [node name="Conn_Socket_Medium2" type="Marker3D" parent="."]
-transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, -2)
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, -2.1)
 script = ExtResource("4_5g2un")
 size_small = true
 size_medium = false
 is_socket = false
-ignores_collision = true
