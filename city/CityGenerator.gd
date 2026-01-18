@@ -10,8 +10,14 @@ extends Node3D
 
 # Spire settings
 @export var spire_height: float = 2000.0  # 2km tall
-@export var spire_radius: float = 15.0  # 30m diameter
 @export var biome_count: int = 4  # Number of vertical sections
+
+# Spire geometry per biome (tapers upward)
+@export var spire_base_radius: float = 35.0  # Bottom biome radius
+@export var spire_base_sides: int = 10  # Bottom biome polygon sides
+@export var spire_radius_step: float = 5.0  # Radius reduction per biome going up
+@export var spire_sides_step: int = 2  # Sides reduction per biome going up
+@export var spire_min_sides: int = 3  # Minimum polygon sides
 
 # Connector settings
 @export var edge_connector_radius: float = 4.0  # Edge connectors (along hex edges)
@@ -47,7 +53,7 @@ const CROSSLINK_PATTERNS = {
 	"cross": [[0, 3], [1, 4]], # two crossing lines
 	"dagger": [[0, 3], [1, 5]], # typographic dagger
 	"dagger_strk": [[0, 3], [1, 5], [2, 4]], # double dagger
-	"tri_norm": [[0, 2], [2, 4], [4, 0]], # a triangle
+	"tri_norm": [[0, 2], [2, 4], [0, 4]], # a triangle
 	"tri_strk": [[1, 3], [3, 5], [1, 5], [2, 4]], # a triangle struck by a line
 	"zed_strk": [[0, 3], [1, 2], [4, 5], [2, 5]], # a Z shape struck by a line
 	"rect": [[0, 1], [1, 3], [3, 4], [0, 4]], # a rectangle
@@ -58,10 +64,10 @@ const CROSSLINK_PATTERNS = {
 # Per-biome crosslink pattern weights (index = biome, from bottom to top)
 # Each biome has a dictionary of pattern_name: weight for weighted random selection
 @export var biome_crosslink_patterns: Array[Dictionary] = [
-	{"full": 1.0, "empty": 0.5, "tri-norm": 0.5},  # biome 0 (bottom)
-	{"empty": 1.0, "single": 1.0, "rect":1.0, "tri-norm":1.0, "tri-strk":1.0},  # biome 1
-	{"empty": 1.0, "single": 1.0, "cross":1.0, "dagger":1.0, "dagger_strk":1.0},  # biome 2
-	{"empty": 1.0, "zed_strk": 1.0, "kite":1.0, "dagger_strk":1.0, "cross":1.0},  # biome 3 (top)
+	{"full": 0.6, "empty": 0.2, "tri-norm": 0.2},  # biome 0 (bottom)
+	{"empty": 0.3, "single": 0.2, "kite":0.1, "tri-norm":0.15, "tri-strk":0.15},  # biome 1
+	{"empty": 0.3, "single": 0.2, "cross":0.1, "dagger":0.15, "dagger_strk":0.15},  # biome 2
+	{"empty": 0.2, "zed_strk": 0.2, "rect":0.2, "dagger_strk":0.2, "cross":0.2},  # biome 3 (top)
 ]
 
 # Visual settings
@@ -176,15 +182,17 @@ func generate_city():
 	# Step 2: Create spires at each position
 	_generate_spires()
 
-	# Step 3: Create edge connectors between spires
-	_generate_connectors()
-
-	# Step 4: Create crosslink connectors within hexagons
+	# Step 3: Create crosslink connectors within hexagons
 	_generate_crosslinks()
+
+	# Step 4: Create edge connectors between spires
+	_generate_connectors()
 
 	# Step 5: Generate buildings on connectors
 	if generate_buildings:
 		_generate_buildings()
+	#	_generate_buildings() # this sort of achieves
+	#	_generate_buildings() # the city look...
 
 	print("CityGenerator: Done! Generated %d spires, %d edge connections, %d hexagons" % [spire_positions.size(), connector_edges.size(), hex_vertex_lists.size()])
 
@@ -516,7 +524,7 @@ func _create_connector(start: Vector3, end: Vector3, height: float, biome_idx: i
 	var cylinder = CylinderMesh.new()
 	cylinder.top_radius = radius
 	cylinder.bottom_radius = radius
-	cylinder.height = length - spire_radius * 2  # Subtract spire radius from each end
+	cylinder.height = length - spire_base_radius * 2  # Subtract spire radius from each end
 	mesh_instance.mesh = cylinder
 
 	# Rotate to align with edge direction (cylinder is vertical by default)
@@ -538,16 +546,22 @@ func _create_spire(pos: Vector3, biome_height: float) -> Node3D:
 	var spire_root = Node3D.new()
 	spire_root.position = pos
 
-	# Create a cylinder mesh for each biome section
+	# Create a prism/cylinder mesh for each biome section
+	# Each biome has decreasing radius and sides going upward
 	for i in range(biome_count):
 		var section = MeshInstance3D.new()
 		section.name = "Biome_%d" % i
 
-		# Create cylinder mesh
+		# Calculate radius and sides for this biome level
+		var radius = spire_base_radius - (i * spire_radius_step)
+		var sides = maxi(spire_min_sides, spire_base_sides - (i * spire_sides_step))
+
+		# Create cylinder/prism mesh
 		var cylinder = CylinderMesh.new()
-		cylinder.top_radius = spire_radius
-		cylinder.bottom_radius = spire_radius
+		cylinder.top_radius = radius
+		cylinder.bottom_radius = radius
 		cylinder.height = biome_height
+		cylinder.radial_segments = sides
 		section.mesh = cylinder
 
 		# Position (cylinder origin is center, so offset by half height)
@@ -626,12 +640,12 @@ func _generate_buildings():
 		var dir_normalized = direction.normalized()
 
 		# Calculate seed points at building_seed_spacing intervals
-		var usable_length = length - spire_radius * 2 - building_seed_spacing
+		var usable_length = length - spire_base_radius * 2 - building_seed_spacing
 		if usable_length <= 0:
 			continue
 
 		var num_seeds = int(usable_length / building_seed_spacing)
-		var start_offset = spire_radius + building_seed_spacing * 0.5
+		var start_offset = spire_base_radius + building_seed_spacing * 0.5
 
 		for i in range(num_seeds):
 			# Check total limit
