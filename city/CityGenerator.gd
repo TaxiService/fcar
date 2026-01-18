@@ -19,9 +19,11 @@ extends Node3D
 @export var spire_sides_step: int = 2  # Sides reduction per biome going up
 @export var spire_min_sides: int = 3  # Minimum polygon sides
 
-# Connector settings
-@export var edge_connector_radius: float = 4.0  # Edge connectors (along hex edges)
-@export var crosslink_radius: float = 12.0  # Crosslinks (internal pattern connectors)
+# Connector settings (rectangular prisms)
+@export var edge_connector_width: float = 8.0  # Edge connector width (horizontal)
+@export var edge_connector_height: float = 8.0  # Edge connector height (vertical)
+@export var crosslink_width: float = 24.0  # Crosslink width (horizontal)
+@export var crosslink_height: float = 8.0  # Crosslink height (vertical)
 @export var connectors_per_biome: int = 1  # How many connector levels per biome section
 
 # Edge connector patterns - which hex edges to connect (vertices 0-5, edges are adjacent pairs)
@@ -390,7 +392,7 @@ func _generate_connectors():
 					var start_pos = vertices[v1_idx]
 					var end_pos = vertices[v2_idx]
 
-					var connector = _create_connector(start_pos, end_pos, connector_y, biome_idx, edge_connector_radius)
+					var connector = _create_connector(start_pos, end_pos, connector_y, biome_idx, edge_connector_width, edge_connector_height)
 					connector.name = "EdgeConn_%d_B%d_%s_%d" % [hex_idx, biome_idx, pattern_name, connector_count]
 					connectors_container.add_child(connector)
 					connector_count += 1
@@ -400,7 +402,9 @@ func _generate_connectors():
 						"start": Vector3(start_pos.x, connector_y, start_pos.z),
 						"end": Vector3(end_pos.x, connector_y, end_pos.z),
 						"biome_idx": biome_idx,
-						"is_edge": true
+						"is_edge": true,
+						"width": edge_connector_width,
+						"height": edge_connector_height
 					})
 
 	print("  Generated %d edge connector beams" % connector_count)
@@ -491,7 +495,7 @@ func _generate_crosslinks():
 					var start_pos = vertices[v1_idx]
 					var end_pos = vertices[v2_idx]
 
-					var connector = _create_connector(start_pos, end_pos, connector_y, biome_idx, crosslink_radius)
+					var connector = _create_connector(start_pos, end_pos, connector_y, biome_idx, crosslink_width, crosslink_height)
 					connector.name = "Crosslink_%d_B%d_%s_%d" % [hex_idx, biome_idx, pattern_name, crosslink_count]
 					connectors_container.add_child(connector)
 					crosslink_count += 1
@@ -501,13 +505,15 @@ func _generate_crosslinks():
 						"start": Vector3(start_pos.x, connector_y, start_pos.z),
 						"end": Vector3(end_pos.x, connector_y, end_pos.z),
 						"biome_idx": biome_idx,
-						"is_edge": false
+						"is_edge": false,
+						"width": crosslink_width,
+						"height": crosslink_height
 					})
 
 	print("  Generated %d crosslink beams (skipped %d overlaps)" % [crosslink_count, skipped_count])
 
 
-func _create_connector(start: Vector3, end: Vector3, height: float, biome_idx: int, radius: float) -> Node3D:
+func _create_connector(start: Vector3, end: Vector3, height: float, biome_idx: int, width: float, box_height: float) -> Node3D:
 	var connector_root = Node3D.new()
 
 	# Calculate position and rotation
@@ -518,19 +524,13 @@ func _create_connector(start: Vector3, end: Vector3, height: float, biome_idx: i
 	var length = direction.length()
 
 	connector_root.position = midpoint
-
-	# Create cylinder mesh (horizontal)
-	var mesh_instance = MeshInstance3D.new()
-	var cylinder = CylinderMesh.new()
-	cylinder.top_radius = radius
-	cylinder.bottom_radius = radius
-	cylinder.height = length #- spire_base_radius * 2 # Subtract spire radius from each end
-	mesh_instance.mesh = cylinder
-
-	# Rotate to align with edge direction (cylinder is vertical by default)
-	# We need to rotate it to be horizontal and point in the right direction
-	mesh_instance.rotation.x = PI / 2  # Lay flat
 	connector_root.rotation.y = atan2(direction.x, direction.z)  # Point toward end
+
+	# Create box mesh (length along Z after rotation)
+	var mesh_instance = MeshInstance3D.new()
+	var box = BoxMesh.new()
+	box.size = Vector3(width, box_height, length)
+	mesh_instance.mesh = box
 
 	# Material - slightly darker than spire biome color
 	var mat = StandardMaterial3D.new()
@@ -539,6 +539,17 @@ func _create_connector(start: Vector3, end: Vector3, height: float, biome_idx: i
 	mesh_instance.material_override = mat
 
 	connector_root.add_child(mesh_instance)
+
+	# Create collision body with matching box shape
+	var collision_body = StaticBody3D.new()
+	collision_body.name = "ConnectorCollision"
+	var collision_shape = CollisionShape3D.new()
+	var shape = BoxShape3D.new()
+	shape.size = Vector3(width, box_height, length)
+	collision_shape.shape = shape
+	collision_body.add_child(collision_shape)
+	connector_root.add_child(collision_body)
+
 	return connector_root
 
 
@@ -634,6 +645,44 @@ func _calculate_spire_aabbs() -> Array[AABB]:
 	return aabbs
 
 
+func _calculate_connector_aabbs() -> Array[AABB]:
+	# Calculate AABBs for all connectors to prevent building overlap
+	var aabbs: Array[AABB] = []
+
+	for conn in connector_data:
+		var start: Vector3 = conn.start
+		var end: Vector3 = conn.end
+		var width: float = conn.width
+		var height: float = conn.height
+
+		# Calculate connector midpoint and direction
+		var midpoint = (start + end) / 2.0
+		var direction = end - start
+		var length = direction.length()
+
+		# Create axis-aligned bounding box that encompasses the rotated box
+		# For a rotated box, we need to consider both dimensions
+		var half_width = width / 2.0
+		var half_height = height / 2.0
+		var half_length = length / 2.0
+
+		# Get rotation angle
+		var angle = atan2(direction.x, direction.z)
+
+		# Calculate the AABB size accounting for rotation
+		# The rotated box projects onto X and Z axes
+		var cos_a = abs(cos(angle))
+		var sin_a = abs(sin(angle))
+		var aabb_x = half_width * cos_a + half_length * sin_a
+		var aabb_z = half_width * sin_a + half_length * cos_a
+
+		var aabb_pos = Vector3(midpoint.x - aabb_x, midpoint.y - half_height, midpoint.z - aabb_z)
+		var aabb_size = Vector3(aabb_x * 2, height, aabb_z * 2)
+		aabbs.append(AABB(aabb_pos, aabb_size))
+
+	return aabbs
+
+
 func _generate_buildings():
 	if not building_generator:
 		push_error("CityGenerator: BuildingGenerator not initialized")
@@ -645,9 +694,11 @@ func _generate_buildings():
 	building_generator.max_blocks_total = building_max_total
 	building_generator.reset_counter()
 
-	# Register spire AABBs so buildings don't overlap with them
+	# Register spire and connector AABBs so buildings don't overlap with them
 	var spire_aabbs = _calculate_spire_aabbs()
+	var connector_aabbs = _calculate_connector_aabbs()
 	building_generator.register_external_aabbs(spire_aabbs)
+	building_generator.register_external_aabbs(connector_aabbs)
 
 	var seed_count = 0
 	var blocks_placed = 0
