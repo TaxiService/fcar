@@ -118,7 +118,7 @@ var connector_data: Array[Dictionary] = []
 
 @export_category("Spawning")
 @export var spawn_fcar: bool = true
-@export var fcar_spawn_height: float = 1660.0  # Spawn car at this height
+@export var fcar_spawn_height: float = 1250.0  # Spawn car at this height
 
 func _ready():
 	_create_containers()
@@ -193,8 +193,8 @@ func generate_city():
 	# Step 5: Generate buildings on connectors
 	if generate_buildings:
 		_generate_buildings()
-	#	_generate_buildings() # this sort of achieves
-	#	_generate_buildings() # the city look...
+	#	_generate_buildings() # this works in making the city more dense, but
+	#	_generate_buildings() # why can't i run this just once instead to get a similar result?
 
 	print("CityGenerator: Done! Generated %d spires, %d edge connections, %d hexagons" % [spire_positions.size(), connector_edges.size(), hex_vertex_lists.size()])
 
@@ -725,6 +725,7 @@ func _generate_buildings():
 		var start: Vector3 = conn.start
 		var end: Vector3 = conn.end
 		var biome_idx: int = conn.biome_idx
+		var conn_height: float = conn.height
 
 		var direction = end - start
 		var length = direction.length()
@@ -749,6 +750,8 @@ func _generate_buildings():
 
 			var t = start_offset + building_seed_spacing * i
 			var seed_pos = start + dir_normalized * t
+			# Offset seed up by half connector height so buildings spawn on top, not inside
+			seed_pos.y += conn_height / 2.0
 
 			# Growth direction: UP for vertical pillars/floors to stack on connectors
 			var growth_dir = Vector3.UP
