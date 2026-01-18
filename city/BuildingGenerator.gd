@@ -51,6 +51,13 @@ func reset_counter():
 	_max_depth_reached = 0
 
 
+# Register external AABBs (e.g., spires) that buildings should not overlap with
+func register_external_aabbs(aabbs: Array[AABB]):
+	for aabb in aabbs:
+		_placed_aabbs.append(aabb)
+	print("BuildingGenerator: Registered %d external AABBs" % aabbs.size())
+
+
 func print_debug_stats():
 	print("BuildingGenerator stats:")
 	print("  Blocks placed: %d" % _blocks_placed)
@@ -242,7 +249,9 @@ func _grow_from_seed(position: Vector3, direction: Vector3, biome_idx: int, dept
 			block_instance.mark_connection_used(conn)
 			# Determine size filter from parent connection (randomly pick from available)
 			var child_size_filter = _pick_random_size(conn)
-			_grow_from_seed(world_pos, world_dir, biome_idx, depth + 1, child_size_filter)
+			# Pass parent's rotation so children maintain orientation
+			var child_heading = block_instance.rotation.y
+			_grow_from_seed(world_pos, world_dir, biome_idx, depth + 1, child_size_filter, child_heading)
 
 
 # Randomly pick a size from available options on a connection point

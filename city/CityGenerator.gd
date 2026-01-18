@@ -619,6 +619,21 @@ func _create_ground_grid():
 	add_child(ground)
 
 
+func _calculate_spire_aabbs() -> Array[AABB]:
+	# Calculate AABBs for all spires to prevent building overlap
+	var aabbs: Array[AABB] = []
+
+	for pos in spire_positions:
+		# Use the largest radius (bottom biome) for conservative AABB
+		var radius = spire_base_radius
+		# AABB covers entire spire height
+		var aabb_pos = Vector3(pos.x - radius, 0, pos.z - radius)
+		var aabb_size = Vector3(radius * 2, spire_height, radius * 2)
+		aabbs.append(AABB(aabb_pos, aabb_size))
+
+	return aabbs
+
+
 func _generate_buildings():
 	if not building_generator:
 		push_error("CityGenerator: BuildingGenerator not initialized")
@@ -629,6 +644,10 @@ func _generate_buildings():
 	building_generator.branch_probability = building_branch_chance
 	building_generator.max_blocks_total = building_max_total
 	building_generator.reset_counter()
+
+	# Register spire AABBs so buildings don't overlap with them
+	var spire_aabbs = _calculate_spire_aabbs()
+	building_generator.register_external_aabbs(spire_aabbs)
 
 	var seed_count = 0
 	var blocks_placed = 0
