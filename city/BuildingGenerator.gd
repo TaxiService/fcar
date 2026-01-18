@@ -34,6 +34,7 @@ const VERTICAL_ROTATION_OFFSETS = [0.0, PI / 2.0, -PI / 2.0, PI]
 @export var check_overlaps: bool = true  # Enable/disable overlap checking
 @export var overlap_margin: float = 1.0  # Shrink AABBs by this much to allow slight overlaps
 @export var max_block_attempts: int = 7  # Max different blocks to try before giving up on a position
+@export var skip_overlap_at_depth_0: bool = true  # Skip overlap check for initial seed blocks (guarantees every seed gets a building)
 
 @export_category("Connection Matching")
 @export var check_direction: bool = false  # Require vertical/horizontal direction match (disable for Y-rotatable blocks)
@@ -214,7 +215,8 @@ func _grow_from_seed(position: Vector3, direction: Vector3, biome_idx: int, dept
 		if connections.is_empty():
 			# Block with no connections - just position directly
 			test_instance.global_position = position
-			if check_overlaps:
+			var should_check_overlap = check_overlaps and not (depth == 0 and skip_overlap_at_depth_0)
+			if should_check_overlap:
 				var block_aabb = _get_block_aabb(test_instance)
 				if _overlaps_existing(block_aabb):
 					test_instance.queue_free()
@@ -222,6 +224,9 @@ func _grow_from_seed(position: Vector3, direction: Vector3, biome_idx: int, dept
 					_overlap_rejects += 1
 					continue  # Try next block
 				_placed_aabbs.append(block_aabb)
+			elif check_overlaps:
+				# Still register AABB even if we skipped the check
+				_placed_aabbs.append(_get_block_aabb(test_instance))
 			block_instance = test_instance
 			successful_attempt = attempt_idx
 			break
@@ -242,7 +247,10 @@ func _grow_from_seed(position: Vector3, direction: Vector3, biome_idx: int, dept
 			var placement_succeeded = false
 			var final_aabb: AABB
 
-			if check_overlaps and not anchor.ignores_collision:
+			# Skip overlap check at depth 0 if configured (guarantees every seed gets a building)
+			var should_check_overlap = check_overlaps and not anchor.ignores_collision and not (depth == 0 and skip_overlap_at_depth_0)
+
+			if should_check_overlap:
 				var rotations_to_try = VERTICAL_ROTATION_OFFSETS if is_vertical else [0.0]
 
 				for rot_idx in range(rotations_to_try.size()):

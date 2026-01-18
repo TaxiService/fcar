@@ -193,8 +193,9 @@ func generate_city():
 	# Step 5: Generate buildings on connectors
 	if generate_buildings:
 		_generate_buildings()
-		_generate_buildings() # this works in making the city more dense, but
-	#	_generate_buildings() # why can't i run this just once instead to get a similar result?
+		_generate_buildings()
+		_generate_buildings()
+		_generate_buildings()
 
 	print("CityGenerator: Done! Generated %d spires, %d edge connections, %d hexagons" % [spire_positions.size(), connector_edges.size(), hex_vertex_lists.size()])
 
@@ -694,11 +695,10 @@ func _generate_buildings():
 	building_generator.max_blocks_total = building_max_total
 	building_generator.reset_counter()
 
-	# Register spire and connector AABBs so buildings don't overlap with them
+	# Register spire AABBs so buildings don't overlap with them
+	# (Connector AABBs not registered - buildings spawn on top of connectors anyway)
 	var spire_aabbs = _calculate_spire_aabbs()
-	var connector_aabbs = _calculate_connector_aabbs()
 	building_generator.register_external_aabbs(spire_aabbs)
-	building_generator.register_external_aabbs(connector_aabbs)
 
 	print("  Starting building generation (max %d blocks)..." % building_max_total)
 
