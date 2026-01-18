@@ -193,7 +193,7 @@ func generate_city():
 	# Step 5: Generate buildings on connectors
 	if generate_buildings:
 		_generate_buildings()
-	#	_generate_buildings() # this works in making the city more dense, but
+		_generate_buildings() # this works in making the city more dense, but
 	#	_generate_buildings() # why can't i run this just once instead to get a similar result?
 
 	print("CityGenerator: Done! Generated %d spires, %d edge connections, %d hexagons" % [spire_positions.size(), connector_edges.size(), hex_vertex_lists.size()])

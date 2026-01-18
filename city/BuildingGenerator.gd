@@ -28,6 +28,10 @@ var _overlap_rejects: int = 0
 var _no_anchor_rejects: int = 0
 var _size_filter_rejects: int = 0
 var _max_depth_reached: int = 0
+var _rotation_retries: int = 0  # Successful placements after rotation retry
+
+# Y-rotation offsets to try for vertical connections (in radians)
+const VERTICAL_ROTATION_OFFSETS = [0.0, PI / 2.0, -PI / 2.0, PI]
 
 @export_category("Overlap Detection")
 @export var check_overlaps: bool = true  # Enable/disable overlap checking
@@ -49,6 +53,7 @@ func reset_counter():
 	_no_anchor_rejects = 0
 	_size_filter_rejects = 0
 	_max_depth_reached = 0
+	_rotation_retries = 0
 
 
 # Register external AABBs (e.g., spires) that buildings should not overlap with
@@ -65,6 +70,12 @@ func print_debug_stats():
 	print("  No anchor rejects: %d" % _no_anchor_rejects)
 	print("  Size filter rejects: %d" % _size_filter_rejects)
 	print("  Max depth (%d) reached: %d times" % [max_growth_depth, _max_depth_reached])
+	print("  Rotation retries saved: %d" % _rotation_retries)
+
+
+# Check if a direction is mostly vertical (pointing up or down)
+func _is_vertical_direction(dir: Vector3) -> bool:
+	return abs(dir.y) > 0.9
 
 
 func _load_block_library():
@@ -221,21 +232,42 @@ func _grow_from_seed(position: Vector3, direction: Vector3, biome_idx: int, dept
 			return
 
 		# Rotate block to align connection with incoming direction
-		_align_block_to_direction(block_instance, anchor, position, target_dir, base_heading)
-		block_instance.mark_connection_used(anchor)
+		# For vertical connections, try multiple Y rotations to find non-overlapping placement
+		var is_vertical = _is_vertical_direction(target_dir)
+		var placement_succeeded = false
+		var final_aabb: AABB
 
-		# Check for overlaps (unless anchor ignores collision)
 		if check_overlaps and not anchor.ignores_collision:
-			var block_aabb = _get_block_aabb(block_instance)
-			if _overlaps_existing(block_aabb):
+			var rotations_to_try = VERTICAL_ROTATION_OFFSETS if is_vertical else [0.0]
+
+			for rot_idx in range(rotations_to_try.size()):
+				var extra_rotation = rotations_to_try[rot_idx]
+				_align_block_to_direction(block_instance, anchor, position, target_dir, base_heading, extra_rotation)
+
+				var block_aabb = _get_block_aabb(block_instance)
+				if not _overlaps_existing(block_aabb):
+					# Found a valid placement
+					placement_succeeded = true
+					final_aabb = block_aabb
+					if rot_idx > 0:
+						_rotation_retries += 1  # Track that rotation retry saved this block
+					break
+
+			if not placement_succeeded:
 				block_instance.queue_free()
 				_blocks_placed -= 1
 				_overlap_rejects += 1
 				return
-			_placed_aabbs.append(block_aabb)
-		elif check_overlaps:
-			# Still track AABB even if we ignored collision for this block
-			_placed_aabbs.append(_get_block_aabb(block_instance))
+
+			_placed_aabbs.append(final_aabb)
+		else:
+			# No overlap check needed, just align normally
+			_align_block_to_direction(block_instance, anchor, position, target_dir, base_heading)
+			if check_overlaps:
+				# Still track AABB even if we ignored collision for this block
+				_placed_aabbs.append(_get_block_aabb(block_instance))
+
+		block_instance.mark_connection_used(anchor)
 
 	# Maybe branch to other connections (only from sockets)
 	var remaining = block_instance.get_available_connections()
@@ -314,7 +346,8 @@ func _find_compatible_connection(connections: Array[ConnectionPoint], target_dir
 # Align a block so its connection point is at target_pos facing target_dir
 # Only rotates around Y axis - connection point markers encode their own angles
 # base_heading: For vertical connections, use this as the Y rotation (align with connector)
-func _align_block_to_direction(block: BuildingBlock, conn: ConnectionPoint, target_pos: Vector3, target_dir: Vector3, base_heading: float = 0.0):
+# extra_y_rotation: Additional Y rotation offset (used for rotation retry on vertical connections)
+func _align_block_to_direction(block: BuildingBlock, conn: ConnectionPoint, target_pos: Vector3, target_dir: Vector3, base_heading: float = 0.0, extra_y_rotation: float = 0.0):
 	# target_dir points from parent TOWARD child position (= -direction passed to _grow_from_seed)
 	# Child's connection INWARD direction (cone) should point INTO child = same as target_dir
 	# This ensures child is positioned BEYOND the connection point, not inside parent
@@ -328,10 +361,10 @@ func _align_block_to_direction(block: BuildingBlock, conn: ConnectionPoint, targ
 	if target_horiz.length() > 0.1 and conn_horiz.length() > 0.1:
 		var target_yaw = atan2(target_dir.x, target_dir.z)
 		var conn_yaw = atan2(conn_local_dir.x, conn_local_dir.z)
-		block.rotation.y = target_yaw - conn_yaw
+		block.rotation.y = target_yaw - conn_yaw + extra_y_rotation
 	else:
-		# For vertical connections, use base_heading to align with connector direction
-		block.rotation.y = base_heading
+		# For vertical connections, use base_heading + extra rotation
+		block.rotation.y = base_heading + extra_y_rotation
 
 	# Position block so connection point lands at target_pos
 	var rotated_offset = block.basis * conn.position
