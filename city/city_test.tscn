@@ -55,6 +55,7 @@ spire_height = 1600.0
 crosslink_width = 20.0
 crosslink_height = 15.0
 building_seed_spacing = 60.0
+building_seed_probability = 1.0
 building_max_depth = 5
 building_branch_chance = 0.9
 building_max_total = 1260

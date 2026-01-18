@@ -14,10 +14,6 @@ var block_data: Array[Dictionary] = []  # Cached block info for quick filtering
 @export var floor_probability: float = 0.2  # Chance to force a floor block
 @export var max_blocks_total: int = 1260  # Hard limit to prevent freezing
 
-@export_category("Seed Points")
-@export var seeds_per_connector: int = 2  # How many buildings per connector beam
-@export var seed_height_variance: float = 50.0  # Random height offset for seeds
-
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _blocks_placed: int = 0  # Counter for hard limit
 var _recursion_count: int = 0  # Debug counter for catching infinite loops
@@ -29,6 +25,7 @@ var _no_anchor_rejects: int = 0
 var _size_filter_rejects: int = 0
 var _max_depth_reached: int = 0
 var _rotation_retries: int = 0  # Successful placements after rotation retry
+var _block_retries: int = 0  # Successful placements after trying a different block
 
 # Y-rotation offsets to try for vertical connections (in radians)
 const VERTICAL_ROTATION_OFFSETS = [0.0, PI / 2.0, -PI / 2.0, PI]
@@ -36,6 +33,7 @@ const VERTICAL_ROTATION_OFFSETS = [0.0, PI / 2.0, -PI / 2.0, PI]
 @export_category("Overlap Detection")
 @export var check_overlaps: bool = true  # Enable/disable overlap checking
 @export var overlap_margin: float = 1.0  # Shrink AABBs by this much to allow slight overlaps
+@export var max_block_attempts: int = 7  # Max different blocks to try before giving up on a position
 
 @export_category("Connection Matching")
 @export var check_direction: bool = false  # Require vertical/horizontal direction match (disable for Y-rotatable blocks)
@@ -54,6 +52,7 @@ func reset_counter():
 	_size_filter_rejects = 0
 	_max_depth_reached = 0
 	_rotation_retries = 0
+	_block_retries = 0
 
 
 # Register external AABBs (e.g., spires) that buildings should not overlap with
@@ -71,6 +70,7 @@ func print_debug_stats():
 	print("  Size filter rejects: %d" % _size_filter_rejects)
 	print("  Max depth (%d) reached: %d times" % [max_growth_depth, _max_depth_reached])
 	print("  Rotation retries saved: %d" % _rotation_retries)
+	print("  Block retries saved: %d" % _block_retries)
 
 
 # Check if a direction is mostly vertical (pointing up or down)
@@ -100,14 +100,23 @@ func _load_block_library():
 				# Cache block metadata
 				var instance = scene.instantiate()
 				if instance is BuildingBlock:
-					# Check which sizes this block supports
+					# Check which sizes this block supports (plugs vs any connection)
+					var has_small_plug = false
+					var has_medium_plug = false
+					var has_large_plug = false
 					var has_small = false
 					var has_medium = false
 					var has_large = false
 					for conn in instance.get_connection_points():
-						if conn.size_small: has_small = true
-						if conn.size_medium: has_medium = true
-						if conn.size_large: has_large = true
+						if conn.size_small:
+							has_small = true
+							if conn.is_plug: has_small_plug = true
+						if conn.size_medium:
+							has_medium = true
+							if conn.is_plug: has_medium_plug = true
+						if conn.size_large:
+							has_large = true
+							if conn.is_plug: has_large_plug = true
 
 					block_data.append({
 						"scene": scene,
@@ -121,36 +130,21 @@ func _load_block_library():
 						"has_small": has_small,
 						"has_medium": has_medium,
 						"has_large": has_large,
+						"has_small_plug": has_small_plug,
+						"has_medium_plug": has_medium_plug,
+						"has_large_plug": has_large_plug,
 					})
 				instance.queue_free()
 		file_name = dir.get_next()
 
 	print("BuildingGenerator: Loaded %d blocks" % block_library.size())
 	for data in block_data:
-		print("  - %s (type=%d, connections=%d)" % [data.path.get_file(), data.type, data.connection_count])
-
-
-# Generate buildings along a connector beam
-func generate_on_connector(start_pos: Vector3, end_pos: Vector3, biome_idx: int):
-	var direction = (end_pos - start_pos).normalized()
-	var length = start_pos.distance_to(end_pos)
-
-	for i in range(seeds_per_connector):
-		# Pick a random point along the connector
-		var t = _rng.randf_range(0.2, 0.8)  # Avoid very ends
-		var seed_pos = start_pos.lerp(end_pos, t)
-
-		# Add some height variance
-		seed_pos.y += _rng.randf_range(-seed_height_variance, seed_height_variance)
-
-		# Pick a random perpendicular direction to grow
-		var up = Vector3.UP
-		var side = direction.cross(up).normalized()
-		if _rng.randf() > 0.5:
-			side = -side
-
-		# Start growing
-		_grow_from_seed(seed_pos, side, biome_idx, 0)
+		var plugs = []
+		if data.has_small_plug: plugs.append("S")
+		if data.has_medium_plug: plugs.append("M")
+		if data.has_large_plug: plugs.append("L")
+		var plug_str = ",".join(plugs) if plugs.size() > 0 else "none"
+		print("  - %s (type=%d, plugs=%s)" % [data.path.get_file(), data.type, plug_str])
 
 
 # Grow a building structure from a seed point
@@ -169,18 +163,18 @@ func _grow_from_seed(position: Vector3, direction: Vector3, biome_idx: int, dept
 	if _blocks_placed >= max_blocks_total:
 		return
 
-	# Pick a block that fits this biome
+	# Get blocks that fit this biome
 	var valid_blocks = _get_valid_blocks(biome_idx, depth)
 	if valid_blocks.is_empty():
 		return
 
-	# Filter by required connection size (uses cached data)
+	# Filter by required connection size (must have a PLUG of that size to anchor)
 	if size_filter != "any":
 		valid_blocks = valid_blocks.filter(func(b):
 			match size_filter:
-				"small": return b.has_small
-				"medium": return b.has_medium
-				"large": return b.has_large
+				"small": return b.has_small_plug
+				"medium": return b.has_medium_plug
+				"large": return b.has_large_plug
 				_: return true
 		)
 		if valid_blocks.is_empty():
@@ -190,84 +184,105 @@ func _grow_from_seed(position: Vector3, direction: Vector3, biome_idx: int, dept
 	# Weight selection towards floors if we're deep in the structure
 	var force_floor = depth > 0 and _rng.randf() < floor_probability
 	if force_floor:
-		valid_blocks = valid_blocks.filter(func(b): return b.type == BuildingBlock.BlockType.FLOOR)
-		if valid_blocks.is_empty():
-			valid_blocks = _get_valid_blocks(biome_idx, depth)  # Fallback
+		var floor_blocks = valid_blocks.filter(func(b): return b.type == BuildingBlock.BlockType.FLOOR)
+		if not floor_blocks.is_empty():
+			valid_blocks = floor_blocks
 
-	# Weighted random selection
-	var block_info = _weighted_pick(valid_blocks)
-	if not block_info:
-		return
+	# Shuffle blocks and try multiple until one succeeds
+	var shuffled_blocks = valid_blocks.duplicate()
+	shuffled_blocks.shuffle()
 
-	# Instantiate the block
-	var block_instance = block_info.scene.instantiate() as BuildingBlock
-	if not block_instance:
-		return
+	var target_dir = -direction  # We want to connect TO the seed
+	var attempts = mini(max_block_attempts, shuffled_blocks.size())
+	var block_instance: BuildingBlock = null
+	var successful_attempt = -1
 
-	add_child(block_instance)
-	_blocks_placed += 1
+	for attempt_idx in range(attempts):
+		var block_info = shuffled_blocks[attempt_idx]
 
-	# Position the block - find a compatible connection point to anchor
-	var connections = block_instance.get_connection_points()
-	if connections.is_empty():
-		block_instance.global_position = position
-		# Check overlaps for directly positioned blocks too
-		if check_overlaps:
-			var block_aabb = _get_block_aabb(block_instance)
-			if _overlaps_existing(block_aabb):
-				block_instance.queue_free()
-				_blocks_placed -= 1
-				return
-			_placed_aabbs.append(block_aabb)
-	else:
-		# Find a connection point that can connect (matching size, compatible direction)
-		var target_dir = -direction  # We want to connect TO the seed
-		var anchor = _find_compatible_connection(connections, target_dir, size_filter)
+		# Instantiate the block
+		var test_instance = block_info.scene.instantiate() as BuildingBlock
+		if not test_instance:
+			continue
 
-		if anchor == null:
-			# No compatible connection - remove block and abort
-			block_instance.queue_free()
-			_blocks_placed -= 1
-			_no_anchor_rejects += 1
-			return
+		add_child(test_instance)
+		_blocks_placed += 1
 
-		# Rotate block to align connection with incoming direction
-		# For vertical connections, try multiple Y rotations to find non-overlapping placement
-		var is_vertical = _is_vertical_direction(target_dir)
-		var placement_succeeded = false
-		var final_aabb: AABB
+		# Position the block - find a compatible connection point to anchor
+		var connections = test_instance.get_connection_points()
 
-		if check_overlaps and not anchor.ignores_collision:
-			var rotations_to_try = VERTICAL_ROTATION_OFFSETS if is_vertical else [0.0]
-
-			for rot_idx in range(rotations_to_try.size()):
-				var extra_rotation = rotations_to_try[rot_idx]
-				_align_block_to_direction(block_instance, anchor, position, target_dir, base_heading, extra_rotation)
-
-				var block_aabb = _get_block_aabb(block_instance)
-				if not _overlaps_existing(block_aabb):
-					# Found a valid placement
-					placement_succeeded = true
-					final_aabb = block_aabb
-					if rot_idx > 0:
-						_rotation_retries += 1  # Track that rotation retry saved this block
-					break
-
-			if not placement_succeeded:
-				block_instance.queue_free()
-				_blocks_placed -= 1
-				_overlap_rejects += 1
-				return
-
-			_placed_aabbs.append(final_aabb)
-		else:
-			# No overlap check needed, just align normally
-			_align_block_to_direction(block_instance, anchor, position, target_dir, base_heading)
+		if connections.is_empty():
+			# Block with no connections - just position directly
+			test_instance.global_position = position
 			if check_overlaps:
-				# Still track AABB even if we ignored collision for this block
-				_placed_aabbs.append(_get_block_aabb(block_instance))
+				var block_aabb = _get_block_aabb(test_instance)
+				if _overlaps_existing(block_aabb):
+					test_instance.queue_free()
+					_blocks_placed -= 1
+					_overlap_rejects += 1
+					continue  # Try next block
+				_placed_aabbs.append(block_aabb)
+			block_instance = test_instance
+			successful_attempt = attempt_idx
+			break
+		else:
+			# Find a connection point that can connect (matching size, compatible direction)
+			var anchor = _find_compatible_connection(connections, target_dir, size_filter)
 
-		block_instance.mark_connection_used(anchor)
+			if anchor == null:
+				# No compatible connection - try next block
+				test_instance.queue_free()
+				_blocks_placed -= 1
+				_no_anchor_rejects += 1
+				continue
+
+			# Rotate block to align connection with incoming direction
+			# For vertical connections, try multiple Y rotations to find non-overlapping placement
+			var is_vertical = _is_vertical_direction(target_dir)
+			var placement_succeeded = false
+			var final_aabb: AABB
+
+			if check_overlaps and not anchor.ignores_collision:
+				var rotations_to_try = VERTICAL_ROTATION_OFFSETS if is_vertical else [0.0]
+
+				for rot_idx in range(rotations_to_try.size()):
+					var extra_rotation = rotations_to_try[rot_idx]
+					_align_block_to_direction(test_instance, anchor, position, target_dir, base_heading, extra_rotation)
+
+					var block_aabb = _get_block_aabb(test_instance)
+					if not _overlaps_existing(block_aabb):
+						# Found a valid placement
+						placement_succeeded = true
+						final_aabb = block_aabb
+						if rot_idx > 0:
+							_rotation_retries += 1
+						break
+
+				if not placement_succeeded:
+					test_instance.queue_free()
+					_blocks_placed -= 1
+					_overlap_rejects += 1
+					continue  # Try next block
+
+				_placed_aabbs.append(final_aabb)
+			else:
+				# No overlap check needed, just align normally
+				_align_block_to_direction(test_instance, anchor, position, target_dir, base_heading)
+				if check_overlaps:
+					_placed_aabbs.append(_get_block_aabb(test_instance))
+
+			test_instance.mark_connection_used(anchor)
+			block_instance = test_instance
+			successful_attempt = attempt_idx
+			break
+
+	# If no block succeeded, we're done
+	if block_instance == null:
+		return
+
+	# Track if this was a retry success
+	if successful_attempt > 0:
+		_block_retries += 1
 
 	# Maybe branch to other connections (only from sockets)
 	var remaining = block_instance.get_available_connections()

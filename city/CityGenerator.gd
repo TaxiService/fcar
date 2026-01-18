@@ -700,21 +700,13 @@ func _generate_buildings():
 	building_generator.register_external_aabbs(spire_aabbs)
 	building_generator.register_external_aabbs(connector_aabbs)
 
-	var seed_count = 0
-	var blocks_placed = 0
-
 	print("  Starting building generation (max %d blocks)..." % building_max_total)
 
-	# Shuffle connector order so all biomes get fair access to block budget
-	var shuffled_connectors = connector_data.duplicate()
-	shuffled_connectors.shuffle()
+	# Pre-calculate all potential seed positions, grouped by seed index (round)
+	# This ensures fair distribution: all connectors get 1st seed before any gets 2nd
+	var seeds_by_round: Array[Array] = []  # seeds_by_round[i] = array of seed data for round i
 
-	# Generate seed points along each connector
-	for conn in shuffled_connectors:
-		# Check total limit
-		if blocks_placed >= building_max_total:
-			break
-
+	for conn in connector_data:
 		# Filter by connector type
 		var is_edge: bool = conn.get("is_edge", true)
 		if is_edge and not buildings_on_edges:
@@ -739,11 +731,11 @@ func _generate_buildings():
 		var num_seeds = int(usable_length / building_seed_spacing)
 		var start_offset = spire_base_radius + building_seed_spacing * 0.5
 
-		for i in range(num_seeds):
-			# Check total limit
-			if blocks_placed >= building_max_total:
-				break
+		# Determine size filter based on connector type
+		var size_filter = crosslink_seed_size if not is_edge else edge_seed_size
+		var connector_heading = atan2(dir_normalized.x, dir_normalized.z)
 
+		for i in range(num_seeds):
 			# Random chance to skip this seed (sparsity control)
 			if randf() > building_seed_probability:
 				continue
@@ -753,27 +745,54 @@ func _generate_buildings():
 			# Offset seed up by half connector height so buildings spawn on top, not inside
 			seed_pos.y += conn_height / 2.0
 
-			# Growth direction: UP for vertical pillars/floors to stack on connectors
-			var growth_dir = Vector3.UP
+			# Store seed data for this round
+			var seed_data = {
+				"pos": seed_pos,
+				"biome_idx": biome_idx,
+				"size_filter": size_filter,
+				"heading": connector_heading
+			}
 
-			# Pass connector heading so buildings align with the connector
-			var connector_heading = atan2(dir_normalized.x, dir_normalized.z)
+			# Ensure we have enough rounds
+			while seeds_by_round.size() <= i:
+				seeds_by_round.append([])
+			seeds_by_round[i].append(seed_data)
+
+	# Shuffle each round independently for variety
+	for round_seeds in seeds_by_round:
+		round_seeds.shuffle()
+
+	# Process seeds round by round (fair distribution)
+	var seed_count = 0
+	var blocks_placed = 0
+
+	for round_idx in range(seeds_by_round.size()):
+		if blocks_placed >= building_max_total:
+			break
+
+		for seed_data in seeds_by_round[round_idx]:
+			if blocks_placed >= building_max_total:
+				break
 
 			# Count blocks before
 			var before = building_generator.get_child_count()
 
-			# Determine size filter based on connector type
-			var size_filter = crosslink_seed_size if not is_edge else edge_seed_size
-
 			# Grow building from this seed
-			building_generator._grow_from_seed(seed_pos, growth_dir, biome_idx, 0, size_filter, connector_heading)
+			building_generator._grow_from_seed(
+				seed_data.pos,
+				Vector3.UP,
+				seed_data.biome_idx,
+				0,
+				seed_data.size_filter,
+				seed_data.heading
+			)
 
 			# Count blocks placed
 			var placed = building_generator.get_child_count() - before
 			blocks_placed += placed
 			seed_count += 1
 
-	print("  Generated %d blocks from %d seeds" % [blocks_placed, seed_count])
+	print("  Generated %d blocks from %d seeds (%d rounds)" % [blocks_placed, seed_count, seeds_by_round.size()])
 	building_generator.print_debug_stats()
 
 
