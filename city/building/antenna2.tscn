@@ -30,6 +30,7 @@ rings = 2
 
 [node name="FloorSmall5" type="StaticBody3D"]
 script = ExtResource("1_gra87")
+block_type = 2
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 5.8502665, 0)

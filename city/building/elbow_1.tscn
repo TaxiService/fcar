@@ -47,6 +47,7 @@ rings = 0
 
 [node name="FloorSmall5" type="StaticBody3D"]
 script = ExtResource("1_0hgq2")
+block_type = 3
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, -20, 10, -8.7422785e-07)
@@ -81,11 +82,12 @@ is_socket = false
 ignores_collision = true
 
 [node name="Conn_Plug_Large2" type="Marker3D" parent="."]
-transform = Transform3D(-1, 8.742278e-08, 0, 3.821371e-15, 4.371139e-08, 1, 8.742278e-08, 1, -4.371139e-08, -19.999998, 17.5, -8.7422785e-07)
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -19.999998, 17.5, -8.7422785e-07)
 script = ExtResource("4_in80i")
 size_medium = false
 size_large = true
 is_plug = false
+ignores_collision = true
 
 [node name="Marker3D" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, -8.351872e-23, 0, 1, 0, -8.351872e-23, 0, 1, -12.002, -0.036, 9)

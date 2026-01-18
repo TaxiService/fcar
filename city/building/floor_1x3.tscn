@@ -23,6 +23,7 @@ size = Vector3(90, 5, 30)
 
 [node name="FloorSmall5" type="StaticBody3D"]
 script = ExtResource("1_2l77p")
+block_type = 1
 
 [node name="SpawnSurface7" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5432281, 0)

@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3 uid="uid://bv01eqacnpsql"]
+[gd_scene load_steps=13 format=3 uid="uid://bv01eqacnpsql"]
 
 [ext_resource type="Script" uid="uid://cmafag82uyxu7" path="res://city/BuildingBlock.gd" id="1_avli1"]
 [ext_resource type="Material" uid="uid://c84qehqsj2tk1" path="res://mats/floor_small.tres" id="2_6k6mm"]
@@ -40,8 +40,25 @@ height = 60.0
 radial_segments = 5
 rings = 0
 
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_6k6mm"]
+height = 10.0
+radius = 28.0
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_hld2p"]
+height = 4.0
+radius = 25.0
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_qss0d"]
+height = 4.0
+radius = 20.0
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_p2c13"]
+height = 3.0
+radius = 15.0
+
 [node name="FloorSmall5" type="StaticBody3D"]
 script = ExtResource("1_avli1")
+block_type = 3
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -10, 0)
@@ -96,3 +113,30 @@ script = ExtResource("3_hld2p")
 size_small = true
 size_medium = false
 is_plug = false
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("CylinderShape3D_6k6mm")
+
+[node name="CollisionShape3D2" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6.5, 0)
+shape = SubResource("CylinderShape3D_hld2p")
+
+[node name="CollisionShape3D4" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 10, 0)
+shape = SubResource("CylinderShape3D_qss0d")
+
+[node name="CollisionShape3D6" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 13.5, 0)
+shape = SubResource("CylinderShape3D_p2c13")
+
+[node name="CollisionShape3D7" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -13.5, 0)
+shape = SubResource("CylinderShape3D_p2c13")
+
+[node name="CollisionShape3D3" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -6.5, 0)
+shape = SubResource("CylinderShape3D_hld2p")
+
+[node name="CollisionShape3D5" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -10, 0)
+shape = SubResource("CylinderShape3D_qss0d")

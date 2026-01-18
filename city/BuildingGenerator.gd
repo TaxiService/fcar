@@ -9,10 +9,10 @@ var block_data: Array[Dictionary] = []  # Cached block info for quick filtering
 
 # Generation settings
 @export var blocks_folder: String = "res://city/building/"
-@export var max_growth_depth: int = 5  # Max blocks from seed point
+@export var max_growth_depth: int = 7  # Max blocks from seed point
 @export var branch_probability: float = 0.3  # Chance to use multiple connections
 @export var floor_probability: float = 0.2  # Chance to force a floor block
-@export var max_blocks_total: int = 500  # Hard limit to prevent freezing
+@export var max_blocks_total: int = 1260  # Hard limit to prevent freezing
 
 @export_category("Seed Points")
 @export var seeds_per_connector: int = 2  # How many buildings per connector beam
@@ -283,7 +283,7 @@ func _find_compatible_connection(connections: Array[ConnectionPoint], target_dir
 		# Check direction compatibility (optional - disable for Y-rotatable block designs)
 		if check_direction:
 			# Connection points face INWARD, so -Z of the marker points into the block
-			var conn_dir = -conn.basis.z  # Local direction the connection faces
+			var conn_dir = -conn.basis.x  # Local direction the connection faces
 
 			# For Y-only rotation, we can only align if both directions are mostly horizontal
 			var conn_vertical = abs(conn_dir.y)
