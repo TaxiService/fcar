@@ -27,9 +27,9 @@ var vertical_labels: Array[Label] = []  # Vertical distance indicators
 var current_groups: Array = []  # Updated each frame
 var targeted_group_index: int = -1  # Index into current_groups, -1 = none
 
-# Update throttling (for performance)
-var update_interval: float = 0.15  # Update markers every 150ms instead of every frame
-var update_timer: float = 0.0
+# Cached distance info (calculate once per marker, not every frame)
+# Dictionary: group_id -> { horizontal_distance: String, vertical_text: String, vertical_color: Color }
+var cached_distances: Dictionary = {}
 
 
 func _ready():
@@ -93,15 +93,15 @@ func _create_marker_pool():
 		vertical_labels.append(vert_label)
 
 
-func _process(delta):
+func _process(_delta):
 	if not fcar or not people_manager:
 		_hide_all()
 		targeted_group_index = -1
 		current_groups = []
+		cached_distances.clear()
 		return
 
 	# Check if a group is currently boarding - show only their marker
-	# Update every frame for boarding (needs precision)
 	if fcar.confirmed_boarding_group.size() > 0:
 		current_groups = [_get_boarding_group_data()]
 		targeted_group_index = 0
@@ -112,15 +112,12 @@ func _process(delta):
 		_hide_all()
 		targeted_group_index = -1
 		current_groups = []
+		cached_distances.clear()
 		return
 
-	# Throttle updates for hailing markers (performance optimization)
-	# These don't need to update every frame - 150ms is fine for selecting fares
-	update_timer += delta
-	if update_timer >= update_interval:
-		update_timer = 0.0
-		current_groups = _get_nearby_hailing_groups()
-		_update_markers(current_groups)
+	# Update markers every frame (smooth positioning)
+	current_groups = _get_nearby_hailing_groups()
+	_update_markers(current_groups)
 
 
 func get_targeted_group():
@@ -250,7 +247,8 @@ func _get_nearby_hailing_groups() -> Array:
 		result.append({
 			"position": avg_pos,
 			"destination": dest,
-			"members": members
+			"members": members,
+			"group_key": gid  # For caching distance calculations
 		})
 
 	# Sort by distance (nearest first) and limit to max_markers
@@ -273,6 +271,9 @@ func _update_markers(groups: Array):
 
 	var screen_size = get_viewport().get_visible_rect().size
 	var cam_forward = -camera.global_transform.basis.z
+
+	# Track which groups are currently visible (for cache cleanup)
+	var visible_group_keys = []
 
 	# First pass: determine visibility and calculate angles
 	var visible_groups: Array = []  # Array of { index, angle, distance_from_car }
@@ -332,15 +333,27 @@ func _update_markers(groups: Array):
 
 		# Show distance label if within look_at threshold
 		if angle <= look_at_angle_threshold and is_instance_valid(group.destination):
-			var dist_to_dest = group.position.distance_to(group.destination.global_position)
-			distance_labels[i].text = _format_distance(dist_to_dest)
+			var group_key = group.group_key
+			visible_group_keys.append(group_key)
+
+			# Check cache first (calculate once per group, not every frame!)
+			if not cached_distances.has(group_key):
+				var dist_to_dest = group.position.distance_to(group.destination.global_position)
+				var vert_info = MarkerUtils.format_vertical_distance(group.position.y, group.destination.global_position.y)
+				cached_distances[group_key] = {
+					"horizontal_text": _format_distance(dist_to_dest),
+					"vertical_text": vert_info.text,
+					"vertical_color": vert_info.color
+				}
+
+			# Use cached values
+			var cached = cached_distances[group_key]
+			distance_labels[i].text = cached.horizontal_text
 			distance_labels[i].position = screen_pos + label_offset
 			distance_labels[i].visible = true
 
-			# Show vertical distance (person to destination, not car to destination)
-			var vert_info = MarkerUtils.format_vertical_distance(group.position.y, group.destination.global_position.y)
-			vertical_labels[i].text = vert_info.text
-			vertical_labels[i].add_theme_color_override("font_color", vert_info.color)
+			vertical_labels[i].text = cached.vertical_text
+			vertical_labels[i].add_theme_color_override("font_color", cached.vertical_color)
 			vertical_labels[i].position = screen_pos + label_offset + Vector2(0, 16)
 			vertical_labels[i].visible = true
 		else:
@@ -391,7 +404,7 @@ func _update_markers(groups: Array):
 			continue
 		if i == targeted_group_index:
 			marker_sprites[i].texture = marker_texture_targeted
-			marker_sprites[i].modulate = color_targeted  # Full color
+			marker_sprites[i].modulate = Color.WHITE  # Full color
 			distance_labels[i].add_theme_color_override("font_color", color_targeted)
 		elif distance_by_index.has(i) and distance_by_index[i] > selection_range:
 			marker_sprites[i].texture = marker_texture_out_of_range
@@ -399,8 +412,16 @@ func _update_markers(groups: Array):
 			distance_labels[i].add_theme_color_override("font_color", color_out_of_range)
 		else:
 			marker_sprites[i].texture = marker_texture
-			marker_sprites[i].modulate = color_selectable  # Full color
+			marker_sprites[i].modulate = Color.WHITE  # Full color
 			distance_labels[i].add_theme_color_override("font_color", color_selectable)
+
+	# Clean up cached distances for groups that are no longer visible
+	var keys_to_remove = []
+	for key in cached_distances:
+		if not visible_group_keys.has(key):
+			keys_to_remove.append(key)
+	for key in keys_to_remove:
+		cached_distances.erase(key)
 
 
 func _format_distance(dist: float) -> String:
