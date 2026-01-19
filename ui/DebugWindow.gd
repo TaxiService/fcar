@@ -69,7 +69,7 @@ func _build_ui():
 	
 	# Heightlock
 	heightlock_label = Label.new()
-	heightlock_label.text = "H-Lock: ---"
+	heightlock_label.text = "Heightlock: ---"
 	vbox.add_child(heightlock_label)
 
 	# Another separator

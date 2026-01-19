@@ -12,7 +12,7 @@ extends Node
 const BASE_FARE: int = 25  # Per trip
 const PER_PERSON_FARE: int = 25  # Per passenger
 const DISTANCE_DIVISOR: float = 20.0  # Distance in meters / this = bonus ₧
-const HURRY_MULTIPLIER: float = 10.0  # Multiplier for hurry bonus calculation
+const HURRY_MULTIPLIER: float = 20.0  # Multiplier for hurry bonus calculation
 const HURRY_TIME_BUFFER: float = 0.03  # 3 seconds per 100 meters added to minimum time
 
 # Shift state
