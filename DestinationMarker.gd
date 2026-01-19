@@ -38,6 +38,7 @@ func _create_visuals():
 		atlas.atlas = sprite_sheet
 		atlas.region = Rect2(0, 0, 48, 48)
 		marker_sprite.texture = atlas
+		marker_sprite.modulate = Color(1.0, 0.2, 0.8, 0.8) 
 	else:
 		push_error("DestinationMarker: Failed to load markers.png")
 
