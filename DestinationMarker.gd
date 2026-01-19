@@ -27,28 +27,21 @@ func _ready():
 
 
 func _create_visuals():
-	# Create marker sprite (magenta diamond)
+	# Create marker sprite using sprite sheet
 	marker_sprite = Sprite2D.new()
 	marker_sprite.name = "WaypointSprite"
 
-	# Original colors: fill = Color(1.0, 0.201, 0.798, 0.435), border = Color(1.0, 0.472, 0.835, 1.0)
-	# Size 32, outer_radius=14, border_thickness=3
-	var img = Image.create(32, 32, false, Image.FORMAT_RGBA8)
-	img.fill(Color(0, 0, 0, 0))
+	# Load destination marker from sprite sheet (leftmost 48x48 region)
+	var sprite_sheet = load("res://markers.png")
+	if sprite_sheet:
+		var atlas = AtlasTexture.new()
+		atlas.atlas = sprite_sheet
+		atlas.region = Rect2(0, 0, 48, 48)
+		marker_sprite.texture = atlas
+	else:
+		push_error("DestinationMarker: Failed to load markers.png")
 
-	for y in range(32):
-		for x in range(32):
-			var cx = abs(x - 16)
-			var cy = abs(y - 16)
-			var dist = cx + cy
-			if dist <= 14:
-				if dist >= 11:
-					img.set_pixel(x, y, Color(1.0, 0.472, 0.835, 1.0))  # Border
-				else:
-					img.set_pixel(x, y, Color(1.0, 0.201, 0.798, 0.435))  # Fill
-
-	marker_sprite.texture = ImageTexture.create_from_image(img)
-	marker_sprite.scale = Vector2(2.0, 2.0)
+	marker_sprite.scale = Vector2(1.0, 1.0)
 	marker_sprite.visible = false
 	add_child(marker_sprite)
 
@@ -56,6 +49,7 @@ func _create_visuals():
 	marker_arrow = Sprite2D.new()
 	marker_arrow.name = "DirectionArrow"
 
+	# For now, create a simple procedural arrow (could be replaced with sprite sheet later)
 	var arrow_img = Image.create(32, 32, false, Image.FORMAT_RGBA8)
 	arrow_img.fill(Color(0, 0, 0, 0))
 

@@ -35,56 +35,28 @@ func _ready():
 
 
 func _create_marker_textures():
-	# Normal marker: magenta diamond with white border (16x16)
-	var img = Image.create(16, 16, false, Image.FORMAT_RGBA8)
-	img.fill(Color(0, 0, 0, 0))
+	# Load marker sprite sheet (144x48, three 48x48 markers)
+	# Layout: [destination | unselected fare | selected fare]
+	var sprite_sheet = load("res://markers.png")
+	if not sprite_sheet:
+		push_error("HailingMarkers: Failed to load markers.png")
+		return
 
-	for y in range(16):
-		for x in range(16):
-			var cx = abs(x - 8)
-			var cy = abs(y - 8)
-			var dist = cx + cy
-			if dist <= 6:
-				if dist >= 4:
-					img.set_pixel(x, y, Color(1.0, 1.0, 1.0, 1.0))  # White border
-				else:
-					img.set_pixel(x, y, Color(1.0, 0.2, 0.8, 0.95))  # Magenta fill
+	# Create atlas textures for each marker region
+	# Unselected fare marker (middle, 48-96)
+	var atlas_normal = AtlasTexture.new()
+	atlas_normal.atlas = sprite_sheet
+	atlas_normal.region = Rect2(48, 0, 48, 48)
+	marker_texture = atlas_normal
 
-	marker_texture = ImageTexture.create_from_image(img)
+	# Selected fare marker (rightmost, 96-144)
+	var atlas_targeted = AtlasTexture.new()
+	atlas_targeted.atlas = sprite_sheet
+	atlas_targeted.region = Rect2(96, 0, 48, 48)
+	marker_texture_targeted = atlas_targeted
 
-	# Targeted marker: cyan/green diamond with thicker white border (20x20 for more outline)
-	var img_t = Image.create(20, 20, false, Image.FORMAT_RGBA8)
-	img_t.fill(Color(0, 0, 0, 0))
-
-	for y in range(20):
-		for x in range(20):
-			var cx = abs(x - 10)
-			var cy = abs(y - 10)
-			var dist = cx + cy
-			if dist <= 8:
-				if dist >= 4:
-					img_t.set_pixel(x, y, Color(1.0, 1.0, 1.0, 1.0))  # Thick white border
-				else:
-					img_t.set_pixel(x, y, Color(0.2, 1.0, 0.6, 1.0))  # Cyan/green fill
-
-	marker_texture_targeted = ImageTexture.create_from_image(img_t)
-
-	# Out of range marker: smaller gray diamond (12x12)
-	var img_oor = Image.create(12, 12, false, Image.FORMAT_RGBA8)
-	img_oor.fill(Color(0, 0, 0, 0))
-
-	for y in range(12):
-		for x in range(12):
-			var cx = abs(x - 6)
-			var cy = abs(y - 6)
-			var dist = cx + cy
-			if dist <= 5:
-				if dist >= 3:
-					img_oor.set_pixel(x, y, Color(0.6, 0.6, 0.6, 0.8))  # Gray border
-				else:
-					img_oor.set_pixel(x, y, Color(0.4, 0.4, 0.4, 0.7))  # Darker gray fill
-
-	marker_texture_out_of_range = ImageTexture.create_from_image(img_oor)
+	# Out of range marker (reuse unselected, will be grayed via modulate)
+	marker_texture_out_of_range = atlas_normal
 
 
 func _create_marker_pool():
@@ -207,6 +179,7 @@ func _update_markers_boarding_mode(groups: Array):
 	marker_sprites[0].visible = true
 	marker_sprites[0].position = screen_pos
 	marker_sprites[0].texture = marker_texture_targeted
+	marker_sprites[0].modulate = Color.WHITE  # Full color
 
 	# Show distance to destination (with targeted color)
 	if is_instance_valid(group.destination):
@@ -408,12 +381,15 @@ func _update_markers(groups: Array):
 			continue
 		if i == targeted_group_index:
 			marker_sprites[i].texture = marker_texture_targeted
+			marker_sprites[i].modulate = Color.WHITE  # Full color
 			distance_labels[i].add_theme_color_override("font_color", color_targeted)
 		elif distance_by_index.has(i) and distance_by_index[i] > selection_range:
 			marker_sprites[i].texture = marker_texture_out_of_range
+			marker_sprites[i].modulate = Color(0.5, 0.5, 0.5, 0.7)  # Gray and semi-transparent
 			distance_labels[i].add_theme_color_override("font_color", color_out_of_range)
 		else:
 			marker_sprites[i].texture = marker_texture
+			marker_sprites[i].modulate = Color.WHITE  # Full color
 			distance_labels[i].add_theme_color_override("font_color", color_selectable)
 
 
