@@ -189,8 +189,8 @@ func _update_markers_boarding_mode(groups: Array):
 		distance_labels[0].add_theme_color_override("font_color", Color(0.2, 1.0, 0.6, 1.0))  # Cyan/green
 		distance_labels[0].visible = true
 
-		# Show vertical distance
-		var vert_info = MarkerUtils.format_vertical_distance(fcar.global_position.y, group.destination.global_position.y)
+		# Show vertical distance (person to destination, not car to destination)
+		var vert_info = MarkerUtils.format_vertical_distance(group.position.y, group.destination.global_position.y)
 		vertical_labels[0].text = vert_info.text
 		vertical_labels[0].add_theme_color_override("font_color", vert_info.color)
 		vertical_labels[0].position = screen_pos + label_offset + Vector2(0, 16)
@@ -327,8 +327,8 @@ func _update_markers(groups: Array):
 			distance_labels[i].position = screen_pos + label_offset
 			distance_labels[i].visible = true
 
-			# Show vertical distance
-			var vert_info = MarkerUtils.format_vertical_distance(fcar.global_position.y, group.destination.global_position.y)
+			# Show vertical distance (person to destination, not car to destination)
+			var vert_info = MarkerUtils.format_vertical_distance(group.position.y, group.destination.global_position.y)
 			vertical_labels[i].text = vert_info.text
 			vertical_labels[i].add_theme_color_override("font_color", vert_info.color)
 			vertical_labels[i].position = screen_pos + label_offset + Vector2(0, 16)
