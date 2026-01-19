@@ -182,6 +182,9 @@ func _init_subsystems():
 		debug_visualizer.max_thrust = max_thrust
 		debug_visualizer.create_visuals(self, wheel_nodes)
 
+	# Initialize LOD camera for people culling (deferred to ensure camera exists)
+	call_deferred("_setup_lod_camera")
+
 	# Initialize booster system
 	_init_booster_system()
 
@@ -316,6 +319,9 @@ func engage_heightlock():
 
 
 func _physics_process(delta):
+	# Update LOD player position for people culling
+	_update_lod_player_position()
+
 	var car_up = global_transform.basis.y
 	var tilt_angle = stabilizer_system.get_tilt_angle(car_up)
 
@@ -1206,3 +1212,19 @@ func _eject_all_passengers():
 			if person.target_car == self:
 				person.target_car = null
 				person._enter_state(Person.State.HAILING)
+
+
+# LOD/Culling system for people visibility
+func _setup_lod_camera():
+	# Find and set the camera for person LOD/culling
+	var camera = get_viewport().get_camera_3d()
+	if camera:
+		Person.lod_camera = camera
+		print("FCar: LOD camera set for people culling")
+	else:
+		push_warning("FCar: Could not find camera for LOD system")
+
+
+func _update_lod_player_position():
+	# Update player Y position for vertical culling
+	Person.lod_player_y = global_position.y

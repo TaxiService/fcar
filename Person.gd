@@ -4,6 +4,14 @@ extends Sprite3D
 # Movement states
 enum State { WALKING, STOPPING, WAITING, HAILING, BOARDING, RIDING, EXITING, ARRIVED, RELOCATING }
 
+# LOD/Culling settings (static, shared by all people)
+static var lod_camera: Camera3D = null  # Set by main scene/FCar
+static var lod_player_y: float = 0.0  # Player's Y position (for vertical culling)
+static var lod_max_distance: float = 500.0  # Hide beyond this distance
+static var lod_max_height_above: float = 200.0  # Hide if this much above player
+static var lod_update_interval: float = 0.5  # Check every N seconds (stagger checks)
+static var lod_enabled: bool = true
+
 # Configuration (set by PeopleManager)
 var walk_speed_min: float = 0.8
 var walk_speed_max: float = 1.5
@@ -51,6 +59,10 @@ var relocation_target: Vector3 = Vector3.ZERO
 var relocation_surface: Node = null  # SpawnSurface to adopt bounds from
 var relocation_speed: float = 2.0  # Faster than normal walk
 
+# LOD/Culling instance state
+var lod_timer: float = 0.0  # Stagger LOD checks
+var lod_check_offset: float = 0.0  # Random offset to distribute checks
+
 
 func _ready():
 	# Disable built-in billboard (shader handles it)
@@ -61,6 +73,9 @@ func _ready():
 
 	# Randomize walk speed for this person
 	walk_speed = randf_range(walk_speed_min, walk_speed_max)
+
+	# Stagger LOD checks (random offset so not all people check on same frame)
+	lod_check_offset = randf() * lod_update_interval
 
 	# Start in waiting state
 	_enter_state(State.WAITING)
@@ -103,6 +118,18 @@ func start_relocating(target_pos: Vector3, surface: Node):
 
 
 func _process(delta: float):
+	# LOD/Culling check (staggered for performance)
+	if lod_enabled:
+		lod_timer += delta
+		if lod_timer >= lod_check_offset:
+			lod_timer = 0.0
+			lod_check_offset = lod_update_interval  # Reset to interval after first check
+			_update_lod_visibility()
+
+	# Don't process logic if hidden by LOD
+	if not visible:
+		return
+
 	state_timer += delta
 	hail_time += delta
 
@@ -360,3 +387,38 @@ func refresh_sprite(tex: AtlasTexture):
 	texture = tex
 	if material_override and material_override is ShaderMaterial:
 		material_override.set_shader_parameter("texture_albedo", tex)
+
+
+func _update_lod_visibility():
+	# Update visibility based on distance from camera and height relative to player
+	if not lod_camera:
+		# No camera set, always visible
+		visible = true
+		return
+
+	# Always show people who are boarding, riding, or exiting (near player)
+	if current_state in [State.BOARDING, State.RIDING, State.EXITING]:
+		visible = true
+		return
+
+	var camera_pos = lod_camera.global_position
+	var person_pos = global_position
+
+	# Calculate horizontal distance (XZ plane)
+	var horiz_dist = Vector2(person_pos.x - camera_pos.x, person_pos.z - camera_pos.z).length()
+
+	# Hide if too far horizontally
+	if horiz_dist > lod_max_distance:
+		visible = false
+		return
+
+	# Calculate height difference relative to player
+	var height_diff = person_pos.y - lod_player_y
+
+	# Hide if significantly above player (looking down on distant tiny people)
+	if height_diff > lod_max_height_above:
+		visible = false
+		return
+
+	# Otherwise visible
+	visible = true
