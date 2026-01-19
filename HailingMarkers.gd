@@ -24,12 +24,24 @@ var distance_labels: Array[Label] = []
 var vertical_labels: Array[Label] = []  # Vertical distance indicators
 
 # Targeting state
-var current_groups: Array = []  # Updated each frame
+var current_groups: Array = []  # Updated periodically
 var targeted_group_index: int = -1  # Index into current_groups, -1 = none
 
 # Cached distance info (calculate once per marker, not every frame)
 # Dictionary: group_id -> { horizontal_distance: String, vertical_text: String, vertical_color: Color }
 var cached_distances: Dictionary = {}
+
+# Performance: throttle expensive group scanning
+var group_scan_timer: float = 0.0
+var group_scan_interval: float = 0.15  # Scan for groups every 150ms
+
+# Performance: track current label colors to avoid redundant theme overrides
+var label_colors: Array[Color] = []  # Current color per distance_label
+var vert_label_colors: Array[Color] = []  # Current color per vertical_label
+
+# Performance: track current label text to avoid redundant updates
+var label_texts: Array[String] = []
+var vert_label_texts: Array[String] = []
 
 
 func _ready():
@@ -64,6 +76,8 @@ func _create_marker_textures():
 
 
 func _create_marker_pool():
+	var default_color = Color(1.0, 0.2, 0.8, 1.0)  # Magenta
+
 	for i in range(max_markers):
 		# Create marker sprite
 		var sprite = Sprite2D.new()
@@ -77,23 +91,54 @@ func _create_marker_pool():
 		var label = Label.new()
 		label.visible = false
 		label.add_theme_font_size_override("font_size", 14)
-		label.add_theme_color_override("font_color", Color(1.0, 0.2, 0.8, 1.0))  # Default magenta
-		label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 1.0))  # Black outline
+		label.add_theme_color_override("font_color", default_color)
+		label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 1.0))
 		label.add_theme_constant_override("outline_size", 5)
 		add_child(label)
 		distance_labels.append(label)
+		label_colors.append(default_color)
+		label_texts.append("")
 
 		# Create vertical distance label
 		var vert_label = Label.new()
 		vert_label.visible = false
 		vert_label.add_theme_font_size_override("font_size", 12)
-		vert_label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 1.0))  # Black outline
+		vert_label.add_theme_color_override("font_color", default_color)
+		vert_label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 1.0))
 		vert_label.add_theme_constant_override("outline_size", 4)
 		add_child(vert_label)
 		vertical_labels.append(vert_label)
+		vert_label_colors.append(default_color)
+		vert_label_texts.append("")
 
 
-func _process(_delta):
+# Performance helper: only update label color if it changed
+func _set_label_color(index: int, color: Color):
+	if label_colors[index] != color:
+		label_colors[index] = color
+		distance_labels[index].add_theme_color_override("font_color", color)
+
+
+func _set_vert_label_color(index: int, color: Color):
+	if vert_label_colors[index] != color:
+		vert_label_colors[index] = color
+		vertical_labels[index].add_theme_color_override("font_color", color)
+
+
+# Performance helper: only update label text if it changed
+func _set_label_text(index: int, text: String):
+	if label_texts[index] != text:
+		label_texts[index] = text
+		distance_labels[index].text = text
+
+
+func _set_vert_label_text(index: int, text: String):
+	if vert_label_texts[index] != text:
+		vert_label_texts[index] = text
+		vertical_labels[index].text = text
+
+
+func _process(delta):
 	if not fcar or not people_manager:
 		_hide_all()
 		targeted_group_index = -1
@@ -115,8 +160,13 @@ func _process(_delta):
 		cached_distances.clear()
 		return
 
-	# Update markers every frame (smooth positioning)
-	current_groups = _get_nearby_hailing_groups()
+	# Throttle expensive group scanning (every 150ms instead of every frame)
+	group_scan_timer += delta
+	if group_scan_timer >= group_scan_interval:
+		group_scan_timer = 0.0
+		current_groups = _get_nearby_hailing_groups()
+
+	# Update marker positions every frame (smooth), but groups list is throttled
 	_update_markers(current_groups)
 
 
@@ -191,15 +241,17 @@ func _update_markers_boarding_mode(groups: Array):
 	# Show distance to destination (with targeted color)
 	if is_instance_valid(group.destination):
 		var dist_to_dest = group.position.distance_to(group.destination.global_position)
-		distance_labels[0].text = _format_distance(dist_to_dest)
+		var targeted_color = Color(0.2, 1.0, 0.6, 1.0)  # Cyan/green
+
+		_set_label_text(0, _format_distance(dist_to_dest))
 		distance_labels[0].position = screen_pos + label_offset
-		distance_labels[0].add_theme_color_override("font_color", Color(0.2, 1.0, 0.6, 1.0))  # Cyan/green
+		_set_label_color(0, targeted_color)
 		distance_labels[0].visible = true
 
 		# Show vertical distance (person to destination, not car to destination)
 		var vert_info = MarkerUtils.format_vertical_distance(group.position.y, group.destination.global_position.y)
-		vertical_labels[0].text = vert_info.text
-		vertical_labels[0].add_theme_color_override("font_color", vert_info.color)
+		_set_vert_label_text(0, vert_info.text)
+		_set_vert_label_color(0, vert_info.color)
 		vertical_labels[0].position = screen_pos + label_offset + Vector2(0, 16)
 		vertical_labels[0].visible = true
 	else:
@@ -346,14 +398,14 @@ func _update_markers(groups: Array):
 					"vertical_color": vert_info.color
 				}
 
-			# Use cached values
+			# Use cached values (only update text if changed)
 			var cached = cached_distances[group_key]
-			distance_labels[i].text = cached.horizontal_text
+			_set_label_text(i, cached.horizontal_text)
 			distance_labels[i].position = screen_pos + label_offset
 			distance_labels[i].visible = true
 
-			vertical_labels[i].text = cached.vertical_text
-			vertical_labels[i].add_theme_color_override("font_color", cached.vertical_color)
+			_set_vert_label_text(i, cached.vertical_text)
+			_set_vert_label_color(i, cached.vertical_color)
 			vertical_labels[i].position = screen_pos + label_offset + Vector2(0, 16)
 			vertical_labels[i].visible = true
 		else:
@@ -404,16 +456,16 @@ func _update_markers(groups: Array):
 			continue
 		if i == targeted_group_index:
 			marker_sprites[i].texture = marker_texture_targeted
-			marker_sprites[i].modulate = Color.WHITE  # Full color
-			distance_labels[i].add_theme_color_override("font_color", color_targeted)
+			marker_sprites[i].modulate = color_targeted
+			_set_label_color(i, color_targeted)
 		elif distance_by_index.has(i) and distance_by_index[i] > selection_range:
 			marker_sprites[i].texture = marker_texture_out_of_range
 			marker_sprites[i].modulate = Color(0.5, 0.5, 0.5, 0.7)  # Gray and semi-transparent
-			distance_labels[i].add_theme_color_override("font_color", color_out_of_range)
+			_set_label_color(i, color_out_of_range)
 		else:
 			marker_sprites[i].texture = marker_texture
-			marker_sprites[i].modulate = Color.WHITE  # Full color
-			distance_labels[i].add_theme_color_override("font_color", color_selectable)
+			marker_sprites[i].modulate = color_selectable
+			_set_label_color(i, color_selectable)
 
 	# Clean up cached distances for groups that are no longer visible
 	var keys_to_remove = []
