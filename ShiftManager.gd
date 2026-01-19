@@ -276,3 +276,14 @@ func is_shift_active() -> bool:
 
 func get_shift_progress() -> String:
 	return "%d/%d" % [fare_count, fares_per_shift]
+
+
+func set_fares_per_shift(count: int):
+	# Set the number of fares for the next/current shift
+	# Also resets shift state if not active
+	fares_per_shift = count
+	if not shift_active:
+		fare_count = 0
+		total_score = 0
+		active_fares.clear()
+		_counted_groups.clear()

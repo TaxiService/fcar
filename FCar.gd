@@ -151,6 +151,7 @@ var people_manager: Node = null  # Reference to PeopleManager for finding hailin
 var destination_marker: DestinationMarker = null  # HUD for passenger destination
 var hailing_markers: HailingMarkers = null  # Markers for nearby hailing groups
 var shift_manager: ShiftManager = null  # Scoring and shift tracking
+var shift_selector: ShiftSelector = null  # Popup for choosing shift type
 var is_ready_for_fares: bool = false  # Must be true for passengers to approach
 var confirmed_boarding_group: Array = []  # Members of the group confirmed to board (explicit consent mode)
 
@@ -224,12 +225,39 @@ func _init_subsystems():
 	# Create shift manager (scoring system)
 	_create_shift_manager()
 
+	# Create shift selector popup
+	_create_shift_selector()
+
 
 func _create_shift_manager():
 	shift_manager = ShiftManager.new()
 	shift_manager.name = "ShiftManager"
 	shift_manager.fcar = self
 	get_tree().root.add_child.call_deferred(shift_manager)
+
+
+func _create_shift_selector():
+	shift_selector = ShiftSelector.new()
+	shift_selector.name = "ShiftSelector"
+	shift_selector.shift_selected.connect(_on_shift_selected)
+	shift_selector.cancelled.connect(_on_shift_selector_cancelled)
+	get_tree().root.add_child.call_deferred(shift_selector)
+
+
+func _on_shift_selected(fare_count: int):
+	# Start shift with selected fare count
+	if shift_manager:
+		shift_manager.set_fares_per_shift(fare_count)
+	# Enable ready state
+	is_ready_for_fares = true
+	confirmed_boarding_group.clear()
+	print("Shift started: %d fares - Ready for fares: YES" % fare_count)
+	ready_state_changed.emit(true)
+
+
+func _on_shift_selector_cancelled():
+	# User cancelled, do nothing
+	print("Shift selection cancelled")
 
 
 func _create_destination_marker():
@@ -1176,19 +1204,29 @@ func has_capacity() -> bool:
 
 func _handle_confirm():
 	# R key: context-sensitive confirm action
-	# - If not ready: start looking for fares
-	# - If ready with targeted fare: confirm boarding
+	# Priority: shift selector > boarding confirmation > start shift
+
+	# If shift selector is open, confirm the selection
+	if shift_selector and shift_selector.is_open:
+		shift_selector.confirm_selection()
+		return
 
 	if passengers.size() > 0:
 		# Have passengers - R does nothing (use T to eject)
 		return
 
 	if not is_ready_for_fares:
-		# Not ready → become ready (start looking for fares)
-		is_ready_for_fares = true
-		confirmed_boarding_group.clear()
-		print("Ready for fares: YES")
-		ready_state_changed.emit(true)
+		# Not ready and no active shift → open shift selector
+		# If shift is active (mid-shift), just enable ready state directly
+		if shift_manager and shift_manager.is_shift_active():
+			is_ready_for_fares = true
+			confirmed_boarding_group.clear()
+			print("Ready for fares: YES")
+			ready_state_changed.emit(true)
+		else:
+			# No active shift - open selector to choose shift type
+			if shift_selector:
+				shift_selector.show_selector()
 		return
 
 	# Already ready - check for targeted fare to confirm boarding
@@ -1235,9 +1273,12 @@ func _handle_confirm():
 
 func _handle_cancel():
 	# T key: context-sensitive cancel action
-	# - If carrying passengers: count toward eject (mash T)
-	# - Else if fare is targeted: cancel the target only
-	# - Else if ready: stop looking for fares
+	# Priority: shift selector > eject > cancel target > cancel ready state
+
+	# If shift selector is open, cycle to next option
+	if shift_selector and shift_selector.is_open:
+		shift_selector.cycle_selection()
+		return
 
 	if passengers.size() > 0:
 		# Have passengers - mash T to eject
