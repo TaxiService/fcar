@@ -186,7 +186,7 @@ func _get_boarding_group_data() -> Dictionary:
 	# Build group data for the currently boarding group
 	var members = fcar.confirmed_boarding_group.filter(func(p): return is_instance_valid(p))
 	if members.is_empty():
-		return {"position": Vector3.ZERO, "destination": null, "members": []}
+		return {"position": Vector3.ZERO, "destination": null, "members": [], "group_key": -999}
 
 	# Calculate average position
 	var avg_pos = Vector3.ZERO
@@ -194,10 +194,14 @@ func _get_boarding_group_data() -> Dictionary:
 		avg_pos += p.global_position
 	avg_pos /= members.size()
 
+	# Use the group_id of the first member as the key, or a special boarding key
+	var gid = members[0].group_id if members[0].group_id != -1 else -999
+
 	return {
 		"position": avg_pos,
 		"destination": members[0].destination if is_instance_valid(members[0].destination) else null,
-		"members": members
+		"members": members,
+		"group_key": gid
 	}
 
 
