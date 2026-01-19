@@ -16,9 +16,9 @@ var fcar: Node = null
 var people_manager: Node = null
 
 # Marker visuals
-var marker_texture: ImageTexture  # Selectable (magenta)
-var marker_texture_targeted: ImageTexture  # Currently targeted (cyan/green)
-var marker_texture_out_of_range: ImageTexture  # Too far to select (small, gray)
+var marker_texture: Texture2D  # Selectable (magenta)
+var marker_texture_targeted: Texture2D  # Currently targeted (cyan/green)
+var marker_texture_out_of_range: Texture2D  # Too far to select (small, gray)
 var marker_sprites: Array[Sprite2D] = []
 var distance_labels: Array[Label] = []
 var vertical_labels: Array[Label] = []  # Vertical distance indicators
