@@ -118,6 +118,10 @@ func start_relocating(target_pos: Vector3, surface: Node):
 
 
 func _process(delta: float):
+	# Force visibility for critical states every frame (before LOD check)
+	if current_state == State.RIDING:
+		visible = false  # Must stay hidden every frame, not just on LOD check
+
 	# LOD/Culling check (staggered for performance)
 	if lod_enabled:
 		lod_timer += delta
