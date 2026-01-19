@@ -118,9 +118,14 @@ func start_relocating(target_pos: Vector3, surface: Node):
 
 
 func _process(delta: float):
-	# Force visibility for critical states every frame (before LOD check)
+	# RIDING passengers: force invisible and skip all LOD checks
 	if current_state == State.RIDING:
-		visible = false  # Must stay hidden every frame, not just on LOD check
+		visible = false
+		# Still process state logic (position following car)
+		state_timer += delta
+		hail_time += delta
+		_process_riding(delta)
+		return  # Skip everything else
 
 	# LOD/Culling check (staggered for performance)
 	if lod_enabled:
@@ -395,18 +400,15 @@ func refresh_sprite(tex: AtlasTexture):
 
 func _update_lod_visibility():
 	# Update visibility based on distance from camera and height relative to player
+	# Note: RIDING passengers never call this (they skip LOD entirely)
 	if not lod_camera:
 		# No camera set, always visible
 		visible = true
 		return
 
-	# Handle special states near the player
-	if current_state == State.RIDING:
-		visible = false  # Always hidden when riding
-		return
-
+	# Always show people who are boarding or exiting (actively interacting with player)
 	if current_state in [State.BOARDING, State.EXITING]:
-		visible = true  # Always show when boarding/exiting
+		visible = true
 		return
 
 	var camera_pos = lod_camera.global_position
