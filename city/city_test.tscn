@@ -59,8 +59,7 @@ building_seed_probability = 0.5
 building_max_depth = 5
 building_branch_chance = 0.5
 building_max_total = 1260
-spawn_fcar = false
-fcar_spawn_height = 580.0
+fcar_spawn_height = 610.0
 
 [node name="PeopleManager" type="Node" parent="."]
 script = ExtResource("1_yage8")
