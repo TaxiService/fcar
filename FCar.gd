@@ -24,6 +24,13 @@ var _alt_was_pressed: bool = false  # For detecting Alt key press
 var _booster_roll_differential: float = 0.0  # Current shin offset (left - right)
 var _smoothed_pitch_input: float = 0.0  # Smoothed pitch input to avoid bobbing
 
+# Control lock state (F key) - locks current inputs, player can look around freely
+var controls_locked: bool = false
+var locked_pitch: float = 0.0
+var locked_roll: float = 0.0
+var locked_throttle: float = 0.0
+var locked_yaw: float = 0.0
+
 # ===== EXPORT PARAMETERS =====
 @export_category("thrust")
 @export var hover_thrust: float = 4.0  # Slightly under gravity - graceful descent when height lock OFF
@@ -318,6 +325,39 @@ func engage_heightlock():
 	target_height = global_transform.origin.y
 
 
+func _toggle_control_lock(pitch: float, roll: float, throttle: float, yaw: float):
+	controls_locked = !controls_locked
+	if controls_locked:
+		# Lock current inputs
+		locked_pitch = pitch
+		locked_roll = roll
+		locked_throttle = throttle
+		locked_yaw = yaw
+		print("Controls: LOCKED")
+	else:
+		# Clear locked values
+		locked_pitch = 0.0
+		locked_roll = 0.0
+		locked_throttle = 0.0
+		locked_yaw = 0.0
+		print("Controls: unlocked")
+
+
+func _apply_lock_logic(locked_value: float, player_input: float) -> float:
+	# When controls are locked:
+	# - If player presses the same direction as locked, temporarily suppress (return 0)
+	# - If player presses opposite direction, override with player input
+	# - If player isn't pressing anything, use locked value
+	if player_input == 0.0:
+		return locked_value
+	elif locked_value != 0.0 and sign(player_input) == sign(locked_value):
+		# Player pressing same direction as locked - suppress
+		return 0.0
+	else:
+		# Player pressing opposite or different - use player input
+		return player_input
+
+
 func _physics_process(delta):
 	# Update LOD player position for people culling
 	_update_lod_player_position()
@@ -473,44 +513,62 @@ func _process_stable_state(delta: float, _tilt_angle: float):
 
 
 func _read_inputs(delta: float) -> Dictionary:
-	# Read raw input targets
-	var target_pitch: float = 0.0
-	var target_roll: float = 0.0
-	var target_throttle: float = 0.0
-	var target_yaw: float = 0.0
+	# Read raw player input
+	var player_pitch: float = 0.0
+	var player_roll: float = 0.0
+	var player_throttle: float = 0.0
+	var player_yaw: float = 0.0
 
 	if Input.is_action_pressed("backward"):
-		target_pitch = 1.0
+		player_pitch = 1.0
 	if Input.is_action_pressed("forward"):
-		target_pitch = -1.0
+		player_pitch = -1.0
 	if Input.is_action_pressed("strafe_left"):
-		target_roll = -1.0
+		player_roll = -1.0
 	if Input.is_action_pressed("strafe_right"):
-		target_roll = 1.0
+		player_roll = 1.0
 
 	if Input.is_action_pressed("jump"):
 		if lock_height: target_height = global_transform.origin.y
-		target_throttle = 1.0
+		player_throttle = 1.0
 	if Input.is_action_just_released("jump"):
 		if lock_height: target_height = global_transform.origin.y
 
 	if Input.is_action_pressed("crouch"):
 		if lock_height: target_height = global_transform.origin.y
-		target_throttle = -1.0
+		player_throttle = -1.0
 	if Input.is_action_just_released("crouch"):
 		if lock_height: target_height = global_transform.origin.y
 
 	if Input.is_action_pressed("turn_right"):
-		target_yaw = 1.0
+		player_yaw = 1.0
 	if Input.is_action_pressed("turn_left"):
-		target_yaw = -1.0
+		player_yaw = -1.0
 
-	# Handle toggles
+	# Handle control lock toggle (F key)
+	if Input.is_action_just_pressed("toggle_control_lock"):
+		_toggle_control_lock(player_pitch, player_roll, player_throttle, player_yaw)
+
+	# Apply control lock: locked inputs are maintained unless player presses same direction
+	var target_pitch: float
+	var target_roll: float
+	var target_throttle: float
+	var target_yaw: float
+
+	if controls_locked:
+		target_pitch = _apply_lock_logic(locked_pitch, player_pitch)
+		target_roll = _apply_lock_logic(locked_roll, player_roll)
+		target_throttle = _apply_lock_logic(locked_throttle, player_throttle)
+		target_yaw = _apply_lock_logic(locked_yaw, player_yaw)
+	else:
+		target_pitch = player_pitch
+		target_roll = player_roll
+		target_throttle = player_throttle
+		target_yaw = player_yaw
+
+	# Handle other toggles
 	if Input.is_action_just_pressed("height_brake"):
 		engage_heightlock()
-	if Input.is_action_just_pressed("toggle_com_compensation"):
-		com_compensation_enabled = !com_compensation_enabled
-		print("CoM compensation: ", "ON" if com_compensation_enabled else "OFF")
 	if Input.is_action_just_pressed("toggle_auto_hover"):
 		auto_hover_enabled = !auto_hover_enabled
 		print("Auto-hover safety: ", "ON" if auto_hover_enabled else "OFF")
