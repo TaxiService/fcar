@@ -396,10 +396,13 @@ func _update_lod_visibility():
 		visible = true
 		return
 
-	# Always show people who are boarding or exiting (actively interacting with player)
-	# RIDING people should stay hidden (they're inside the car)
+	# Handle special states near the player
+	if current_state == State.RIDING:
+		visible = false  # Always hidden when riding
+		return
+
 	if current_state in [State.BOARDING, State.EXITING]:
-		visible = true
+		visible = true  # Always show when boarding/exiting
 		return
 
 	var camera_pos = lod_camera.global_position

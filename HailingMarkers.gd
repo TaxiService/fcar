@@ -8,7 +8,7 @@ extends CanvasLayer
 @export var look_at_angle_threshold: float = 35.0  # degrees - shows distance label
 @export var targeting_angle_threshold: float = 15.0  # degrees - tiebreaker when groups are similar distance
 @export var distance_tiebreaker_threshold: float = 15.0  # meters - groups within this of nearest can be selected by looking
-@export var marker_scale: float = 1.5  # Scale for the marker sprites
+@export var marker_scale: float = 0.5  # Scale for the marker sprites
 @export var label_offset: Vector2 = Vector2(14, -8)  # Offset from marker to label
 
 # References (set by FCar)
@@ -26,6 +26,10 @@ var vertical_labels: Array[Label] = []  # Vertical distance indicators
 # Targeting state
 var current_groups: Array = []  # Updated each frame
 var targeted_group_index: int = -1  # Index into current_groups, -1 = none
+
+# Update throttling (for performance)
+var update_interval: float = 0.15  # Update markers every 150ms instead of every frame
+var update_timer: float = 0.0
 
 
 func _ready():
@@ -89,7 +93,7 @@ func _create_marker_pool():
 		vertical_labels.append(vert_label)
 
 
-func _process(_delta):
+func _process(delta):
 	if not fcar or not people_manager:
 		_hide_all()
 		targeted_group_index = -1
@@ -97,6 +101,7 @@ func _process(_delta):
 		return
 
 	# Check if a group is currently boarding - show only their marker
+	# Update every frame for boarding (needs precision)
 	if fcar.confirmed_boarding_group.size() > 0:
 		current_groups = [_get_boarding_group_data()]
 		targeted_group_index = 0
@@ -109,8 +114,13 @@ func _process(_delta):
 		current_groups = []
 		return
 
-	current_groups = _get_nearby_hailing_groups()
-	_update_markers(current_groups)
+	# Throttle updates for hailing markers (performance optimization)
+	# These don't need to update every frame - 150ms is fine for selecting fares
+	update_timer += delta
+	if update_timer >= update_interval:
+		update_timer = 0.0
+		current_groups = _get_nearby_hailing_groups()
+		_update_markers(current_groups)
 
 
 func get_targeted_group():
@@ -381,7 +391,7 @@ func _update_markers(groups: Array):
 			continue
 		if i == targeted_group_index:
 			marker_sprites[i].texture = marker_texture_targeted
-			marker_sprites[i].modulate = Color.WHITE  # Full color
+			marker_sprites[i].modulate = color_targeted  # Full color
 			distance_labels[i].add_theme_color_override("font_color", color_targeted)
 		elif distance_by_index.has(i) and distance_by_index[i] > selection_range:
 			marker_sprites[i].texture = marker_texture_out_of_range
@@ -389,7 +399,7 @@ func _update_markers(groups: Array):
 			distance_labels[i].add_theme_color_override("font_color", color_out_of_range)
 		else:
 			marker_sprites[i].texture = marker_texture
-			marker_sprites[i].modulate = Color.WHITE  # Full color
+			marker_sprites[i].modulate = color_selectable  # Full color
 			distance_labels[i].add_theme_color_override("font_color", color_selectable)
 
 
