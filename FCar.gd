@@ -26,10 +26,10 @@ var _smoothed_pitch_input: float = 0.0  # Smoothed pitch input to avoid bobbing
 
 # Control lock state (F key) - locks current inputs, player can look around freely
 var controls_locked: bool = false
-var locked_pitch: float = 0.0
-var locked_roll: float = 0.0
-var locked_throttle: float = 0.0
-var locked_yaw: float = 0.0
+var locked_actions: Dictionary = {}  # action_name -> true if was pressed at lock time
+var locked_keys: Dictionary = {}  # KEY_* constant -> true if was pressed at lock time
+var masked_actions: Dictionary = {}  # action_name -> true if still held from lock (ignore until released)
+var masked_keys: Dictionary = {}  # KEY_* constant -> true if still held from lock (ignore until released)
 
 # ===== EXPORT PARAMETERS =====
 @export_category("thrust")
@@ -325,37 +325,95 @@ func engage_heightlock():
 	target_height = global_transform.origin.y
 
 
-func _toggle_control_lock(pitch: float, roll: float, throttle: float, yaw: float):
+func _toggle_control_lock():
 	controls_locked = !controls_locked
 	if controls_locked:
-		# Lock current inputs
-		locked_pitch = pitch
-		locked_roll = roll
-		locked_throttle = throttle
-		locked_yaw = yaw
+		# Capture all currently pressed actions and keys
+		locked_actions.clear()
+		locked_keys.clear()
+		masked_actions.clear()
+		masked_keys.clear()
+
+		# Actions to capture
+		var actions_to_check = [
+			"forward", "backward", "strafe_left", "strafe_right",
+			"jump", "crouch", "turn_left", "turn_right", "handbrake"
+		]
+		for action in actions_to_check:
+			if Input.is_action_pressed(action):
+				locked_actions[action] = true
+				masked_actions[action] = true  # Ignore until released
+
+		# Raw keys to capture (boosters, etc.)
+		var keys_to_check = [KEY_SHIFT, KEY_ALT, KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN]
+		for key in keys_to_check:
+			if Input.is_key_pressed(key):
+				locked_keys[key] = true
+				masked_keys[key] = true  # Ignore until released
+
 		print("Controls: LOCKED")
 	else:
-		# Clear locked values
-		locked_pitch = 0.0
-		locked_roll = 0.0
-		locked_throttle = 0.0
-		locked_yaw = 0.0
+		locked_actions.clear()
+		locked_keys.clear()
+		masked_actions.clear()
+		masked_keys.clear()
 		print("Controls: unlocked")
 
 
-func _apply_lock_logic(locked_value: float, player_input: float) -> float:
-	# When controls are locked:
-	# - If player presses the same direction as locked, temporarily suppress (return 0)
-	# - If player presses opposite direction, override with player input
-	# - If player isn't pressing anything, use locked value
-	if player_input == 0.0:
-		return locked_value
-	elif locked_value != 0.0 and sign(player_input) == sign(locked_value):
-		# Player pressing same direction as locked - suppress
-		return 0.0
+func _is_action_pressed_locked(action: String) -> bool:
+	# Returns effective pressed state, accounting for control lock
+	var physical = Input.is_action_pressed(action)
+
+	if not controls_locked:
+		return physical
+
+	var was_locked = locked_actions.has(action)
+	var is_masked = masked_actions.has(action)
+
+	# Update mask: if was masked but now released, unmask
+	if is_masked and not physical:
+		masked_actions.erase(action)
+		is_masked = false
+
+	if is_masked:
+		# Still held from lock time - ignore physical, use locked state
+		return was_locked
 	else:
-		# Player pressing opposite or different - use player input
-		return player_input
+		# Not masked - player has control
+		if physical:
+			# Player pressing same as locked = suppress, otherwise allow
+			return not was_locked
+		else:
+			# Player not pressing, use locked state
+			return was_locked
+
+
+func _is_key_pressed_locked(key: int) -> bool:
+	# Returns effective pressed state for raw keys, accounting for control lock
+	var physical = Input.is_key_pressed(key)
+
+	if not controls_locked:
+		return physical
+
+	var was_locked = locked_keys.has(key)
+	var is_masked = masked_keys.has(key)
+
+	# Update mask: if was masked but now released, unmask
+	if is_masked and not physical:
+		masked_keys.erase(key)
+		is_masked = false
+
+	if is_masked:
+		# Still held from lock time - ignore physical, use locked state
+		return was_locked
+	else:
+		# Not masked - player has control
+		if physical:
+			# Player pressing same as locked = suppress, otherwise allow
+			return not was_locked
+		else:
+			# Player not pressing, use locked state
+			return was_locked
 
 
 func _physics_process(delta):
@@ -395,10 +453,10 @@ func _physics_process(delta):
 	# When ready + empty: INVERT lights (all ON, turn OFF on input) = "available" beacon
 	# When has passengers or not ready: normal (all OFF, turn ON on input)
 	if direction_lights:
-		var fwd = Input.is_action_pressed("forward")
-		var back = Input.is_action_pressed("backward")
-		var left = Input.is_action_pressed("strafe_left")
-		var right = Input.is_action_pressed("strafe_right")
+		var fwd = _is_action_pressed_locked("forward")
+		var back = _is_action_pressed_locked("backward")
+		var left = _is_action_pressed_locked("strafe_left")
+		var right = _is_action_pressed_locked("strafe_right")
 
 		# Invert when ready for fares and no passengers (taxi available mode)
 		if is_ready_for_fares and passengers.size() == 0:
@@ -513,58 +571,41 @@ func _process_stable_state(delta: float, _tilt_angle: float):
 
 
 func _read_inputs(delta: float) -> Dictionary:
-	# Read raw player input
-	var player_pitch: float = 0.0
-	var player_roll: float = 0.0
-	var player_throttle: float = 0.0
-	var player_yaw: float = 0.0
+	# Handle control lock toggle (F key) - must be first to capture current state
+	if Input.is_action_just_pressed("toggle_control_lock"):
+		_toggle_control_lock()
 
-	if Input.is_action_pressed("backward"):
-		player_pitch = 1.0
-	if Input.is_action_pressed("forward"):
-		player_pitch = -1.0
-	if Input.is_action_pressed("strafe_left"):
-		player_roll = -1.0
-	if Input.is_action_pressed("strafe_right"):
-		player_roll = 1.0
+	# Read inputs through lock-aware helpers
+	var target_pitch: float = 0.0
+	var target_roll: float = 0.0
+	var target_throttle: float = 0.0
+	var target_yaw: float = 0.0
 
-	if Input.is_action_pressed("jump"):
+	if _is_action_pressed_locked("backward"):
+		target_pitch = 1.0
+	if _is_action_pressed_locked("forward"):
+		target_pitch = -1.0
+	if _is_action_pressed_locked("strafe_left"):
+		target_roll = -1.0
+	if _is_action_pressed_locked("strafe_right"):
+		target_roll = 1.0
+
+	if _is_action_pressed_locked("jump"):
 		if lock_height: target_height = global_transform.origin.y
-		player_throttle = 1.0
+		target_throttle = 1.0
 	if Input.is_action_just_released("jump"):
 		if lock_height: target_height = global_transform.origin.y
 
-	if Input.is_action_pressed("crouch"):
+	if _is_action_pressed_locked("crouch"):
 		if lock_height: target_height = global_transform.origin.y
-		player_throttle = -1.0
+		target_throttle = -1.0
 	if Input.is_action_just_released("crouch"):
 		if lock_height: target_height = global_transform.origin.y
 
-	if Input.is_action_pressed("turn_right"):
-		player_yaw = 1.0
-	if Input.is_action_pressed("turn_left"):
-		player_yaw = -1.0
-
-	# Handle control lock toggle (F key)
-	if Input.is_action_just_pressed("toggle_control_lock"):
-		_toggle_control_lock(player_pitch, player_roll, player_throttle, player_yaw)
-
-	# Apply control lock: locked inputs are maintained unless player presses same direction
-	var target_pitch: float
-	var target_roll: float
-	var target_throttle: float
-	var target_yaw: float
-
-	if controls_locked:
-		target_pitch = _apply_lock_logic(locked_pitch, player_pitch)
-		target_roll = _apply_lock_logic(locked_roll, player_roll)
-		target_throttle = _apply_lock_logic(locked_throttle, player_throttle)
-		target_yaw = _apply_lock_logic(locked_yaw, player_yaw)
-	else:
-		target_pitch = player_pitch
-		target_roll = player_roll
-		target_throttle = player_throttle
-		target_yaw = player_yaw
+	if _is_action_pressed_locked("turn_right"):
+		target_yaw = 1.0
+	if _is_action_pressed_locked("turn_left"):
+		target_yaw = -1.0
 
 	# Handle other toggles
 	if Input.is_action_just_pressed("height_brake"):
@@ -595,7 +636,7 @@ func _read_inputs(delta: float) -> Dictionary:
 		handbrake_locked = false
 		print("Handbrake: released by vertical input")
 
-	handbrake_active = handbrake_locked or Input.is_action_pressed("handbrake")
+	handbrake_active = handbrake_locked or _is_action_pressed_locked("handbrake")
 
 	# Apply input smoothing
 	current_pitch = move_toward(current_pitch, target_pitch, pitch_acceleration * delta)
@@ -709,7 +750,7 @@ func _process_disabled_state(delta: float):
 
 func _update_booster_rotation(delta: float):
 	# Toggle booster assist with Alt (detect key press edge)
-	var alt_pressed = Input.is_key_pressed(KEY_ALT)
+	var alt_pressed = _is_key_pressed_locked(KEY_ALT)
 	if alt_pressed and not _alt_was_pressed:
 		# Alt was just pressed this frame
 		booster_assist_enabled = not booster_assist_enabled
@@ -727,14 +768,14 @@ func _update_booster_manual(delta: float):
 	var thigh_input = 0.0
 	var shin_input = 0.0
 
-	if Input.is_key_pressed(KEY_LEFT):
+	if _is_key_pressed_locked(KEY_LEFT):
 		thigh_input = -1.0
-	elif Input.is_key_pressed(KEY_RIGHT):
+	elif _is_key_pressed_locked(KEY_RIGHT):
 		thigh_input = 1.0
 
-	if Input.is_key_pressed(KEY_UP):
+	if _is_key_pressed_locked(KEY_UP):
 		shin_input = 1.0
-	elif Input.is_key_pressed(KEY_DOWN):
+	elif _is_key_pressed_locked(KEY_DOWN):
 		shin_input = -1.0
 
 	# Apply rotation (90 deg/sec for thigh, 50 deg/sec for shin)
@@ -765,22 +806,22 @@ func _update_booster_assist(delta: float):
 	var accumulated_shin: float = 0.0
 
 	# Check each direction and accumulate
-	if Input.is_action_pressed("forward"):  # W
+	if _is_action_pressed_locked("forward"):  # W
 		accumulated_thigh += booster_preset_forward.x
 		accumulated_shin += booster_preset_forward.y
 		input_count += 1
 
-	if Input.is_action_pressed("backward"):  # S
+	if _is_action_pressed_locked("backward"):  # S
 		accumulated_thigh += booster_preset_backward.x
 		accumulated_shin += booster_preset_backward.y
 		input_count += 1
 
-	if Input.is_action_pressed("jump"):  # Space
+	if _is_action_pressed_locked("jump"):  # Space
 		accumulated_thigh += booster_preset_up.x
 		accumulated_shin += booster_preset_up.y
 		input_count += 1
 
-	if Input.is_action_pressed("crouch"):  # C
+	if _is_action_pressed_locked("crouch"):  # C
 		accumulated_thigh += booster_preset_down.x
 		accumulated_shin += booster_preset_down.y
 		input_count += 1
@@ -793,9 +834,9 @@ func _update_booster_assist(delta: float):
 
 	# === Left/Right arrows: Roll via differential shin angles ===
 	var roll_input = 0.0
-	if Input.is_key_pressed(KEY_LEFT):
+	if _is_key_pressed_locked(KEY_LEFT):
 		roll_input = -1.0
-	elif Input.is_key_pressed(KEY_RIGHT):
+	elif _is_key_pressed_locked(KEY_RIGHT):
 		roll_input = 1.0
 
 	# Update roll differential (builds up while held, decays when released)
@@ -813,9 +854,9 @@ func _update_booster_assist(delta: float):
 
 	# === Up/Down arrows: Pitch via direct torque ===
 	var target_pitch_input = 0.0
-	if Input.is_key_pressed(KEY_UP):
+	if _is_key_pressed_locked(KEY_UP):
 		target_pitch_input = -1.0  # Pitch nose down
-	elif Input.is_key_pressed(KEY_DOWN):
+	elif _is_key_pressed_locked(KEY_DOWN):
 		target_pitch_input = 1.0  # Pitch nose up
 
 	# Smooth the pitch input to avoid bobbing
@@ -865,7 +906,7 @@ func _update_booster_assist(delta: float):
 
 func _update_booster_thrust(delta: float):
 	# Shift controls thrust
-	var boost_active = Input.is_key_pressed(KEY_SHIFT)
+	var boost_active = _is_key_pressed_locked(KEY_SHIFT)
 
 	if boost_active:
 		booster_system.set_thrust(1.0)
