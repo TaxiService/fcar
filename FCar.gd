@@ -614,9 +614,13 @@ func _read_inputs(delta: float) -> Dictionary:
 		auto_hover_enabled = !auto_hover_enabled
 		print("Auto-hover safety: ", "ON" if auto_hover_enabled else "OFF")
 
-	# T key - toggle ready for fares (only when no passengers)
-	if Input.is_action_just_pressed("toggle_ready_for_fares"):
-		_toggle_ready_for_fares()
+	# R key (confirm) - context-sensitive: start looking for fares / confirm boarding
+	if Input.is_action_just_pressed("confirm"):
+		_handle_confirm()
+
+	# T key (cancel) - context-sensitive: stop looking / cancel target / eject passengers
+	if Input.is_action_just_pressed("cancel"):
+		_handle_cancel()
 
 	# Handbrake: hold to engage, double-press to lock on, single press to unlock
 	if Input.is_action_just_pressed("handbrake"):
@@ -1152,6 +1156,14 @@ func _deliver_passenger(person: Person):
 	print("Passenger delivered! Now carrying ", passengers.size(), "/", cargo_capacity)
 	passenger_delivered.emit(person, destination)
 
+	# Auto-enable ready state if shift is still active and car is now empty
+	if passengers.size() == 0 and shift_manager and shift_manager.is_shift_active():
+		if not is_ready_for_fares:
+			is_ready_for_fares = true
+			confirmed_boarding_group.clear()
+			print("Shift continues - Ready for fares: YES")
+			ready_state_changed.emit(true)
+
 
 func get_passenger_count() -> int:
 	passengers = passengers.filter(func(p): return is_instance_valid(p))
@@ -1162,61 +1174,98 @@ func has_capacity() -> bool:
 	return get_passenger_count() < cargo_capacity
 
 
-func _toggle_ready_for_fares():
-	# Can only toggle ready when no passengers
+func _handle_confirm():
+	# R key: context-sensitive confirm action
+	# - If not ready: start looking for fares
+	# - If ready with targeted fare: confirm boarding
+
 	if passengers.size() > 0:
-		print("Cannot toggle ready state while carrying passengers")
+		# Have passengers - R does nothing (use T to eject)
 		return
 
 	if not is_ready_for_fares:
-		# Not ready → become ready
+		# Not ready → become ready (start looking for fares)
 		is_ready_for_fares = true
 		confirmed_boarding_group.clear()
 		print("Ready for fares: YES")
 		ready_state_changed.emit(true)
-	elif explicit_boarding_consent:
-		# Ready + explicit mode: check for targeted group
-		var targeted = hailing_markers.get_targeted_group() if hailing_markers else null
-		if targeted and targeted.members.size() > 0:
-			# Get a representative member to find the full group
-			var representative = targeted.members[0]
-			if not is_instance_valid(representative):
-				_cancel_ready_state()
-				return
+		return
 
-			# Find ALL group members by group_id (more robust than pre-filtered list)
-			var group_members: Array[Person] = []
-			if representative.group_id == -1:
-				# Solo person - just them
-				group_members.append(representative)
-			else:
-				# Group - find all members with this group_id
-				group_members = _find_group_members(representative.group_id)
+	# Already ready - check for targeted fare to confirm boarding
+	if not explicit_boarding_consent:
+		# Implicit mode: nothing to confirm (auto-boards)
+		return
 
-			# Check capacity - can we fit the whole group?
-			var available_slots = cargo_capacity - passengers.size() - _count_boarding_persons()
-			if group_members.size() > available_slots:
-				print("No room! Group of ", group_members.size(), " won't fit in ", available_slots, " available slots")
-				# Stay in ready state so player can pick a different group
-				return
+	var targeted = hailing_markers.get_targeted_group() if hailing_markers else null
+	if not targeted or targeted.members.size() == 0:
+		# No target - R does nothing
+		return
 
-			# Confirm the group for boarding
-			confirmed_boarding_group = []
-			for p in group_members:
-				confirmed_boarding_group.append(p)
-			print("Confirmed group of ", confirmed_boarding_group.size(), " for boarding")
+	# Get a representative member to find the full group
+	var representative = targeted.members[0]
+	if not is_instance_valid(representative):
+		return
 
-			# Start boarding all group members
-			# IMPORTANT: iterate over a duplicate because _complete_boarding may clear the array
-			for person in confirmed_boarding_group.duplicate():
-				if is_instance_valid(person):
-					_start_boarding_person(person)
-			# Stay in ready state until boarding completes
-		else:
-			# No target → cancel ready state
-			_cancel_ready_state()
+	# Find ALL group members by group_id (more robust than pre-filtered list)
+	var group_members: Array[Person] = []
+	if representative.group_id == -1:
+		# Solo person - just them
+		group_members.append(representative)
 	else:
-		# Implicit mode: just toggle off
+		# Group - find all members with this group_id
+		group_members = _find_group_members(representative.group_id)
+
+	# Check capacity - can we fit the whole group?
+	var available_slots = cargo_capacity - passengers.size() - _count_boarding_persons()
+	if group_members.size() > available_slots:
+		print("No room! Group of ", group_members.size(), " won't fit in ", available_slots, " available slots")
+		return
+
+	# Confirm the group for boarding
+	confirmed_boarding_group = []
+	for p in group_members:
+		confirmed_boarding_group.append(p)
+	print("Confirmed group of ", confirmed_boarding_group.size(), " for boarding")
+
+	# Start boarding all group members
+	for person in confirmed_boarding_group.duplicate():
+		if is_instance_valid(person):
+			_start_boarding_person(person)
+
+
+func _handle_cancel():
+	# T key: context-sensitive cancel action
+	# - If carrying passengers: count toward eject (mash T)
+	# - Else if fare is targeted: cancel the target only
+	# - Else if ready: stop looking for fares
+
+	if passengers.size() > 0:
+		# Have passengers - mash T to eject
+		if eject_click_count == 0:
+			eject_window_timer = 0.0
+		eject_click_count += 1
+
+		if eject_click_count >= EJECT_CLICKS_REQUIRED:
+			_eject_all_passengers()
+			eject_click_count = 0
+		return
+
+	if not is_ready_for_fares:
+		# Not ready - T does nothing
+		return
+
+	# Ready state - check what to cancel
+	var targeted = hailing_markers.get_targeted_group() if hailing_markers else null
+	if targeted and targeted.members.size() > 0:
+		# Have a target - cancel just the target, stay in ready state
+		if hailing_markers:
+			hailing_markers.clear_target()
+		print("Target cancelled")
+		# Cancel any boarding in progress
+		_cancel_all_boarding()
+		confirmed_boarding_group.clear()
+	else:
+		# No target - cancel ready state entirely
 		_cancel_ready_state()
 
 
@@ -1260,17 +1309,7 @@ func _update_eject_ritual(delta: float):
 			# Window expired, reset
 			eject_click_count = 0
 
-	# Count clicks
-	if Input.is_action_just_pressed("eject_passengers"):
-		if eject_click_count == 0:
-			# First click starts the window
-			eject_window_timer = 0.0
-
-		eject_click_count += 1
-
-		if eject_click_count >= EJECT_CLICKS_REQUIRED:
-			_eject_all_passengers()
-			eject_click_count = 0
+	# Eject counting is now handled by _handle_cancel()
 
 
 func _eject_all_passengers():

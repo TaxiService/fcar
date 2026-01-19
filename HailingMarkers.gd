@@ -177,6 +177,11 @@ func get_targeted_group():
 	return null
 
 
+func clear_target():
+	# Clears the current target selection
+	targeted_group_index = -1
+
+
 func _get_boarding_group_data() -> Dictionary:
 	# Build group data for the currently boarding group
 	var members = fcar.confirmed_boarding_group.filter(func(p): return is_instance_valid(p))
