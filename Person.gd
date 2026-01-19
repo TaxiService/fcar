@@ -4,10 +4,15 @@ extends Sprite3D
 # Movement states
 enum State { WALKING, STOPPING, WAITING, HAILING, BOARDING, RIDING, EXITING, ARRIVED, RELOCATING }
 
+# Pre-allocated state sets for fast membership checks (avoids array allocation each frame)
+const IDLE_STATES = [State.WALKING, State.STOPPING, State.WAITING]
+const NEAR_PLAYER_STATES = [State.BOARDING, State.EXITING]
+
 # LOD/Culling settings (static, shared by all people)
 static var lod_camera: Camera3D = null  # Set by main scene/FCar
 static var lod_player_y: float = 0.0  # Player's Y position (for vertical culling)
 static var lod_max_distance: float = 500.0  # Hide beyond this distance
+static var lod_max_distance_squared: float = 250000.0  # 500^2, for fast distance checks
 static var lod_max_height_above: float = 200.0  # Hide if this much above player
 static var lod_update_interval: float = 0.5  # Check every N seconds (stagger checks)
 static var lod_enabled: bool = true
@@ -93,7 +98,7 @@ func wants_ride() -> bool:
 
 func set_destination(dest: Node):
 	destination = dest
-	if dest != null and current_state in [State.WALKING, State.STOPPING, State.WAITING]:
+	if dest != null and current_state in IDLE_STATES:
 		base_y = global_position.y
 		_enter_state(State.HAILING)
 
@@ -153,8 +158,7 @@ func _process(delta: float):
 			_process_hailing(delta)
 		State.BOARDING:
 			_process_boarding(delta)
-		State.RIDING:
-			_process_riding(delta)
+		# Note: RIDING is handled at top of _process() and returns early
 		State.EXITING:
 			_process_exiting(delta)
 		State.ARRIVED:
@@ -407,23 +411,24 @@ func _update_lod_visibility():
 		return
 
 	# Always show people who are boarding or exiting (actively interacting with player)
-	if current_state in [State.BOARDING, State.EXITING]:
+	if current_state in NEAR_PLAYER_STATES:
 		visible = true
 		return
 
 	var camera_pos = lod_camera.global_position
-	var person_pos = global_position
 
-	# Calculate horizontal distance (XZ plane)
-	var horiz_dist = Vector2(person_pos.x - camera_pos.x, person_pos.z - camera_pos.z).length()
+	# Calculate horizontal distance squared (avoids sqrt - much faster)
+	var dx = global_position.x - camera_pos.x
+	var dz = global_position.z - camera_pos.z
+	var horiz_dist_sq = dx * dx + dz * dz
 
 	# Hide if too far horizontally
-	if horiz_dist > lod_max_distance:
+	if horiz_dist_sq > lod_max_distance_squared:
 		visible = false
 		return
 
 	# Calculate height difference relative to player
-	var height_diff = person_pos.y - lod_player_y
+	var height_diff = global_position.y - lod_player_y
 
 	# Hide if significantly above player (looking down on distant tiny people)
 	if height_diff > lod_max_height_above:
