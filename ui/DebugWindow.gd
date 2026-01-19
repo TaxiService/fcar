@@ -18,6 +18,7 @@ var booster_angles_label: Label
 var passengers_label: Label
 var ready_label: Label
 var stability_label: Label
+var heightlock_label: Label
 
 
 func _ready():
@@ -65,6 +66,11 @@ func _build_ui():
 	stability_label = Label.new()
 	stability_label.text = "Stability: ---"
 	vbox.add_child(stability_label)
+	
+	# Heightlock
+	heightlock_label = Label.new()
+	heightlock_label.text = "H-Lock: ---"
+	vbox.add_child(heightlock_label)
 
 	# Another separator
 	var sep2 = HSeparator.new()
@@ -143,7 +149,13 @@ func _process(delta: float):
 	if "is_stable" in car_ref:
 		var stable = car_ref.is_stable
 		stability_label.text = "Stability: %s" % ("STABLE" if stable else "UNSTABLE")
-		stability_label.add_theme_color_override("font_color", Color(0.3, 1.0, 0.3) if stable else Color(1.0, 0.3, 0.3))
+		stability_label.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6, 1.0) if stable else Color(1.0, 0.3, 0.3))
+
+	# Update heightlock
+	if "lock_height" in car_ref:
+		var hlock = car_ref.lock_height
+		heightlock_label.text = "Heightlock: %s" % ("enabled" if hlock else "disabled")
+		heightlock_label.add_theme_color_override("font_color", Color(0.3, 1.0, 0.3) if hlock else Color(0.6, 0.6, 0.6, 1.0))
 
 	# Update ready status
 	if "is_ready_for_fares" in car_ref:
