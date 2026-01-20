@@ -99,7 +99,7 @@ booster_roll_speed = 120.0
 debug_thrusters = true
 
 [node name="FCam" type="Camera3D" parent="." node_paths=PackedStringArray("target")]
-transform = Transform3D(1, 0, 0, 0, 0.9961948, 0.08715568, 0, -0.08715568, 0.9961948, -2.2765515, 2.07618, 7.6534176)
+transform = Transform3D(1, 0, 0, 0, 0.9961948, 0.08715568, 0, -0.08715568, 0.9961948, 0, 0.67882013, 2.9329896)
 script = ExtResource("2_rue2e")
 target = NodePath("..")
 use_velocity_based_reset = false

@@ -193,9 +193,6 @@ func generate_city():
 	# Step 5: Generate buildings on connectors
 	if generate_buildings:
 		_generate_buildings()
-		_generate_buildings()
-		_generate_buildings()
-		_generate_buildings()
 
 	print("CityGenerator: Done! Generated %d spires, %d edge connections, %d hexagons" % [spire_positions.size(), connector_edges.size(), hex_vertex_lists.size()])
 
