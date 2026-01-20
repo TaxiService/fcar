@@ -1,0 +1,126 @@
+[gd_scene load_steps=12 format=3 uid="uid://b56tsitj065r7"]
+
+[ext_resource type="Script" uid="uid://cmafag82uyxu7" path="res://city/BuildingBlock.gd" id="1_utfq7"]
+[ext_resource type="Script" uid="uid://c72sj768vn5do" path="res://SpawnSurface.gd" id="2_n7dfq"]
+[ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://city/ConnectionPoint.gd" id="3_joib8"]
+[ext_resource type="Material" uid="uid://d1752hlai3xtn" path="res://mats/floor.tres" id="3_n7dfq"]
+[ext_resource type="Material" uid="uid://c84qehqsj2tk1" path="res://mats/floor_small.tres" id="4_kdxt2"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_pfv6c"]
+size = Vector3(90, 5, 30)
+
+[sub_resource type="BoxMesh" id="BoxMesh_lob2y"]
+material = ExtResource("3_n7dfq")
+size = Vector3(90, 5, 30)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_5dwv6"]
+size = Vector3(85, 5, 30)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_c3qcp"]
+albedo_color = Color(0.160784, 0.184314, 0.156863, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_nrjh1"]
+material = SubResource("StandardMaterial3D_c3qcp")
+size = Vector3(85, 4.9, 30)
+
+[sub_resource type="TorusMesh" id="TorusMesh_6dmbk"]
+inner_radius = 3.105
+outer_radius = 5.0
+rings = 5
+ring_segments = 3
+
+[node name="FloorSmall5" type="StaticBody3D"]
+script = ExtResource("1_utfq7")
+block_type = 3
+can_spawn_people = true
+spawn_weight = 3.0
+
+[node name="SpawnSurface7" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5432281, 0)
+script = ExtResource("2_n7dfq")
+enabled = true
+max_people = 21
+bounds_size = Vector3(60, 0, 30)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("BoxShape3D_pfv6c")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="CollisionShape3D"]
+mesh = SubResource("BoxMesh_lob2y")
+skeleton = NodePath("../..")
+
+[node name="CollisionShape3D3" type="CollisionShape3D" parent="."]
+transform = Transform3D(0.9659258, 0, 0.25881904, 0, 1, 0, -0.25881904, 0, 0.9659258, 0, 0, 15)
+shape = SubResource("BoxShape3D_5dwv6")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="CollisionShape3D3"]
+mesh = SubResource("BoxMesh_nrjh1")
+skeleton = NodePath("../..")
+
+[node name="Conn_Socket_Medium" type="Marker3D" parent="CollisionShape3D3"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 30, 0, 15)
+script = ExtResource("3_joib8")
+ignores_collision = true
+
+[node name="Conn_Socket_Medium3" type="Marker3D" parent="CollisionShape3D3"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -30, 0, 15)
+script = ExtResource("3_joib8")
+ignores_collision = true
+
+[node name="CollisionShape3D2" type="CollisionShape3D" parent="."]
+transform = Transform3D(0.9659258, 0, -0.25881904, 0, 1, 0, 0.25881904, 0, 0.9659258, 0, 0, -15)
+shape = SubResource("BoxShape3D_5dwv6")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="CollisionShape3D2"]
+mesh = SubResource("BoxMesh_nrjh1")
+skeleton = NodePath("../..")
+
+[node name="Conn_Socket_Medium2" type="Marker3D" parent="CollisionShape3D2"]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 30, 0, -15)
+script = ExtResource("3_joib8")
+ignores_collision = true
+
+[node name="Conn_Socket_Medium4" type="Marker3D" parent="CollisionShape3D2"]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, -30, 0, -15)
+script = ExtResource("3_joib8")
+ignores_collision = true
+
+[node name="MeshInstance3D2" type="MeshInstance3D" parent="."]
+transform = Transform3D(-4.371139e-08, -1, -4.371139e-08, 0, -4.371139e-08, 1, -1, 4.371139e-08, 1.9106855e-15, 45, 3.48, 0)
+mesh = SubResource("TorusMesh_6dmbk")
+skeleton = NodePath("../CollisionShape3D/MeshInstance3D")
+surface_material_override/0 = ExtResource("4_kdxt2")
+
+[node name="Conn_Plug_Large" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 20, -2.5, 0)
+script = ExtResource("3_joib8")
+size_medium = false
+size_large = true
+is_socket = false
+
+[node name="Conn_Plug_Large2" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, -20, -2.5, 0)
+script = ExtResource("3_joib8")
+size_medium = false
+size_large = true
+is_socket = false
+
+[node name="Conn_Plug_Large3" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 20, 2.5, 0)
+script = ExtResource("3_joib8")
+size_small = true
+is_plug = false
+
+[node name="Conn_Plug_Large4" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -20, 2.5, 0)
+script = ExtResource("3_joib8")
+size_small = true
+is_plug = false
+
+[node name="Conn_Plug_Medium" type="Marker3D" parent="."]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 45, 0, 0)
+script = ExtResource("3_joib8")
+
+[node name="Conn_Plug_Medium2" type="Marker3D" parent="."]
+transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, -45, 0, 0)
+script = ExtResource("3_joib8")
