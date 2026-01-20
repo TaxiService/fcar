@@ -101,11 +101,11 @@ var buildings_container: Node3D
 # Building generation
 @export_category("Buildings")
 @export var generate_buildings: bool = true
-@export var building_seed_spacing: float = 90.0  # Seed points every Nm along connectors
-@export var building_seed_probability: float = 0.3  # Chance to actually place a seed (sparsity)
-@export var building_max_depth: int = 3  # Max blocks from seed
-@export var building_branch_chance: float = 0.2  # Chance to branch at each connection
-@export var building_max_total: int = 200  # Hard limit on total building blocks
+@export var building_seed_spacing: float = 60.0  # Seed points every Nm along connectors
+@export var building_seed_probability: float = 0.8  # Chance to actually place a seed (sparsity)
+@export var building_max_depth: int = 7  # Max blocks from seed
+@export var building_branch_chance: float = 0.8  # Chance to branch at each connection
+@export var building_max_total: int = 1260  # Hard limit on total building blocks
 @export var buildings_on_crosslinks: bool = true  # Spawn on crosslinks (internal connectors)
 @export var buildings_on_edges: bool = false  # Spawn on edge connectors
 @export var crosslink_seed_size: String = "large"  # Size filter for crosslink seeds: "small", "medium", "large", or "any"

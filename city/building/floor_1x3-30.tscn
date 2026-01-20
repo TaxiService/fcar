@@ -57,16 +57,6 @@ shape = SubResource("BoxShape3D_5dwv6")
 mesh = SubResource("BoxMesh_nrjh1")
 skeleton = NodePath("../..")
 
-[node name="Conn_Socket_Medium" type="Marker3D" parent="CollisionShape3D3"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 30, 0, 15)
-script = ExtResource("3_joib8")
-ignores_collision = true
-
-[node name="Conn_Socket_Medium3" type="Marker3D" parent="CollisionShape3D3"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -30, 0, 15)
-script = ExtResource("3_joib8")
-ignores_collision = true
-
 [node name="CollisionShape3D2" type="CollisionShape3D" parent="."]
 transform = Transform3D(0.9659258, 0, -0.25881904, 0, 1, 0, 0.25881904, 0, 0.9659258, 0, 0, -15)
 shape = SubResource("BoxShape3D_5dwv6")
@@ -74,16 +64,6 @@ shape = SubResource("BoxShape3D_5dwv6")
 [node name="MeshInstance3D" type="MeshInstance3D" parent="CollisionShape3D2"]
 mesh = SubResource("BoxMesh_nrjh1")
 skeleton = NodePath("../..")
-
-[node name="Conn_Socket_Medium2" type="Marker3D" parent="CollisionShape3D2"]
-transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 30, 0, -15)
-script = ExtResource("3_joib8")
-ignores_collision = true
-
-[node name="Conn_Socket_Medium4" type="Marker3D" parent="CollisionShape3D2"]
-transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, -30, 0, -15)
-script = ExtResource("3_joib8")
-ignores_collision = true
 
 [node name="MeshInstance3D2" type="MeshInstance3D" parent="."]
 transform = Transform3D(-4.371139e-08, -1, -4.371139e-08, 0, -4.371139e-08, 1, -1, 4.371139e-08, 1.9106855e-15, 45, 3.48, 0)
@@ -124,3 +104,23 @@ script = ExtResource("3_joib8")
 [node name="Conn_Plug_Medium2" type="Marker3D" parent="."]
 transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, -45, 0, 0)
 script = ExtResource("3_joib8")
+
+[node name="Conn_Socket_Medium" type="Marker3D" parent="."]
+transform = Transform3D(0.9659258, 0, 0.25881904, 0, 1, 0, -0.25881904, 0, 0.9659258, 32.860058, 0, 21.724316)
+script = ExtResource("3_joib8")
+ignores_collision = true
+
+[node name="Conn_Socket_Medium3" type="Marker3D" parent="."]
+transform = Transform3D(0.9659258, 0, 0.25881904, 0, 1, 0, -0.25881904, 0, 0.9659258, -25.095488, 0, 37.253456)
+script = ExtResource("3_joib8")
+ignores_collision = true
+
+[node name="Conn_Socket_Medium2" type="Marker3D" parent="."]
+transform = Transform3D(-0.9659258, 0, 0.25881895, 0, 1, 0, -0.25881895, 0, -0.9659258, 32.860058, 0, -21.724316)
+script = ExtResource("3_joib8")
+ignores_collision = true
+
+[node name="Conn_Socket_Medium4" type="Marker3D" parent="."]
+transform = Transform3D(-0.9659258, 0, 0.25881895, 0, 1, 0, -0.25881895, 0, -0.9659258, -25.095488, 0, -37.253456)
+script = ExtResource("3_joib8")
+ignores_collision = true
