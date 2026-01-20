@@ -9,6 +9,7 @@ to be implemented:
 
 - other cars, and ways for them to move around/be in the way
 - more building variety, and moving obstacles such as trains
+- upgrades system to spend your hard earned points
 - communication layer between cars (so you/them can say "sorry" or "fuck you" after collisions)
 - damage system for cargo/people, and consequences for their destruction
 - other jobs other than just taxi fares (fetch quests, infrastructure maintenance assistance)
