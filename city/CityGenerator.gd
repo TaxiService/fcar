@@ -685,24 +685,22 @@ func _generate_buildings():
 	if not building_generator:
 		push_error("CityGenerator: BuildingGenerator not initialized")
 		return
-
+	
 	# Configure generator
 	building_generator.max_growth_depth = building_max_depth
 	building_generator.branch_probability = building_branch_chance
 	building_generator.max_blocks_total = building_max_total
-	building_generator.reset_counter()
-
+	building_generator.reset()
+	
 	# Register spire AABBs so buildings don't overlap with them
-	# (Connector AABBs not registered - buildings spawn on top of connectors anyway)
 	var spire_aabbs = _calculate_spire_aabbs()
 	building_generator.register_external_aabbs(spire_aabbs)
-
-	print("  Starting building generation (max %d blocks)..." % building_max_total)
-
-	# Pre-calculate all potential seed positions, grouped by seed index (round)
-	# This ensures fair distribution: all connectors get 1st seed before any gets 2nd
-	var seeds_by_round: Array[Array] = []  # seeds_by_round[i] = array of seed data for round i
-
+	
+	print("  Queueing building seeds...")
+	
+	# Queue all seeds (instead of processing them one by one)
+	var seed_count = 0
+	
 	for conn in connector_data:
 		# Filter by connector type
 		var is_edge: bool = conn.get("is_edge", true)
@@ -710,87 +708,52 @@ func _generate_buildings():
 			continue
 		if not is_edge and not buildings_on_crosslinks:
 			continue
-
+		
 		var start: Vector3 = conn.start
 		var end: Vector3 = conn.end
 		var biome_idx: int = conn.biome_idx
 		var conn_height: float = conn.height
-
+		
 		var direction = end - start
 		var length = direction.length()
 		var dir_normalized = direction.normalized()
-
+		
 		# Calculate seed points at building_seed_spacing intervals
 		var usable_length = length - spire_base_radius * 2 - building_seed_spacing
 		if usable_length <= 0:
 			continue
-
+		
 		var num_seeds = int(usable_length / building_seed_spacing)
 		var start_offset = spire_base_radius + building_seed_spacing * 0.5
-
+		
 		# Determine size filter based on connector type
 		var size_filter = crosslink_seed_size if not is_edge else edge_seed_size
 		var connector_heading = atan2(dir_normalized.x, dir_normalized.z)
-
+		
 		for i in range(num_seeds):
 			# Random chance to skip this seed (sparsity control)
 			if randf() > building_seed_probability:
 				continue
-
+			
 			var t = start_offset + building_seed_spacing * i
 			var seed_pos = start + dir_normalized * t
-			# Offset seed up by half connector height so buildings spawn on top, not inside
+			# Offset seed up by half connector height so buildings spawn on top
 			seed_pos.y += conn_height / 2.0
-
-			# Store seed data for this round
-			var seed_data = {
-				"pos": seed_pos,
-				"biome_idx": biome_idx,
-				"size_filter": size_filter,
-				"heading": connector_heading
-			}
-
-			# Ensure we have enough rounds
-			while seeds_by_round.size() <= i:
-				seeds_by_round.append([])
-			seeds_by_round[i].append(seed_data)
-
-	# Shuffle each round independently for variety
-	for round_seeds in seeds_by_round:
-		round_seeds.shuffle()
-
-	# Process seeds round by round (fair distribution)
-	var seed_count = 0
-	var blocks_placed = 0
-
-	for round_idx in range(seeds_by_round.size()):
-		if blocks_placed >= building_max_total:
-			break
-
-		for seed_data in seeds_by_round[round_idx]:
-			if blocks_placed >= building_max_total:
-				break
-
-			# Count blocks before
-			var before = building_generator.get_child_count()
-
-			# Grow building from this seed
-			building_generator._grow_from_seed(
-				seed_data.pos,
+			
+			# Queue the seed (direction is UP because buildings grow upward from connectors)
+			building_generator.queue_seed(
+				seed_pos,
 				Vector3.UP,
-				seed_data.biome_idx,
-				0,
-				seed_data.size_filter,
-				seed_data.heading
+				biome_idx,
+				size_filter,
+				connector_heading
 			)
-
-			# Count blocks placed
-			var placed = building_generator.get_child_count() - before
-			blocks_placed += placed
 			seed_count += 1
-
-	print("  Generated %d blocks from %d seeds (%d rounds)" % [blocks_placed, seed_count, seeds_by_round.size()])
-	building_generator.print_debug_stats()
+	
+	print("  Queued %d seeds, starting breadth-first growth..." % seed_count)
+	
+	# Process all seeds simultaneously in breadth-first order
+	building_generator.process_queue()
 
 
 # Public API for regeneration
