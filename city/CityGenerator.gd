@@ -5,11 +5,11 @@ extends Node3D
 # Builds a hex-grid city with spires at vertices and connectors between them
 
 # Grid settings
-@export var hex_edge_length: float = 1500.0  # Distance between adjacent spires (meters)
-@export var grid_rings: int = 1  # Number of hex rings around center (0 = just center hex)
+@export var hex_edge_length: float = 420.0  # Distance between adjacent spires (meters)
+@export var grid_rings: int = 3  # Number of hex rings around center (0 = just center hex)
 
 # Spire settings
-@export var spire_height: float = 2000.0  # 2km tall
+@export var spire_height: float = 1600.0  # 2km tall
 @export var biome_count: int = 4  # Number of vertical sections
 
 # Spire geometry per biome (tapers upward)
@@ -22,8 +22,8 @@ extends Node3D
 # Connector settings (rectangular prisms)
 @export var edge_connector_width: float = 8.0  # Edge connector width (horizontal)
 @export var edge_connector_height: float = 8.0  # Edge connector height (vertical)
-@export var crosslink_width: float = 24.0  # Crosslink width (horizontal)
-@export var crosslink_height: float = 8.0  # Crosslink height (vertical)
+@export var crosslink_width: float = 20.0  # Crosslink width (horizontal)
+@export var crosslink_height: float = 15.0  # Crosslink height (vertical)
 @export var connectors_per_biome: int = 1  # How many connector levels per biome section
 
 # Edge connector patterns - which hex edges to connect (vertices 0-5, edges are adjacent pairs)
@@ -118,7 +118,7 @@ var connector_data: Array[Dictionary] = []
 
 @export_category("Spawning")
 @export var spawn_fcar: bool = true
-@export var fcar_spawn_height: float = 1250.0  # Spawn car at this height
+@export var fcar_spawn_height: float = 610.0  # Spawn car at this height
 
 func _ready():
 	_create_containers()
