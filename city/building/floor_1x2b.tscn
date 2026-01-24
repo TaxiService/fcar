@@ -74,7 +74,6 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 15, 0, 15)
 script = ExtResource("3_kotqw")
 type_flags = 4
 size_flags = 3
-is_plug = false
 rotation_mode = 2
 
 [node name="Conn_Socket_Medium3" type="Marker3D" parent="."]
@@ -90,7 +89,6 @@ transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 15, 
 script = ExtResource("3_kotqw")
 type_flags = 4
 size_flags = 3
-is_plug = false
 rotation_mode = 2
 
 [node name="Conn_Socket_Medium4" type="Marker3D" parent="."]

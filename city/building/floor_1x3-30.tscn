@@ -1,7 +1,6 @@
-[gd_scene load_steps=12 format=3 uid="uid://b56tsitj065r7"]
+[gd_scene load_steps=11 format=3 uid="uid://b56tsitj065r7"]
 
 [ext_resource type="Script" uid="uid://cmafag82uyxu7" path="res://city/BuildingBlock.gd" id="1_utfq7"]
-[ext_resource type="Script" uid="uid://c72sj768vn5do" path="res://SpawnSurface.gd" id="2_n7dfq"]
 [ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://city/ConnectionPoint.gd" id="3_joib8"]
 [ext_resource type="Material" uid="uid://d1752hlai3xtn" path="res://mats/floor.tres" id="3_n7dfq"]
 [ext_resource type="Material" uid="uid://c84qehqsj2tk1" path="res://mats/floor_small.tres" id="4_kdxt2"]
@@ -35,13 +34,6 @@ block_type = 3
 can_spawn_people = true
 spawn_weight = 3.0
 
-[node name="SpawnSurface7" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5432281, 0)
-script = ExtResource("2_n7dfq")
-enabled = true
-max_people = 21
-bounds_size = Vector3(60, 0, 30)
-
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 shape = SubResource("BoxShape3D_pfv6c")
 
@@ -74,53 +66,61 @@ surface_material_override/0 = ExtResource("4_kdxt2")
 [node name="Conn_Plug_Large" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 20, -2.5, 0)
 script = ExtResource("3_joib8")
-size_medium = false
-size_large = true
+size_flags = 4
 is_socket = false
 
 [node name="Conn_Plug_Large2" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, -20, -2.5, 0)
 script = ExtResource("3_joib8")
-size_medium = false
-size_large = true
+size_flags = 4
 is_socket = false
+rotation_mode = 1
 
 [node name="Conn_Plug_Large3" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 20, 2.5, 0)
 script = ExtResource("3_joib8")
-size_small = true
+size_flags = 6
 is_plug = false
+rotation_mode = 1
 
 [node name="Conn_Plug_Large4" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -20, 2.5, 0)
 script = ExtResource("3_joib8")
-size_small = true
+size_flags = 6
 is_plug = false
 
 [node name="Conn_Plug_Medium" type="Marker3D" parent="."]
 transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 45, 0, 0)
 script = ExtResource("3_joib8")
+type_flags = 4
+rotation_mode = 2
 
 [node name="Conn_Plug_Medium2" type="Marker3D" parent="."]
 transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, -45, 0, 0)
 script = ExtResource("3_joib8")
+type_flags = 4
+rotation_mode = 2
 
 [node name="Conn_Socket_Medium" type="Marker3D" parent="."]
 transform = Transform3D(0.9659258, 0, 0.25881904, 0, 1, 0, -0.25881904, 0, 0.9659258, 32.860058, 0, 21.724316)
 script = ExtResource("3_joib8")
-ignores_collision = true
+type_flags = 4
+size_flags = 3
+is_plug = false
 
 [node name="Conn_Socket_Medium3" type="Marker3D" parent="."]
 transform = Transform3D(0.9659258, 0, 0.25881904, 0, 1, 0, -0.25881904, 0, 0.9659258, -25.095488, 0, 37.253456)
 script = ExtResource("3_joib8")
-ignores_collision = true
+type_flags = 4
 
 [node name="Conn_Socket_Medium2" type="Marker3D" parent="."]
 transform = Transform3D(-0.9659258, 0, 0.25881895, 0, 1, 0, -0.25881895, 0, -0.9659258, 32.860058, 0, -21.724316)
 script = ExtResource("3_joib8")
-ignores_collision = true
+type_flags = 4
+size_flags = 3
 
 [node name="Conn_Socket_Medium4" type="Marker3D" parent="."]
 transform = Transform3D(-0.9659258, 0, 0.25881895, 0, 1, 0, -0.25881895, 0, -0.9659258, -25.095488, 0, -37.253456)
 script = ExtResource("3_joib8")
-ignores_collision = true
+type_flags = 4
+is_plug = false
