@@ -1,0 +1,33 @@
+[gd_scene load_steps=6 format=3 uid="uid://5uvs8lcqev74"]
+
+[ext_resource type="Script" uid="uid://cmafag82uyxu7" path="res://city/BuildingBlock.gd" id="1_umquq"]
+[ext_resource type="Script" uid="uid://c72sj768vn5do" path="res://SpawnSurface.gd" id="2_at7s7"]
+[ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://city/ConnectionPoint.gd" id="4_1oxgn"]
+[ext_resource type="Material" uid="uid://c84qehqsj2tk1" path="res://mats/floor_small.tres" id="5_0k77h"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_l0srl"]
+material = ExtResource("5_0k77h")
+size = Vector3(1, 2, 1)
+
+[node name="FloorSmall5" type="StaticBody3D"]
+script = ExtResource("1_umquq")
+block_type = 1
+
+[node name="SpawnSurface7" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5432281, 0)
+script = ExtResource("2_at7s7")
+enabled = true
+max_people = 7
+color_set_index = 2
+bounds_size = Vector3(25, 0, 25)
+
+[node name="Conn_Plug_Large" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 2.5, 0)
+script = ExtResource("4_1oxgn")
+connection_type = 3
+is_socket = false
+rotation_mode = 1
+
+[node name="MeshInstance3D2" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -13, 3.5, -13)
+mesh = SubResource("BoxMesh_l0srl")

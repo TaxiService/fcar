@@ -1,10 +1,10 @@
 [gd_scene load_steps=16 format=3 uid="uid://b8qwvqihw1ecv"]
 
-[ext_resource type="Script" uid="uid://cmafag82uyxu7" path="res://city/BuildingBlock.gd" id="1_o06re"]
-[ext_resource type="Script" uid="uid://c72sj768vn5do" path="res://SpawnSurface.gd" id="2_ssnx1"]
-[ext_resource type="Material" uid="uid://c84qehqsj2tk1" path="res://mats/floor_small.tres" id="3_27yca"]
-[ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://city/ConnectionPoint.gd" id="4_3boio"]
-[ext_resource type="Material" uid="uid://d1752hlai3xtn" path="res://mats/floor.tres" id="4_ssnx1"]
+[ext_resource type="Script" uid="uid://cmafag82uyxu7" path="res://city/BuildingBlock.gd" id="1_e1tfj"]
+[ext_resource type="Script" uid="uid://c72sj768vn5do" path="res://SpawnSurface.gd" id="2_8kfcl"]
+[ext_resource type="Material" uid="uid://c84qehqsj2tk1" path="res://mats/floor_small.tres" id="3_cf5ak"]
+[ext_resource type="Material" uid="uid://d1752hlai3xtn" path="res://mats/floor.tres" id="4_fkvqc"]
+[ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://city/ConnectionPoint.gd" id="5_exw8x"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_5dwv6"]
 size = Vector3(90, 5, 30)
@@ -33,22 +33,22 @@ size = Vector3(25, 60, 25)
 size = Vector3(35, 30, 20)
 
 [sub_resource type="BoxMesh" id="BoxMesh_3boio"]
-material = ExtResource("4_ssnx1")
+material = ExtResource("4_fkvqc")
 size = Vector3(35, 30, 20)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_3boio"]
 size = Vector3(35, 15, 20)
 
 [sub_resource type="BoxMesh" id="BoxMesh_qge6t"]
-material = ExtResource("4_ssnx1")
+material = ExtResource("4_fkvqc")
 size = Vector3(35, 15, 20)
 
 [node name="FloorSmall5" type="StaticBody3D"]
-script = ExtResource("1_o06re")
+script = ExtResource("1_e1tfj")
 
 [node name="SpawnSurface7" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 32.5, 0)
-script = ExtResource("2_ssnx1")
+script = ExtResource("2_8kfcl")
 enabled = true
 max_people = 7
 bounds_size = Vector3(25, 0, 15)
@@ -66,7 +66,7 @@ skeleton = NodePath("../..")
 transform = Transform3D(-4.371139e-08, -1, -4.371139e-08, 0, -4.371139e-08, 1, -1, 4.371139e-08, 1.9106855e-15, 17.5, 33.48, 0)
 mesh = SubResource("TorusMesh_6dmbk")
 skeleton = NodePath("../CollisionShape3D/MeshInstance3D")
-surface_material_override/0 = ExtResource("3_27yca")
+surface_material_override/0 = ExtResource("3_cf5ak")
 
 [node name="CollisionShape3D2" type="CollisionShape3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -30, 32.5, 0)
@@ -102,88 +102,68 @@ skeleton = NodePath("../..")
 
 [node name="Conn_Plug_Large" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 20, 2.5, 0)
-script = ExtResource("4_3boio")
-size_medium = false
-size_large = true
+script = ExtResource("5_exw8x")
 is_socket = false
 
 [node name="Conn_Plug_Large2" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, -20, 2.5, 0)
-script = ExtResource("4_3boio")
-size_medium = false
-size_large = true
+script = ExtResource("5_exw8x")
 is_socket = false
 
 [node name="Conn_Plug_Large3" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 20, 62.5, 0)
-script = ExtResource("4_3boio")
-size_large = true
+script = ExtResource("5_exw8x")
 is_plug = false
 
 [node name="Conn_Plug_Large4" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -20, 62.5, 0)
-script = ExtResource("4_3boio")
-size_large = true
+script = ExtResource("5_exw8x")
 is_plug = false
 
 [node name="Conn_Plug_Medium" type="Marker3D" parent="."]
 transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 45, 30, 0)
-script = ExtResource("4_3boio")
-size_large = true
+script = ExtResource("5_exw8x")
 
 [node name="Conn_Plug_Medium2" type="Marker3D" parent="."]
 transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, -45, 30, 0)
-script = ExtResource("4_3boio")
-size_large = true
+script = ExtResource("5_exw8x")
 
 [node name="Conn_Socket_Medium" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 30, 30, 15)
-script = ExtResource("4_3boio")
-size_small = true
+script = ExtResource("5_exw8x")
 is_plug = false
 
 [node name="Conn_Socket_Medium3" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -30, 30, 15)
-script = ExtResource("4_3boio")
-size_small = true
+script = ExtResource("5_exw8x")
 is_plug = false
 
 [node name="Conn_Socket_Medium2" type="Marker3D" parent="."]
 transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 30, 30, -15)
-script = ExtResource("4_3boio")
-size_small = true
+script = ExtResource("5_exw8x")
 is_plug = false
 
 [node name="Conn_Socket_Medium4" type="Marker3D" parent="."]
 transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, -30, 30, -15)
-script = ExtResource("4_3boio")
-size_small = true
+script = ExtResource("5_exw8x")
 is_plug = false
 
 [node name="Conn_Socket_Medium5" type="Marker3D" parent="."]
 transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 30, 45, -12.5)
-script = ExtResource("4_3boio")
-size_small = true
-size_medium = false
+script = ExtResource("5_exw8x")
 is_plug = false
 
 [node name="Conn_Socket_Medium6" type="Marker3D" parent="."]
 transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, -30, 45, -12.5)
-script = ExtResource("4_3boio")
-size_small = true
-size_medium = false
+script = ExtResource("5_exw8x")
 is_plug = false
 
 [node name="Conn_Socket_Medium7" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 30, 45, 12.5)
-script = ExtResource("4_3boio")
-size_small = true
-size_medium = false
+script = ExtResource("5_exw8x")
 is_plug = false
 
 [node name="Conn_Socket_Medium8" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -30, 45, 12.5)
-script = ExtResource("4_3boio")
-size_small = true
-size_medium = false
+script = ExtResource("5_exw8x")
 is_plug = false

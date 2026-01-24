@@ -1,10 +1,8 @@
-[gd_scene load_steps=9 format=3 uid="uid://5wk70s313e55"]
+[gd_scene load_steps=6 format=3 uid="uid://5wk70s313e55"]
 
 [ext_resource type="Script" uid="uid://cmafag82uyxu7" path="res://city/BuildingBlock.gd" id="1_jbuvr"]
-[ext_resource type="Script" uid="uid://c72sj768vn5do" path="res://SpawnSurface.gd" id="2_fkvty"]
 [ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://city/ConnectionPoint.gd" id="3_ivjda"]
 [ext_resource type="Material" uid="uid://d1752hlai3xtn" path="res://mats/floor.tres" id="3_n62i2"]
-[ext_resource type="Material" uid="uid://c84qehqsj2tk1" path="res://mats/floor_small.tres" id="5_yal8c"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_5dwv6"]
 size = Vector3(30, 5, 30)
@@ -13,21 +11,9 @@ size = Vector3(30, 5, 30)
 material = ExtResource("3_n62i2")
 size = Vector3(30, 5, 30)
 
-[sub_resource type="BoxMesh" id="BoxMesh_l0srl"]
-material = ExtResource("5_yal8c")
-size = Vector3(1, 2, 1)
-
 [node name="FloorSmall5" type="StaticBody3D"]
 script = ExtResource("1_jbuvr")
 block_type = 1
-
-[node name="SpawnSurface7" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5432281, 0)
-script = ExtResource("2_fkvty")
-enabled = true
-max_people = 7
-color_set_index = 2
-bounds_size = Vector3(25, 0, 25)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 shape = SubResource("BoxShape3D_5dwv6")
@@ -38,30 +24,40 @@ mesh = SubResource("BoxMesh_nrjh1")
 [node name="Conn_Plug_Large" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, -2.5, 0)
 script = ExtResource("3_ivjda")
-size_medium = false
-size_large = true
+connection_size = 0
 is_socket = false
+rotation_mode = 1
 
 [node name="Conn_Plug_Medium" type="Marker3D" parent="."]
 transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 15, 0, 0)
 script = ExtResource("3_ivjda")
+connection_type = 2
+rotation_mode = 2
 
 [node name="Conn_Plug_Medium2" type="Marker3D" parent="."]
 transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, -15, 0, 0)
 script = ExtResource("3_ivjda")
+connection_type = 2
+rotation_mode = 2
 
 [node name="Conn_Socket_Medium" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 15)
 script = ExtResource("3_ivjda")
-size_small = true
+connection_type = 2
+connection_size = 2
 is_plug = false
+rotation_mode = 2
 
 [node name="Conn_Socket_Medium2" type="Marker3D" parent="."]
 transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, -15)
 script = ExtResource("3_ivjda")
-size_small = true
+connection_type = 2
+connection_size = 2
 is_plug = false
+rotation_mode = 2
 
-[node name="MeshInstance3D2" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -13, 3.5, -13)
-mesh = SubResource("BoxMesh_l0srl")
+[node name="Conn_Plug_Large2" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 2.5, 0)
+script = ExtResource("3_ivjda")
+is_socket = false
+rotation_mode = 1
