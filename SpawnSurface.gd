@@ -9,7 +9,7 @@ extends Node3D
 		_update_editor_visual()
 @export var max_people: int = 5
 @export var spawn_height_offset: float = 0.01  # Slightly above surface to avoid z-fighting
-@export var color_set_index: int = 0  # Which color set from PeopleManager to use
+@export var color_set_index: int = -1  # Which color set from PeopleManager to use
 
 # Bounds definition (local coordinates, centered on this node)
 @export var bounds_size: Vector3 = Vector3(10, 0, 10):

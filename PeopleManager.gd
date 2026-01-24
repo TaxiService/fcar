@@ -271,7 +271,9 @@ func _do_spawn_person(surface: SpawnSurface) -> Person:
 	person.walk_speed = randf_range(walk_speed_min, walk_speed_max)
 	
 	# Material (cached by color)
-	var color = get_color_from_set(surface.color_set_index, spawn_counter)
+	# Resolve color set index (handles -1 = random, cached per surface)
+	var resolved_set_index = _resolve_color_set_index(surface)
+	var color = get_color_from_set(resolved_set_index, spawn_counter)
 	spawn_counter += 1
 	var mat = _get_cached_material(color)
 	person.material_override = mat
@@ -464,6 +466,7 @@ func remove_all_people():
 	for person in all_people.duplicate():  # Duplicate to avoid modifying while iterating
 		_return_to_pool(person)
 	all_people.clear()
+	_surface_color_cache.clear()  # Reset random color assignments
 
 
 func get_people_count() -> int:
@@ -478,6 +481,9 @@ func register_surface(surface: SpawnSurface):
 
 func unregister_surface(surface: SpawnSurface):
 	registered_surfaces.erase(surface)
+	# Clean up color cache for this surface
+	if is_instance_valid(surface):
+		_surface_color_cache.erase(surface.get_instance_id())
 
 
 func register_poi(poi: PointOfInterest):
@@ -588,9 +594,39 @@ func _parse_color_line(line: String) -> Variant:
 
 
 func _get_color_set(index: int) -> PackedColorArray:
-	if index < 0 or index >= color_sets.size():
-		return color_sets[0] if color_sets.size() > 0 else PackedColorArray([Color.BLACK])
+	if color_sets.is_empty():
+		return PackedColorArray([Color.BLACK])
+	
+	# -1 means pick a random color set (caller should use _resolve_color_set_index for surfaces)
+	if index < 0:
+		index = randi() % color_sets.size()
+	
+	if index >= color_sets.size():
+		return color_sets[0]
+	
 	return color_sets[index]
+
+
+# Cache for resolved random color set indices (surface instance_id -> resolved index)
+var _surface_color_cache: Dictionary = {}
+
+func _resolve_color_set_index(surface: SpawnSurface) -> int:
+	# Returns the color set index for this surface
+	# If surface.color_set_index is -1, picks a random set and caches it
+	var set_index = surface.color_set_index
+	
+	if set_index >= 0:
+		return set_index
+	
+	# Random mode: check cache first
+	var surface_id = surface.get_instance_id()
+	if _surface_color_cache.has(surface_id):
+		return _surface_color_cache[surface_id]
+	
+	# Pick random and cache
+	var random_index = randi() % max(color_sets.size(), 1)
+	_surface_color_cache[surface_id] = random_index
+	return random_index
 
 
 func get_color_from_set(set_index: int, person_index: int) -> Color:
