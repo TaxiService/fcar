@@ -1,0 +1,54 @@
+[gd_scene load_steps=6 format=3 uid="uid://cduo4ia868ltb"]
+
+[ext_resource type="Script" uid="uid://cmafag82uyxu7" path="res://city/BuildingBlock.gd" id="1_17mo3"]
+[ext_resource type="Material" uid="uid://d1752hlai3xtn" path="res://mats/floor.tres" id="2_17mo3"]
+[ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://city/ConnectionPoint.gd" id="3_i1dc7"]
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_sqhew"]
+height = 30.0
+radius = 9.0
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_vb8vo"]
+material = ExtResource("2_17mo3")
+top_radius = 10.0
+bottom_radius = 10.0
+height = 30.0
+radial_segments = 6
+rings = 0
+
+[node name="FloorSmall5" type="StaticBody3D"]
+script = ExtResource("1_17mo3")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("CylinderShape3D_sqhew")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 0, 0, 0)
+mesh = SubResource("CylinderMesh_vb8vo")
+
+[node name="Conn_Plug_Large" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, -15, 0)
+script = ExtResource("3_i1dc7")
+size_flags = 6
+is_socket = false
+
+[node name="Conn_Plug_Large2" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 15, 0)
+script = ExtResource("3_i1dc7")
+type_flags = 3
+size_flags = 4
+is_socket = false
+
+[node name="Marker3D" type="Marker3D" parent="."]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 10, -5, 0)
+script = ExtResource("3_i1dc7")
+type_flags = 4
+size_flags = 1
+is_plug = false
+
+[node name="Marker3D2" type="Marker3D" parent="."]
+transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, -10, -5, 0)
+script = ExtResource("3_i1dc7")
+type_flags = 4
+size_flags = 1
+is_plug = false

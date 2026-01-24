@@ -48,7 +48,12 @@ transform = Transform3D(1, 0, 0, 0, 0.9658184, 0.25921968, 0, -0.25921968, 0.965
 [node name="CityGenerator" type="Node3D" parent="."]
 script = ExtResource("1_generator")
 building_max_depth = 7
-building_max_total = 1260
+building_branch_chance = 0.2
+building_max_total = 2520
+top_seed_probability = 0.1
+bottom_seed_probability = 0.1
+bottom_seed_sizes = 4
+edge_top_sizes = 1
 spawn_fcar = false
 
 [node name="PeopleManager" type="Node" parent="."]

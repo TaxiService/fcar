@@ -41,7 +41,7 @@ size = Vector3(35, 15, 20)
 
 [sub_resource type="BoxMesh" id="BoxMesh_qge6t"]
 material = ExtResource("4_ssnx1")
-size = Vector3(35, 15, 20)
+size = Vector3(35, 14.99, 20)
 
 [node name="FloorSmall5" type="StaticBody3D"]
 script = ExtResource("1_o06re")
@@ -89,6 +89,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 17.5, 0)
 shape = SubResource("BoxShape3D_27yca")
 
 [node name="MeshInstance3D5" type="MeshInstance3D" parent="CollisionShape3D4"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.01, 0)
 mesh = SubResource("BoxMesh_3boio")
 skeleton = NodePath("../..")
 

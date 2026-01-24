@@ -1,5 +1,6 @@
 # BuildingGenerator.gd - Breadth-first modular building growth
 # Uses bitmask flags for flexible type/size matching
+# Includes direction matching for top/bottom seed discrimination
 class_name BuildingGenerator
 extends Node3D
 
@@ -38,6 +39,7 @@ func reset():
 		"seeds_failed_no_blocks": 0,
 		"overlap_rejects": 0,
 		"no_match_rejects": 0,
+		"direction_rejects": 0,
 		"rotation_retries": 0,
 		"block_retries": 0,
 		"depth_distribution": {},
@@ -53,14 +55,11 @@ func reset_counter():
 
 func register_external_aabbs(aabbs: Array[AABB]):
 	for aabb in aabbs:
-		_placed_aabbs.append(aabb)
+		_placed_aabbs.append(aabb.abs())  # Ensure positive size
 
 
 # === PUBLIC API ===
 
-# Queue a seed with bitmask flags
-# type_flags: e.g., TF.SEED or TF.SEED | TF.STRUCTURAL
-# size_flags: e.g., SF.LARGE or SF.MEDIUM | SF.SMALL
 func queue_seed(position: Vector3, direction: Vector3, biome_idx: int,
 				type_flags: int, size_flags: int, heading: float = 0.0):
 	_stats.seeds_received += 1
@@ -74,14 +73,6 @@ func queue_seed(position: Vector3, direction: Vector3, biome_idx: int,
 		"heading": heading,
 		"is_seed": true,
 	})
-
-
-# Legacy API using ConnectionPoint enums (for CityGenerator compatibility)
-func queue_seed_typed(position: Vector3, direction: Vector3, biome_idx: int,
-					  conn_type: ConnectionPoint.TypeFlags, 
-					  conn_size: ConnectionPoint.SizeFlags,
-					  heading: float = 0.0):
-	queue_seed(position, direction, biome_idx, conn_type, conn_size, heading)
 
 
 func process_queue():
@@ -140,8 +131,10 @@ func _process_entry(entry: Dictionary):
 	var base_heading: float = entry.heading
 	var is_seed: bool = entry.get("is_seed", false)
 	
-	# Get blocks that have a plug matching our type+size flags
-	var valid_blocks = _get_matching_blocks(biome_idx, depth, type_flags, size_flags)
+	var target_dir = -direction  # The direction the plug needs to face
+	
+	# Get blocks that have a plug matching our type+size+direction
+	var valid_blocks = _get_matching_blocks(biome_idx, depth, type_flags, size_flags, target_dir)
 	
 	if valid_blocks.is_empty():
 		_stats.no_match_rejects += 1
@@ -152,7 +145,6 @@ func _process_entry(entry: Dictionary):
 	var shuffled = valid_blocks.duplicate()
 	shuffled.shuffle()
 	
-	var target_dir = -direction
 	var placed_block: BuildingBlock = null
 	
 	for attempt_idx in range(mini(5, shuffled.size())):
@@ -166,6 +158,8 @@ func _process_entry(entry: Dictionary):
 			break
 		elif result.reason == "overlap":
 			_stats.overlap_rejects += 1
+		elif result.reason == "direction":
+			_stats.direction_rejects += 1
 	
 	if placed_block == null:
 		if is_seed:
@@ -179,8 +173,6 @@ func _process_entry(entry: Dictionary):
 	
 	var depth_key = str(depth)
 	_stats.depth_distribution[depth_key] = _stats.depth_distribution.get(depth_key, 0) + 1
-	
-	# Track types used
 	_track_type_stats(type_flags)
 	
 	# Queue children
@@ -207,11 +199,11 @@ func _try_place_block(block_info: Dictionary, position: Vector3, target_dir: Vec
 	
 	add_child(instance)
 	
-	# Find a plug that matches requirements
-	var anchor = _find_matching_plug(instance, required_types, required_sizes)
+	# Find a plug that matches requirements AND direction
+	var anchor = _find_matching_plug(instance, required_types, required_sizes, target_dir)
 	if anchor == null:
 		instance.queue_free()
-		return {"success": false, "reason": "no_match"}
+		return {"success": false, "reason": "direction"}
 	
 	# Try rotations
 	var rotations = anchor.get_allowed_rotations()
@@ -233,11 +225,48 @@ func _try_place_block(block_info: Dictionary, position: Vector3, target_dir: Vec
 	return {"success": false, "reason": "overlap"}
 
 
-func _find_matching_plug(block: BuildingBlock, required_types: int, required_sizes: int) -> ConnectionPoint:
+func _find_matching_plug(block: BuildingBlock, required_types: int, required_sizes: int, target_dir: Vector3) -> ConnectionPoint:
 	for conn in block.get_connection_points():
-		if conn.matches_requirements(required_types, required_sizes):
-			return conn
+		if not conn.is_plug:
+			continue
+		
+		# Check type and size flags overlap
+		if (conn.type_flags & required_types) == 0:
+			continue
+		if (conn.size_flags & required_sizes) == 0:
+			continue
+		
+		# Check direction compatibility
+		# Since we only rotate around Y, vertical component of plug direction is fixed
+		if not _direction_compatible(conn, target_dir):
+			continue
+		
+		return conn
+	
 	return null
+
+
+func _direction_compatible(conn: ConnectionPoint, target_dir: Vector3) -> bool:
+	# Get the plug's local direction (points INTO the block)
+	# ConnectionPoint's -Z axis points inward
+	var local_dir = -conn.basis.z
+	
+	# Classify both directions as UP, DOWN, or HORIZONTAL
+	var plug_vertical = _classify_vertical(local_dir)
+	var target_vertical = _classify_vertical(target_dir)
+	
+	# They must match: UP↔UP, DOWN↔DOWN, HORIZONTAL↔HORIZONTAL
+	return plug_vertical == target_vertical
+
+
+func _classify_vertical(dir: Vector3) -> int:
+	# Returns: 1 = UP, -1 = DOWN, 0 = HORIZONTAL
+	if dir.y > 0.7:
+		return 1   # Pointing up
+	elif dir.y < -0.7:
+		return -1  # Pointing down
+	else:
+		return 0   # Horizontal
 
 
 func _queue_children(block: BuildingBlock, biome_idx: int, parent_depth: int):
@@ -251,7 +280,7 @@ func _queue_children(block: BuildingBlock, biome_idx: int, parent_depth: int):
 		if not conn.is_socket:
 			continue
 		
-		# CAP-only sockets don't spawn children (they're terminators)
+		# CAP-only sockets don't spawn children
 		if conn.type_flags == TF.CAP:
 			continue
 		
@@ -263,7 +292,6 @@ func _queue_children(block: BuildingBlock, biome_idx: int, parent_depth: int):
 		var world_dir = block.get_connection_world_direction(conn)
 		block.mark_connection_used(conn)
 		
-		# Child inherits the socket's type and size flags
 		_growth_queue.append({
 			"pos": world_pos,
 			"dir": world_dir,
@@ -276,15 +304,15 @@ func _queue_children(block: BuildingBlock, biome_idx: int, parent_depth: int):
 		})
 
 
-func _get_matching_blocks(biome_idx: int, depth: int, type_flags: int, size_flags: int) -> Array:
+func _get_matching_blocks(biome_idx: int, depth: int, type_flags: int, size_flags: int, target_dir: Vector3) -> Array:
 	var valid: Array = []
 	
 	for data in block_data:
 		if biome_idx < data.min_biome or biome_idx > data.max_biome:
 			continue
 		
-		# Check if any plug matches our requirements
-		if not _block_has_matching_plug(data, type_flags, size_flags):
+		# Check if any plug matches type+size+direction
+		if not _block_has_matching_plug(data, type_flags, size_flags, target_dir):
 			continue
 		
 		# Prefer caps at max depth
@@ -298,19 +326,26 @@ func _get_matching_blocks(biome_idx: int, depth: int, type_flags: int, size_flag
 	if valid.is_empty():
 		for data in block_data:
 			if biome_idx >= data.min_biome and biome_idx <= data.max_biome:
-				if _block_has_matching_plug(data, type_flags, size_flags):
+				if _block_has_matching_plug(data, type_flags, size_flags, target_dir):
 					valid.append(data)
 	
 	return valid
 
 
-func _block_has_matching_plug(data: Dictionary, type_flags: int, size_flags: int) -> bool:
+func _block_has_matching_plug(data: Dictionary, type_flags: int, size_flags: int, target_dir: Vector3) -> bool:
+	var target_vertical = _classify_vertical(target_dir)
+	
 	for plug in data.get("plugs", []):
-		# Check if flags overlap (any bit in common)
+		# Check flags overlap
 		var types_match = (plug.type_flags & type_flags) != 0
 		var sizes_match = (plug.size_flags & size_flags) != 0
-		if types_match and sizes_match:
+		if not types_match or not sizes_match:
+			continue
+		
+		# Check direction compatibility
+		if plug.vertical_class == target_vertical:
 			return true
+	
 	return false
 
 
@@ -358,7 +393,7 @@ func _get_block_aabb(block: Node3D) -> AABB:
 	if first:
 		combined_aabb = AABB(block.global_position - Vector3(5, 5, 5), Vector3(10, 10, 10))
 	
-	return combined_aabb
+	return combined_aabb.abs()  # Ensure positive size
 
 
 func _get_shape_aabb(shape: Shape3D) -> AABB:
@@ -394,13 +429,13 @@ func _transform_aabb(local_aabb: AABB, xform: Transform3D) -> AABB:
 	var result = AABB(corners[0], Vector3.ZERO)
 	for i in range(1, 8):
 		result = result.expand(corners[i])
-	return result
+	return result.abs()  # Ensure positive size
 
 
 func _overlaps_existing(new_aabb: AABB) -> bool:
-	var test_aabb = new_aabb.grow(-1.0)
+	var test_aabb = new_aabb.abs().grow(-1.0)  # Ensure positive and shrink by margin
 	for existing in _placed_aabbs:
-		if test_aabb.intersects(existing):
+		if test_aabb.intersects(existing.abs()):
 			return true
 	return false
 
@@ -440,10 +475,15 @@ func _analyze_block(instance: BuildingBlock, scene: PackedScene, path: String) -
 	var sockets: Array[Dictionary] = []
 	
 	for conn in instance.get_connection_points():
+		# Get the plug/socket direction for vertical classification
+		var local_dir = -conn.basis.z
+		var vert_class = _classify_vertical(local_dir)
+		
 		var info = {
 			"type_flags": conn.type_flags,
 			"size_flags": conn.size_flags,
 			"rotation_mode": conn.rotation_mode,
+			"vertical_class": vert_class,  # 1=UP, -1=DOWN, 0=HORIZONTAL
 		}
 		if conn.is_plug:
 			plugs.append(info)
@@ -467,11 +507,19 @@ func _print_block_summary():
 	for data in block_data:
 		var plug_strs: Array[String] = []
 		for p in data.plugs:
-			plug_strs.append(_flags_to_string(p.type_flags, p.size_flags))
+			plug_strs.append("%s/%s%s" % [
+				_type_flags_str(p.type_flags),
+				_size_flags_str(p.size_flags),
+				_vert_class_str(p.vertical_class)
+			])
 		
 		var socket_strs: Array[String] = []
 		for s in data.sockets:
-			socket_strs.append(_flags_to_string(s.type_flags, s.size_flags))
+			socket_strs.append("%s/%s%s" % [
+				_type_flags_str(s.type_flags),
+				_size_flags_str(s.size_flags),
+				_vert_class_str(s.vertical_class)
+			])
 		
 		print("  %s: plugs=[%s] sockets=[%s]" % [
 			data.path.get_file(),
@@ -480,19 +528,28 @@ func _print_block_summary():
 		])
 
 
-func _flags_to_string(type_flags: int, size_flags: int) -> String:
-	var types: Array[String] = []
-	if type_flags & TF.SEED: types.append("Se")
-	if type_flags & TF.STRUCTURAL: types.append("St")
-	if type_flags & TF.JUNCTION: types.append("Ju")
-	if type_flags & TF.CAP: types.append("Ca")
-	
-	var sizes: Array[String] = []
-	if size_flags & SF.SMALL: sizes.append("S")
-	if size_flags & SF.MEDIUM: sizes.append("M")
-	if size_flags & SF.LARGE: sizes.append("L")
-	
-	return "%s/%s" % ["+".join(types), "+".join(sizes)]
+func _type_flags_str(flags: int) -> String:
+	var parts: Array[String] = []
+	if flags & TF.SEED: parts.append("Se")
+	if flags & TF.STRUCTURAL: parts.append("St")
+	if flags & TF.JUNCTION: parts.append("Ju")
+	if flags & TF.CAP: parts.append("Ca")
+	return "+".join(parts) if parts.size() > 0 else "?"
+
+
+func _size_flags_str(flags: int) -> String:
+	var parts: Array[String] = []
+	if flags & SF.SMALL: parts.append("S")
+	if flags & SF.MEDIUM: parts.append("M")
+	if flags & SF.LARGE: parts.append("L")
+	return "+".join(parts) if parts.size() > 0 else "?"
+
+
+func _vert_class_str(vert: int) -> String:
+	match vert:
+		1: return "↑"   # Points UP
+		-1: return "↓"  # Points DOWN
+		_: return "→"   # Horizontal
 
 
 # === DEBUG ===
@@ -509,9 +566,10 @@ func print_stats():
 		_stats.seeds_failed_no_blocks
 	])
 	print("  Blocks placed: %d" % _stats.blocks_placed)
-	print("  Rejects: %d overlap, %d no match" % [
+	print("  Rejects: %d overlap, %d no match, %d direction" % [
 		_stats.overlap_rejects,
-		_stats.no_match_rejects
+		_stats.no_match_rejects,
+		_stats.direction_rejects
 	])
 	print("  Retries: %d rotation, %d block" % [
 		_stats.rotation_retries,
