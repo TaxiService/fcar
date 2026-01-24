@@ -445,7 +445,11 @@ func _is_key_pressed_locked(key: int) -> bool:
 
 
 func _physics_process(delta):
-	# Update LOD player position for people culling
+	# Update player position for proximity-based people management
+	if people_manager:
+		people_manager.set_player_position(global_position)
+	
+	# Update LOD player position (already exists in your code)
 	_update_lod_player_position()
 
 	var car_up = global_transform.basis.y

@@ -1,5 +1,15 @@
+# PeopleManager.gd - Optimized with object pooling and batched spawning
+# Performance improvements:
+# 1. Object pool - pre-instantiate people, reuse instead of create/destroy
+# 2. Batched spawning - spawn 1-2 per frame instead of all at once
+# 3. Material caching - share materials by color to enable GPU batching
+# 4. Smart processing - disable _process on distant/hidden people
 class_name PeopleManager
 extends Node
+
+# Signals for monitoring
+signal pool_ready(pool_size: int)
+signal spawn_complete(count: int)
 
 # Spritesheet configuration
 @export var spritesheet_path: String = "res://people5.png"
@@ -16,195 +26,449 @@ extends Node
 @export var wait_duration_min: float = 1.0
 @export var wait_duration_max: float = 4.0
 
-# Spawning configuration
+# Pool configuration
+@export_category("Object Pool")
+@export var pool_size: int = 200  # Pre-instantiate this many people
+@export var pool_growth_size: int = 20  # Grow pool by this many if exhausted
+@export var warm_pool_on_start: bool = true  # Create pool during loading
+
+# Spawning configuration  
 @export_category("Spawning")
-@export var spawn_interval: float = 2.0  # Seconds between spawn attempts
+@export var spawn_interval: float = 2.0
 @export var auto_spawn: bool = true
+@export var spawns_per_frame: int = 2  # Max spawns per frame (spreads cost)
+@export var spawn_queue_enabled: bool = true  # Use queued spawning
 
 # Quest/destination configuration
 @export_category("Destinations")
-@export_range(0.0, 1.0) var spawn_with_destination_chance: float = 0.3  # 30% of spawns want rides
-@export_range(0.0, 1.0) var in_a_hurry_chance: float = 0.1  # 10% of passengers are in a hurry
-@export var hurry_time: float = 60.0  # Seconds for in_a_hurry passengers
-@export var min_fare_distance: float = 100.0  # Minimum distance for a valid fare (no short walks)
+@export_range(0.0, 1.0) var spawn_with_destination_chance: float = 0.3
+@export_range(0.0, 1.0) var in_a_hurry_chance: float = 0.1
+@export var hurry_time: float = 60.0
+@export var min_fare_distance: float = 100.0
 
 # Group configuration
 @export_category("Groups")
-@export_range(0.0, 1.0) var group_spawn_chance: float = 0.3  # 30% chance a fare is a group
-@export var default_group_size: int = 2  # Default group size when spawning groups
+@export_range(0.0, 1.0) var group_spawn_chance: float = 0.3
+@export var default_group_size: int = 2
 
+# Hailing animation
 @export_category("Hailing Animation")
-@export var bob_rate_base: float = 1.5  # Base bob frequency in Hz (cycles per second)
-@export var bob_rate_variance: float = 0.3  # Random variance ± this amount
-@export var bob_hurry_multiplier: float = 2.0  # Hurried people bob this much faster
-@export var bob_height: float = 0.2  # How high they jump (fraction of ~1.8m sprite height)
+@export var bob_rate_base: float = 1.5
+@export var bob_rate_variance: float = 0.3
+@export var bob_hurry_multiplier: float = 2.0
+@export var bob_height: float = 0.2
 
-# Color sets - loaded from text files in color_sets_folder
-# Surfaces reference these by index (0, 1, 2, etc. based on alphabetical filename order)
+# Color sets
 @export_category("Color Sets")
 @export_dir var color_sets_folder: String = "res://color_sets"
 
-@export_category("Debug")
-@export var verbose_logging: bool = false  # Print individual spawn messages
-
-# Loaded color sets (populated from text files)
-var color_sets: Array[PackedColorArray] = []
+# Smart processing
+@export_category("Performance")
+@export var process_distance: float = 300.0  # Only process people within this range
+@export var process_check_interval: float = 1.0  # How often to update process states
+@export var verbose_logging: bool = false
 
 # Runtime state
 var spritesheet: SpriteSheet
 var registered_surfaces: Array[SpawnSurface] = []
 var registered_pois: Array[PointOfInterest] = []
-var all_people: Array[Person] = []
+var all_people: Array[Person] = []  # Active people
 var spawn_timer: float = 0.0
-var spawn_counter: int = 0  # Increments with each spawn, used for deterministic color selection
-var next_group_id: int = 1  # Counter for unique group IDs (0 reserved, -1 = solo)
+var spawn_counter: int = 0
+var next_group_id: int = 1
+
+# Object pool
+var _pool: Array[Person] = []  # Inactive, ready to use
+var _pool_container: Node  # Hidden container for pooled objects
+var _pool_ready: bool = false
+
+# Spawn queue (for batched spawning)
+var _spawn_queue: Array[Dictionary] = []  # [{surface, wants_dest, wants_group, group_size}]
+
+# Material cache (shared materials for GPU batching)
+var _material_cache: Dictionary = {}  # color_hash -> ShaderMaterial
+var _shader: Shader
+
+# Color sets
+var color_sets: Array[PackedColorArray] = []
+
+# Process management
+var _process_check_timer: float = 0.0
+var _player_position: Vector3 = Vector3.ZERO
+var _has_player_position: bool = false
+var _camera: Camera3D = null
 
 
 func _ready():
 	_load_spritesheet()
 	_load_color_sets()
+	_shader = load("res://person_sprite.gdshader")
+	
+	# Create pool container (keeps pooled nodes in tree but hidden)
+	_pool_container = Node.new()
+	_pool_container.name = "PersonPool"
+	add_child(_pool_container)
+	
+	if warm_pool_on_start:
+		# Defer pool creation to avoid blocking scene load
+		call_deferred("_warm_pool")
 
 
-func _load_color_sets():
-	color_sets.clear()
+func _warm_pool():
+	print("PeopleManager: Warming object pool (%d people)..." % pool_size)
+	var start_time = Time.get_ticks_msec()
+	
+	for i in range(pool_size):
+		var person = _create_pooled_person()
+		_pool.append(person)
+		
+		# Yield every 10 to keep UI responsive during loading
+		if i % 10 == 0 and i > 0:
+			await get_tree().process_frame
+	
+	var elapsed = Time.get_ticks_msec() - start_time
+	print("PeopleManager: Pool ready (%d people in %dms)" % [_pool.size(), elapsed])
+	_pool_ready = true
+	pool_ready.emit(_pool.size())
 
-	var dir = DirAccess.open(color_sets_folder)
-	if not dir:
-		push_warning("PeopleManager: Could not open color sets folder: ", color_sets_folder)
-		# Add default neutral set as fallback
-		color_sets.append(PackedColorArray([Color.BLACK]))
+
+func _create_pooled_person() -> Person:
+	var person = Person.new()
+	
+	# Configure (these don't change per-spawn)
+	person.walk_speed_min = walk_speed_min
+	person.walk_speed_max = walk_speed_max
+	person.walk_duration_min = walk_duration_min
+	person.walk_duration_max = walk_duration_max
+	person.wait_duration_min = wait_duration_min
+	person.wait_duration_max = wait_duration_max
+	person.bob_height = bob_height
+	person.bob_hurry_multiplier = bob_hurry_multiplier
+	
+	# Add to pool container (in tree but won't render)
+	_pool_container.add_child(person)
+	person.visible = false
+	person.set_process(false)
+	person.set_physics_process(false)
+	
+	return person
+
+
+func _acquire_from_pool() -> Person:
+	if _pool.is_empty():
+		# Pool exhausted - grow it
+		if verbose_logging:
+			print("PeopleManager: Pool exhausted, growing by %d" % pool_growth_size)
+		for i in range(pool_growth_size):
+			_pool.append(_create_pooled_person())
+	
+	var person = _pool.pop_back()
+	
+	# Move from pool container to manager (makes it renderable)
+	_pool_container.remove_child(person)
+	add_child(person)
+	
+	# Reset state
+	person.visible = true
+	person.set_process(true)
+	person._reset_for_reuse()
+	
+	return person
+
+
+func _return_to_pool(person: Person):
+	if not is_instance_valid(person):
 		return
-
-	# Get all .txt files sorted alphabetically
-	var files: Array[String] = []
-	dir.list_dir_begin()
-	var file_name = dir.get_next()
-	while file_name != "":
-		if not dir.current_is_dir() and file_name.ends_with(".txt"):
-			files.append(file_name)
-		file_name = dir.get_next()
-	dir.list_dir_end()
-
-	files.sort()
-
-	# Load each file as a color set
-	for fname in files:
-		var colors = _parse_color_file(color_sets_folder + "/" + fname)
-		if colors.size() > 0:
-			color_sets.append(colors)
-			if verbose_logging:
-				print("PeopleManager: Loaded color set '", fname, "' with ", colors.size(), " colors")
-
-	if color_sets.size() == 0:
-		push_warning("PeopleManager: No color sets loaded, adding default")
-		color_sets.append(PackedColorArray([Color.BLACK]))
-
-	print("PeopleManager: Loaded %d color sets" % color_sets.size())
-
-
-func _parse_color_file(path: String) -> PackedColorArray:
-	var colors = PackedColorArray()
-
-	var file = FileAccess.open(path, FileAccess.READ)
-	if not file:
-		push_warning("PeopleManager: Could not open color file: ", path)
-		return colors
-
-	while not file.eof_reached():
-		var line = file.get_line().strip_edges()
-
-		# Skip empty lines and comments
-		if line.is_empty() or line.begins_with("#"):
-			continue
-
-		var color = _parse_color_line(line)
-		if color != null:
-			colors.append(color)
-
-	return colors
-
-
-func _parse_color_line(line: String) -> Variant:
-	# Try hex format: #RRGGBB or RRGGBB
-	if line.begins_with("#"):
-		line = line.substr(1)
-
-	if line.length() == 6 and line.is_valid_hex_number():
-		var hex = line.hex_to_int()
-		return Color(
-			((hex >> 16) & 0xFF) / 255.0,
-			((hex >> 8) & 0xFF) / 255.0,
-			(hex & 0xFF) / 255.0
-		)
-
-	# Try RGB format: R, G, B (floats 0.0-1.0 or ints 0-255)
-	var parts = line.split(",")
-	if parts.size() >= 3:
-		var r = parts[0].strip_edges().to_float()
-		var g = parts[1].strip_edges().to_float()
-		var b = parts[2].strip_edges().to_float()
-
-		# If values > 1, assume 0-255 range
-		if r > 1.0 or g > 1.0 or b > 1.0:
-			r /= 255.0
-			g /= 255.0
-			b /= 255.0
-
-		return Color(r, g, b)
-
-	return null
-
-
-func _get_color_set(index: int) -> PackedColorArray:
-	if index < 0 or index >= color_sets.size():
-		return color_sets[0] if color_sets.size() > 0 else PackedColorArray([Color.BLACK])
-	return color_sets[index]
-
-
-func create_material_for_color(color: Color) -> ShaderMaterial:
-	# Create a new material with the given color
-	# Each person needs unique material for their texture
-	var shader = load("res://person_sprite.gdshader")
-	var mat = ShaderMaterial.new()
-	mat.shader = shader
-	mat.set_shader_parameter("color_add", Vector3(color.r, color.g, color.b))
-	return mat
-
-
-func get_color_from_set(set_index: int, person_index: int) -> Color:
-	var colors = _get_color_set(set_index)
-	if colors.size() == 0:
-		return Color.BLACK  # No tint
-	return colors[person_index % colors.size()]
+	
+	# Remove from active tracking
+	all_people.erase(person)
+	
+	# Clean up state
+	person.visible = false
+	person.set_process(false)
+	person.set_physics_process(false)
+	person.destination = null
+	person.target_car = null
+	person.group_id = -1
+	
+	# Move back to pool container
+	remove_child(person)
+	_pool_container.add_child(person)
+	_pool.append(person)
 
 
 func _process(delta: float):
-	if auto_spawn:
+	# Process spawn queue (batched)
+	if spawn_queue_enabled and not _spawn_queue.is_empty():
+		_process_spawn_queue()
+	
+	# Auto spawn timer
+	if auto_spawn and _pool_ready:
 		spawn_timer += delta
 		if spawn_timer >= spawn_interval:
 			spawn_timer = 0.0
-			_try_spawn_on_surfaces()
+			_queue_spawns_on_surfaces()
+	
+	# Smart process management (periodically enable/disable _process on distant people)
+	_process_check_timer += delta
+	if _process_check_timer >= process_check_interval:
+		_process_check_timer = 0.0
+		_update_process_states()
 
 
-func _load_spritesheet():
-	spritesheet = SpriteSheet.new()
-	if spritesheet.load_horizontal(spritesheet_path, sprite_width, sprite_height, sprite_count):
-		print("PeopleManager: Loaded ", spritesheet.get_frame_count(), " person sprites")
-	else:
-		push_warning("PeopleManager: Failed to load spritesheet: ", spritesheet_path)
+func _process_spawn_queue():
+	var spawned_this_frame = 0
+	
+	while not _spawn_queue.is_empty() and spawned_this_frame < spawns_per_frame:
+		var spawn_data = _spawn_queue.pop_front()
+		
+		# Check if surface is still valid (might have been freed)
+		if not is_instance_valid(spawn_data.surface):
+			continue
+		
+		if spawn_data.wants_group:
+			_do_spawn_group(spawn_data.surface, spawn_data.group_size)
+		else:
+			var person = _do_spawn_person(spawn_data.surface)
+			if person and spawn_data.wants_dest:
+				_assign_destination(person, spawn_data.surface)
+		
+		spawned_this_frame += 1
 
 
-func reload_sprites():
-	if spritesheet and spritesheet.reload():
-		print("PeopleManager: Reloaded spritesheet")
-		# Update all existing people with their new textures
-		for person in all_people:
-			if is_instance_valid(person):
-				var new_tex = spritesheet.get_frame(person.sprite_index)
-				if new_tex:
-					person.refresh_sprite(new_tex)
-	else:
-		push_warning("PeopleManager: Failed to reload spritesheet")
+func _queue_spawns_on_surfaces():
+	# Clean up stale references
+	registered_surfaces = registered_surfaces.filter(func(s): return is_instance_valid(s))
+	
+	for surface in registered_surfaces:
+		if not surface.enabled:
+			continue
+		if not surface.can_spawn_more():
+			continue
+		
+		var wants_destination = randf() < spawn_with_destination_chance
+		var wants_group = wants_destination and randf() < group_spawn_chance
+		
+		_spawn_queue.append({
+			"surface": surface,
+			"wants_dest": wants_destination,
+			"wants_group": wants_group,
+			"group_size": default_group_size,
+		})
+
+
+func _do_spawn_person(surface: SpawnSurface) -> Person:
+	if not spritesheet or spritesheet.get_frame_count() == 0:
+		return null
+	
+	if not is_instance_valid(surface):
+		return null
+	
+	var person = _acquire_from_pool()
+	
+	# Per-spawn configuration
+	person.bob_rate = bob_rate_base + randf_range(-bob_rate_variance, bob_rate_variance)
+	person.walk_speed = randf_range(walk_speed_min, walk_speed_max)
+	
+	# Material (cached by color)
+	var color = get_color_from_set(surface.color_set_index, spawn_counter)
+	spawn_counter += 1
+	var mat = _get_cached_material(color)
+	person.material_override = mat
+	
+	# Sprite
+	var idx = randi() % spritesheet.get_frame_count()
+	person.set_sprite(spritesheet.get_frame(idx), idx)
+	
+	# Position and bounds
+	var bounds = surface.get_bounds_world()
+	person.set_bounds(bounds.min, bounds.max)
+	person.global_position = surface.get_random_spawn_position()
+	
+	# Track
+	surface.add_person(person)
+	all_people.append(person)
+	
+	return person
+
+
+func _do_spawn_group(surface: SpawnSurface, group_size: int):
+	var available = surface.max_people - surface.get_people_count()
+	if available < group_size:
+		var person = _do_spawn_person(surface)
+		if person:
+			_assign_destination(person, surface)
+		return
+	
+	var group_id = next_group_id
+	next_group_id += 1
+	
+	var base_pos = surface.get_random_spawn_position()
+	var group_members: Array[Person] = []
+	
+	for i in range(group_size):
+		var person = _do_spawn_person(surface)
+		if not person:
+			continue
+		
+		person.group_id = group_id
+		var offset = Vector3(randf_range(-1.5, 1.5), 0, randf_range(-1.5, 1.5))
+		person.global_position = base_pos + offset
+		group_members.append(person)
+	
+	if group_members.is_empty():
+		return
+	
+	var destination = _find_valid_destination(group_members[0], surface)
+	if not destination:
+		for person in group_members:
+			person.group_id = -1
+		return
+	
+	var is_hurry = randf() < in_a_hurry_chance
+	for person in group_members:
+		person.set_destination(destination)
+		if is_hurry:
+			person.in_a_hurry = true
+			person.hurry_timer = hurry_time
+
+
+func _get_cached_material(color: Color) -> ShaderMaterial:
+	# Cache materials by color to enable GPU batching
+	var key = color.to_html()
+	
+	if _material_cache.has(key):
+		return _material_cache[key]
+	
+	var mat = ShaderMaterial.new()
+	mat.shader = _shader
+	mat.set_shader_parameter("color_add", Vector3(color.r, color.g, color.b))
+	
+	_material_cache[key] = mat
+	return mat
+
+
+func _update_process_states():
+	# Find camera
+	if not _camera or not is_instance_valid(_camera):
+		_camera = get_viewport().get_camera_3d()
+	
+	if not _camera:
+		return
+	
+	var camera_pos = _camera.global_position
+	var dist_sq = process_distance * process_distance
+	
+	for person in all_people:
+		if not is_instance_valid(person):
+			continue
+		
+		# Always process certain states
+		if person.current_state in [Person.State.BOARDING, Person.State.RIDING, Person.State.EXITING]:
+			person.set_process(true)
+			continue
+		
+		# Distance check
+		var dx = person.global_position.x - camera_pos.x
+		var dz = person.global_position.z - camera_pos.z
+		var person_dist_sq = dx * dx + dz * dz
+		
+		person.set_process(person_dist_sq <= dist_sq)
+
+
+func _assign_destination(person: Person, source_surface: SpawnSurface):
+	var target = _find_valid_destination(person, source_surface)
+	if not target:
+		return
+	
+	person.set_destination(target)
+	
+	if randf() < in_a_hurry_chance:
+		person.in_a_hurry = true
+		person.hurry_timer = hurry_time
+
+
+func _find_valid_destination(person: Person, _source_surface: SpawnSurface) -> Node:
+	var valid_targets: Array[Node] = []
+	var person_pos = person.global_position
+	
+	for other in all_people:
+		if not is_instance_valid(other):
+			continue
+		if other == person:
+			continue
+		if other.destination != null:
+			continue
+		if other.current_state in [Person.State.BOARDING, Person.State.RIDING, Person.State.HAILING]:
+			continue
+		if person_pos.distance_to(other.global_position) < min_fare_distance:
+			continue
+		if other.group_id != -1 and other.group_id == person.group_id:
+			continue
+		valid_targets.append(other)
+	
+	for poi in registered_pois:
+		if is_instance_valid(poi) and poi.enabled:
+			if person_pos.distance_to(poi.global_position) < min_fare_distance:
+				continue
+			valid_targets.append(poi)
+	
+	if valid_targets.is_empty():
+		return null
+	
+	return valid_targets[randi() % valid_targets.size()]
+
+
+# === PUBLIC API ===
+
+func set_player_position(pos: Vector3):
+	# Call this from FCar._process() to enable proximity-based spawning
+	_player_position = pos
+	_has_player_position = true
+
+
+func spawn_person_on_surface(surface: SpawnSurface) -> Person:
+	return _do_spawn_person(surface)
+
+
+func spawn_person_at(position: Vector3, bounds_min: Vector3 = Vector3.ZERO, bounds_max: Vector3 = Vector3.ZERO) -> Person:
+	if not spritesheet or spritesheet.get_frame_count() == 0:
+		return null
+	
+	var person = _acquire_from_pool()
+	
+	person.bob_rate = bob_rate_base + randf_range(-bob_rate_variance, bob_rate_variance)
+	person.walk_speed = randf_range(walk_speed_min, walk_speed_max)
+	
+	var color = get_color_from_set(0, spawn_counter)
+	spawn_counter += 1
+	person.material_override = _get_cached_material(color)
+	
+	var idx = randi() % spritesheet.get_frame_count()
+	person.set_sprite(spritesheet.get_frame(idx), idx)
+	
+	if bounds_min != Vector3.ZERO or bounds_max != Vector3.ZERO:
+		person.set_bounds(bounds_min, bounds_max)
+	
+	person.global_position = position
+	all_people.append(person)
+	
+	return person
+
+
+func remove_person(person: Person):
+	_return_to_pool(person)
+
+
+func remove_all_people():
+	for person in all_people.duplicate():  # Duplicate to avoid modifying while iterating
+		_return_to_pool(person)
+	all_people.clear()
+
+
+func get_people_count() -> int:
+	all_people = all_people.filter(func(p): return is_instance_valid(p))
+	return all_people.size()
 
 
 func register_surface(surface: SpawnSurface):
@@ -219,8 +483,6 @@ func unregister_surface(surface: SpawnSurface):
 func register_poi(poi: PointOfInterest):
 	if poi not in registered_pois:
 		registered_pois.append(poi)
-		if verbose_logging:
-			print("PeopleManager: Registered POI '", poi.poi_name, "'")
 
 
 func unregister_poi(poi: PointOfInterest):
@@ -236,279 +498,132 @@ func get_enabled_pois() -> Array[PointOfInterest]:
 
 
 func get_nearest_surface(pos: Vector3) -> SpawnSurface:
-	# Find the nearest enabled SpawnSurface to the given position
 	var nearest: SpawnSurface = null
 	var nearest_dist: float = INF
-
+	
 	for surface in registered_surfaces:
 		if not is_instance_valid(surface) or not surface.enabled:
 			continue
-
-		var surface_pos = surface.global_position
-		var dist = pos.distance_to(surface_pos)
-
+		var dist = pos.distance_to(surface.global_position)
 		if dist < nearest_dist:
 			nearest_dist = dist
 			nearest = surface
-
+	
 	return nearest
 
 
-func get_random_point_on_surface(surface: SpawnSurface) -> Vector3:
-	# Get a random position within a surface's bounds
-	if surface and surface.has_method("get_random_spawn_position"):
-		return surface.get_random_spawn_position()
-	return Vector3.ZERO
+# === COLOR SETS ===
 
-
-func _try_spawn_on_surfaces():
-	# Clean up stale references (surfaces from freed building blocks)
-	registered_surfaces = registered_surfaces.filter(func(s): return is_instance_valid(s))
-
-	for surface in registered_surfaces:
-		if not surface.enabled:
-			continue
-		if surface.can_spawn_more():
-			# Decide: spawn solo person or group?
-			var wants_destination = randf() < spawn_with_destination_chance
-			var wants_group = wants_destination and randf() < group_spawn_chance
-
-			if wants_group:
-				_spawn_group_on_surface(surface, default_group_size)
-			else:
-				var person = spawn_person_on_surface(surface)
-				# Solo person might want a destination
-				if person and wants_destination:
-					_assign_destination(person, surface)
-
-
-func _spawn_group_on_surface(surface: SpawnSurface, group_size: int):
-	# Check if surface has room for entire group
-	var available = surface.max_people - surface.get_people_count()
-	if available < group_size:
-		# Not enough room, spawn solo instead
-		var person = spawn_person_on_surface(surface)
-		if person:
-			_assign_destination(person, surface)
+func _load_color_sets():
+	color_sets.clear()
+	
+	var dir = DirAccess.open(color_sets_folder)
+	if not dir:
+		color_sets.append(PackedColorArray([Color.BLACK]))
 		return
+	
+	var files: Array[String] = []
+	dir.list_dir_begin()
+	var file_name = dir.get_next()
+	while file_name != "":
+		if not dir.current_is_dir() and file_name.ends_with(".txt"):
+			files.append(file_name)
+		file_name = dir.get_next()
+	dir.list_dir_end()
+	
+	files.sort()
+	
+	for fname in files:
+		var colors = _parse_color_file(color_sets_folder + "/" + fname)
+		if colors.size() > 0:
+			color_sets.append(colors)
+	
+	if color_sets.is_empty():
+		color_sets.append(PackedColorArray([Color.BLACK]))
+	
+	print("PeopleManager: Loaded %d color sets" % color_sets.size())
 
-	# Generate unique group ID
-	var group_id = next_group_id
-	next_group_id += 1
 
-	# Spawn group members near each other
-	var base_pos = surface.get_random_spawn_position()
-	var group_members: Array[Person] = []
-
-	for i in range(group_size):
-		var person = spawn_person_on_surface(surface)
-		if not person:
+func _parse_color_file(path: String) -> PackedColorArray:
+	var colors = PackedColorArray()
+	var file = FileAccess.open(path, FileAccess.READ)
+	if not file:
+		return colors
+	
+	while not file.eof_reached():
+		var line = file.get_line().strip_edges()
+		if line.is_empty() or line.begins_with("#"):
 			continue
-
-		# Assign group ID
-		person.group_id = group_id
-
-		# Position near each other (small offset)
-		var offset = Vector3(randf_range(-1.5, 1.5), 0, randf_range(-1.5, 1.5))
-		person.global_position = base_pos + offset
-
-		group_members.append(person)
-
-	if group_members.is_empty():
-		return
-
-	# Find a destination for the whole group
-	var destination = _find_valid_destination(group_members[0], surface)
-	if not destination:
-		# No valid destination - group becomes wanderers (no group_id needed)
-		for person in group_members:
-			person.group_id = -1
-		return
-
-	# Assign same destination to all group members
-	var is_hurry = randf() < in_a_hurry_chance
-	for person in group_members:
-		person.set_destination(destination)
-		if is_hurry:
-			person.in_a_hurry = true
-			person.hurry_timer = hurry_time
-
-	if verbose_logging:
-		print("Group ", group_id, " spawned with ", group_members.size(), " members. In a hurry: ", is_hurry)
+		var color = _parse_color_line(line)
+		if color != null:
+			colors.append(color)
+	
+	return colors
 
 
-func _find_valid_destination(person: Person, _source_surface: SpawnSurface) -> Node:
-	# Returns a valid destination node, or null if none found
-	var valid_targets: Array[Node] = []
-	var person_pos = person.global_position
-
-	for other in all_people:
-		if not is_instance_valid(other):
-			continue
-		if other == person:
-			continue
-		if other.destination != null:
-			continue
-		if other.current_state in [Person.State.BOARDING, Person.State.RIDING, Person.State.HAILING]:
-			continue
-		if person_pos.distance_to(other.global_position) < min_fare_distance:
-			continue
-		# Don't target someone in the same group
-		if other.group_id != -1 and other.group_id == person.group_id:
-			continue
-		valid_targets.append(other)
-
-	for poi in registered_pois:
-		if is_instance_valid(poi) and poi.enabled:
-			if person_pos.distance_to(poi.global_position) < min_fare_distance:
-				continue
-			valid_targets.append(poi)
-
-	if valid_targets.is_empty():
-		return null
-
-	return valid_targets[randi() % valid_targets.size()]
+func _parse_color_line(line: String) -> Variant:
+	if line.begins_with("#"):
+		line = line.substr(1)
+	
+	if line.length() == 6 and line.is_valid_hex_number():
+		var hex = line.hex_to_int()
+		return Color(
+			((hex >> 16) & 0xFF) / 255.0,
+			((hex >> 8) & 0xFF) / 255.0,
+			(hex & 0xFF) / 255.0
+		)
+	
+	var parts = line.split(",")
+	if parts.size() >= 3:
+		var r = parts[0].strip_edges().to_float()
+		var g = parts[1].strip_edges().to_float()
+		var b = parts[2].strip_edges().to_float()
+		if r > 1.0 or g > 1.0 or b > 1.0:
+			r /= 255.0
+			g /= 255.0
+			b /= 255.0
+		return Color(r, g, b)
+	
+	return null
 
 
-func spawn_person_on_surface(surface: SpawnSurface) -> Person:
-	if not spritesheet or spritesheet.get_frame_count() == 0:
-		push_warning("PeopleManager: No sprites loaded")
-		return null
-
-	# Create person
-	var person = Person.new()
-
-	# Configure movement parameters
-	person.walk_speed_min = walk_speed_min
-	person.walk_speed_max = walk_speed_max
-	person.walk_duration_min = walk_duration_min
-	person.walk_duration_max = walk_duration_max
-	person.wait_duration_min = wait_duration_min
-	person.wait_duration_max = wait_duration_max
-
-	# Configure bobbing parameters with per-person variance
-	person.bob_rate = bob_rate_base + randf_range(-bob_rate_variance, bob_rate_variance)
-	person.bob_height = bob_height
-	person.bob_hurry_multiplier = bob_hurry_multiplier
-
-	# Create material with color from surface's color set (deterministic based on spawn order)
-	var color = get_color_from_set(surface.color_set_index, spawn_counter)
-	spawn_counter += 1
-	var mat = create_material_for_color(color)
-	person.set_shared_material(mat)
-
-	# Set random sprite (must be after material is set)
-	var sprite_index = randi() % spritesheet.get_frame_count()
-	person.set_sprite(spritesheet.get_frame(sprite_index), sprite_index)
-
-	# Add to scene first (required before setting global_position)
-	add_child(person)
-
-	# Set bounds from surface
-	var bounds = surface.get_bounds_world()
-	person.set_bounds(bounds.min, bounds.max)
-
-	# Position on surface
-	person.global_position = surface.get_random_spawn_position()
-
-	# Track the person
-	surface.add_person(person)
-	all_people.append(person)
-
-	return person
+func _get_color_set(index: int) -> PackedColorArray:
+	if index < 0 or index >= color_sets.size():
+		return color_sets[0] if color_sets.size() > 0 else PackedColorArray([Color.BLACK])
+	return color_sets[index]
 
 
-func _assign_destination(person: Person, source_surface: SpawnSurface):
-	# Find a valid destination
-	var target = _find_valid_destination(person, source_surface)
-	if not target:
-		return  # No valid destinations
-
-	# Assign destination
-	person.set_destination(target)
-
-	# Maybe make them in a hurry
-	if randf() < in_a_hurry_chance:
-		person.in_a_hurry = true
-		person.hurry_timer = hurry_time
-
-	# Debug output
-	var dest_name = ""
-	if target is Person:
-		dest_name = "another person"
-	elif target is PointOfInterest:
-		dest_name = "POI: " + target.poi_name
-	if verbose_logging:
-		print("Solo person spawned with destination: ", dest_name, " | In a hurry: ", person.in_a_hurry)
+func get_color_from_set(set_index: int, person_index: int) -> Color:
+	var colors = _get_color_set(set_index)
+	if colors.size() == 0:
+		return Color.BLACK
+	return colors[person_index % colors.size()]
 
 
-func spawn_person_at(position: Vector3, bounds_min: Vector3 = Vector3.ZERO, bounds_max: Vector3 = Vector3.ZERO) -> Person:
-	# Manual spawn at specific position
-	if not spritesheet or spritesheet.get_frame_count() == 0:
-		push_warning("PeopleManager: No sprites loaded")
-		return null
+# === SPRITESHEET ===
 
-	var person = Person.new()
-
-	# Configure movement parameters
-	person.walk_speed_min = walk_speed_min
-	person.walk_speed_max = walk_speed_max
-	person.walk_duration_min = walk_duration_min
-	person.walk_duration_max = walk_duration_max
-	person.wait_duration_min = wait_duration_min
-	person.wait_duration_max = wait_duration_max
-
-	# Configure bobbing parameters with per-person variance
-	person.bob_rate = bob_rate_base + randf_range(-bob_rate_variance, bob_rate_variance)
-	person.bob_height = bob_height
-	person.bob_hurry_multiplier = bob_hurry_multiplier
-
-	# Set random sprite
-	var sprite_index = randi() % spritesheet.get_frame_count()
-	person.set_sprite(spritesheet.get_frame(sprite_index), sprite_index)
-
-	# Add to scene first (required before setting global_position)
-	add_child(person)
-
-	# Set bounds if provided
-	if bounds_min != Vector3.ZERO or bounds_max != Vector3.ZERO:
-		person.set_bounds(bounds_min, bounds_max)
-
-	# Position
-	person.global_position = position
-
-	# Track
-	all_people.append(person)
-
-	return person
+func _load_spritesheet():
+	spritesheet = SpriteSheet.new()
+	if spritesheet.load_horizontal(spritesheet_path, sprite_width, sprite_height, sprite_count):
+		print("PeopleManager: Loaded %d person sprites" % spritesheet.get_frame_count())
+	else:
+		push_warning("PeopleManager: Failed to load spritesheet")
 
 
-func remove_person(person: Person):
-	if is_instance_valid(person):
-		all_people.erase(person)
-		person.queue_free()
+func reload_sprites():
+	if spritesheet and spritesheet.reload():
+		for person in all_people:
+			if is_instance_valid(person):
+				var tex = spritesheet.get_frame(person.sprite_index)
+				if tex:
+					person.refresh_sprite(tex)
 
 
-func remove_all_people():
-	for person in all_people:
-		if is_instance_valid(person):
-			person.queue_free()
-	all_people.clear()
+# === DEBUG ===
 
-
-func get_people_count() -> int:
-	# Clean up invalid references
-	all_people = all_people.filter(func(p): return is_instance_valid(p))
-	return all_people.size()
-
-
-# Debug: print status
 func print_status():
 	print("PeopleManager Status:")
-	print("  Sprites loaded: ", spritesheet.get_frame_count() if spritesheet else 0)
-	print("  Registered surfaces: ", registered_surfaces.size())
-	print("  Active people: ", get_people_count())
-	if verbose_logging:
-		for surface in registered_surfaces:
-			if is_instance_valid(surface):
-				print("    Surface enabled=", surface.enabled, " people=", surface.get_people_count(), "/", surface.max_people)
+	print("  Pool: %d available, %d active" % [_pool.size(), all_people.size()])
+	print("  Spawn queue: %d pending" % _spawn_queue.size())
+	print("  Materials cached: %d" % _material_cache.size())
+	print("  Surfaces: %d registered" % registered_surfaces.size())

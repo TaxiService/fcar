@@ -122,7 +122,7 @@ func start_relocating(target_pos: Vector3, surface: Node):
 	_enter_state(State.RELOCATING)
 
 
-func _process(delta: float):
+func _process_old(delta: float):
 	# RIDING passengers: force invisible and skip all LOD checks
 	if current_state == State.RIDING:
 		visible = false
@@ -139,6 +139,57 @@ func _process(delta: float):
 			lod_timer = 0.0
 			lod_check_offset = lod_update_interval  # Reset to interval after first check
 			_update_lod_visibility()
+
+# === OPTIONAL: Optimized _process() ===
+# This version skips more work when the person is hidden
+# Replace your existing _process() with this if desired:
+
+func _process(delta: float):
+	# Fast path: RIDING passengers skip everything except position update
+	if current_state == State.RIDING:
+		visible = false
+		state_timer += delta
+		hail_time += delta
+		_process_riding(delta)
+		return
+	
+	# Always update timers (needed for state transitions even when hidden)
+	state_timer += delta
+	hail_time += delta
+	
+	# LOD check (staggered across people)
+	if lod_enabled:
+		lod_timer += delta
+		if lod_timer >= lod_check_offset:
+			lod_timer = 0.0
+			lod_check_offset = lod_update_interval
+			_update_lod_visibility()
+	
+	# Skip expensive logic if hidden by LOD
+	if not visible:
+		# Still handle state transitions for waiting people
+		if current_state == State.WAITING and state_timer >= state_duration:
+			_enter_state(State.WALKING)
+		return
+	
+	# Process current state (only if visible)
+	match current_state:
+		State.WALKING:
+			_process_walking(delta)
+		State.STOPPING:
+			_process_stopping(delta)
+		State.WAITING:
+			_process_waiting(delta)
+		State.HAILING:
+			_process_hailing(delta)
+		State.BOARDING:
+			_process_boarding(delta)
+		State.EXITING:
+			_process_exiting(delta)
+		State.ARRIVED:
+			_process_arrived(delta)
+		State.RELOCATING:
+			_process_relocating(delta)
 
 	# Don't process logic if hidden by LOD
 	if not visible:
@@ -436,4 +487,44 @@ func _update_lod_visibility():
 		return
 
 	# Otherwise visible
+	visible = true
+	
+func _reset_for_reuse():
+	# Called when person is acquired from pool and reused
+	# Resets all state to initial values
+	
+	# Movement state
+	current_state = State.WAITING
+	walk_direction = Vector3.ZERO
+	facing_right = true
+	scale.x = 1.0
+	state_timer = 0.0
+	state_duration = randf_range(wait_duration_min, wait_duration_max)
+	walk_speed = randf_range(walk_speed_min, walk_speed_max)
+	
+	# Bounds
+	bounds_min = Vector3.ZERO
+	bounds_max = Vector3.ZERO
+	has_bounds = false
+	
+	# Quest/destination
+	destination = null
+	in_a_hurry = false
+	hurry_timer = 0.0
+	group_id = -1
+	
+	# Boarding/riding
+	target_car = null
+	hail_time = 0.0
+	base_y = 0.0
+	
+	# Relocation
+	relocation_target = Vector3.ZERO
+	relocation_surface = null
+	
+	# LOD - randomize offset to distribute checks across frames
+	lod_timer = 0.0
+	lod_check_offset = randf() * lod_update_interval
+	
+	# Visual
 	visible = true
