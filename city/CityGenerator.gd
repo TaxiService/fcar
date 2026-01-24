@@ -4,6 +4,9 @@ extends Node3D
 # City generation prototype
 # Builds a hex-grid city with spires at vertices and connectors between them
 
+const TF = ConnectionPoint.TypeFlags
+const SF = ConnectionPoint.SizeFlags
+
 # Grid settings
 @export var hex_edge_length: float = 420.0  # Distance between adjacent spires (meters)
 @export var grid_rings: int = 3  # Number of hex rings around center (0 = just center hex)
@@ -101,15 +104,29 @@ var buildings_container: Node3D
 # Building generation
 @export_category("Buildings")
 @export var generate_buildings: bool = true
-@export var building_seed_spacing: float = 60.0  # Seed points every Nm along connectors
-@export var building_seed_probability: float = 0.8  # Chance to actually place a seed (sparsity)
-@export var building_max_depth: int = 7  # Max blocks from seed
-@export var building_branch_chance: float = 0.8  # Chance to branch at each connection
-@export var building_max_total: int = 1260  # Hard limit on total building blocks
-@export var buildings_on_crosslinks: bool = true  # Spawn on crosslinks (internal connectors)
-@export var buildings_on_edges: bool = false  # Spawn on edge connectors
-@export var crosslink_seed_size: String = "large"  # Size filter for crosslink seeds: "small", "medium", "large", or "any"
-@export var edge_seed_size: String = "medium"  # Size filter for edge seeds
+@export var building_seed_spacing: float = 90.0
+@export var building_max_depth: int = 5
+@export var building_branch_chance: float = 0.5
+@export var building_max_total: int = 500
+@export var buildings_on_crosslinks: bool = true
+@export var buildings_on_edges: bool = false
+
+# Top seeds (sitting on crosslinks)
+@export_subgroup("Top Seeds")
+@export var top_seeds_enabled: bool = true
+@export var top_seed_probability: float = 0.3
+@export_flags("Small", "Medium", "Large") var top_seed_sizes: int = SF.LARGE
+
+# Bottom seeds (hanging beneath crosslinks)
+@export_subgroup("Bottom Seeds")  
+@export var bottom_seeds_enabled: bool = true
+@export var bottom_seed_probability: float = 0.2
+@export_flags("Small", "Medium", "Large") var bottom_seed_sizes: int = SF.MEDIUM
+
+# Edge connector overrides (when buildings_on_edges is true)
+@export_subgroup("Edge Seeds")
+@export_flags("Small", "Medium", "Large") var edge_top_sizes: int = SF.MEDIUM
+@export_flags("Small", "Medium", "Large") var edge_bottom_sizes: int = SF.SMALL
 
 var building_generator: BuildingGenerator
 
@@ -692,17 +709,16 @@ func _generate_buildings():
 	building_generator.max_blocks_total = building_max_total
 	building_generator.reset()
 	
-	# Register spire AABBs so buildings don't overlap with them
+	# Register spire AABBs
 	var spire_aabbs = _calculate_spire_aabbs()
 	building_generator.register_external_aabbs(spire_aabbs)
 	
-	print("  Queueing building seeds...")
+	print("  Queueing building seeds (top=%s, bottom=%s)..." % [top_seeds_enabled, bottom_seeds_enabled])
 	
-	# Queue all seeds (instead of processing them one by one)
-	var seed_count = 0
+	var top_count = 0
+	var bottom_count = 0
 	
 	for conn in connector_data:
-		# Filter by connector type
 		var is_edge: bool = conn.get("is_edge", true)
 		if is_edge and not buildings_on_edges:
 			continue
@@ -718,41 +734,54 @@ func _generate_buildings():
 		var length = direction.length()
 		var dir_normalized = direction.normalized()
 		
-		# Calculate seed points at building_seed_spacing intervals
 		var usable_length = length - spire_base_radius * 2 - building_seed_spacing
 		if usable_length <= 0:
 			continue
 		
 		var num_seeds = int(usable_length / building_seed_spacing)
 		var start_offset = spire_base_radius + building_seed_spacing * 0.5
-		
-		# Determine size filter based on connector type
-		var size_filter = crosslink_seed_size if not is_edge else edge_seed_size
 		var connector_heading = atan2(dir_normalized.x, dir_normalized.z)
 		
+		# Get size flags based on connector type
+		var current_top_sizes: int = edge_top_sizes if is_edge else top_seed_sizes
+		var current_bottom_sizes: int = edge_bottom_sizes if is_edge else bottom_seed_sizes
+		
+		# All seeds use SEED type flag
+		var seed_type: int = TF.SEED
+		
 		for i in range(num_seeds):
-			# Random chance to skip this seed (sparsity control)
-			if randf() > building_seed_probability:
-				continue
-			
 			var t = start_offset + building_seed_spacing * i
 			var seed_pos = start + dir_normalized * t
-			# Offset seed up by half connector height so buildings spawn on top
-			seed_pos.y += conn_height / 2.0
+			var center_y = seed_pos.y
+			var half_height = conn_height / 2.0
 			
-			# Queue the seed (direction is UP because buildings grow upward from connectors)
-			building_generator.queue_seed(
-				seed_pos,
-				Vector3.UP,
-				biome_idx,
-				size_filter,
-				connector_heading
-			)
-			seed_count += 1
+			# TOP SEED - grows upward
+			if top_seeds_enabled and randf() <= top_seed_probability:
+				var top_pos = Vector3(seed_pos.x, center_y + half_height, seed_pos.z)
+				building_generator.queue_seed(
+					top_pos,
+					Vector3.UP,
+					biome_idx,
+					seed_type,
+					current_top_sizes,
+					connector_heading
+				)
+				top_count += 1
+			
+			# BOTTOM SEED - grows downward  
+			if bottom_seeds_enabled and randf() <= bottom_seed_probability:
+				var bottom_pos = Vector3(seed_pos.x, center_y - half_height, seed_pos.z)
+				building_generator.queue_seed(
+					bottom_pos,
+					Vector3.DOWN,
+					biome_idx,
+					seed_type,
+					current_bottom_sizes,
+					connector_heading
+				)
+				bottom_count += 1
 	
-	print("  Queued %d seeds, starting breadth-first growth..." % seed_count)
-	
-	# Process all seeds simultaneously in breadth-first order
+	print("  Queued %d top + %d bottom = %d total seeds" % [top_count, bottom_count, top_count + bottom_count])
 	building_generator.process_queue()
 
 

@@ -1,59 +1,56 @@
 # ConnectionPoint.gd - Connection point for modular buildings
-# Defines how blocks can connect to each other using type + size matching
+# Uses bitmask flags for flexible type/size matching
 #
 # Direction convention: The marker's -Z axis points INWARD (into the block).
-# When two blocks connect, their connection points meet at the interface,
-# with markers pointing into their respective blocks (opposite directions).
 @tool
 class_name ConnectionPoint
 extends Marker3D
 
-# === CONNECTION TYPE ===
-# Determines what KIND of connection this is (must match for connection)
-enum ConnectionType {
-	SEED,        # For attaching to crosslink/edge seeds (root of building)
-	STRUCTURAL,  # Vertical stacking (up/down growth)
-	JUNCTION,    # Horizontal branching (sideways growth)
-	CAP,         # Terminal pieces (ends branches, spawns nothing)
+# === CONNECTION TYPE FLAGS ===
+# Multiple types can be enabled - connection matches if ANY type overlaps
+enum TypeFlags {
+	SEED = 1,        # Root attachment to crosslinks
+	STRUCTURAL = 2,  # Vertical stacking (up/down)
+	JUNCTION = 4,    # Horizontal branching (sideways)
+	CAP = 8,         # Terminal pieces (ends branches)
 }
 
-@export var connection_type: ConnectionType = ConnectionType.STRUCTURAL:
+# Checkboxes in editor: ☐ Seed ☑ Structural ☐ Junction ☐ Cap
+@export_flags("Seed", "Structural", "Junction", "Cap") var type_flags: int = TypeFlags.STRUCTURAL:
 	set(v):
-		connection_type = v
+		type_flags = v
 		_update_visual()
 
-# === CONNECTION SIZE ===
-# Must match for connection (large↔large, etc.)
-enum ConnectionSize {
-	LARGE,
-	MEDIUM,
-	SMALL,
+# === CONNECTION SIZE FLAGS ===
+# Multiple sizes can be enabled - connection matches if ANY size overlaps
+enum SizeFlags {
+	SMALL = 1,
+	MEDIUM = 2,
+	LARGE = 4,
 }
 
-@export var connection_size: ConnectionSize = ConnectionSize.MEDIUM:
+# Checkboxes in editor: ☐ Small ☑ Medium ☐ Large
+@export_flags("Small", "Medium", "Large") var size_flags: int = SizeFlags.MEDIUM:
 	set(v):
-		connection_size = v
+		size_flags = v
 		_update_visual()
 
 # === PLUG/SOCKET ===
-# Plug: can be used as anchor (other blocks connect TO this)
-# Socket: can spawn children (this block spawns others FROM here)
 @export_category("Behavior")
-@export var is_plug: bool = true
-@export var is_socket: bool = true
+@export var is_plug: bool = true      # Can be used as anchor point
+@export var is_socket: bool = true    # Can spawn children
 
 # === ROTATION MODE ===
-# Controls how the connecting block can be rotated
 enum RotationMode {
-	FREE,      # Any Y rotation allowed
-	CARDINAL,  # Only 0°, 90°, 180°, 270°
-	FIXED,     # No rotation - must match exactly
+	FREE,      # Any Y rotation
+	CARDINAL,  # 0°, 90°, 180°, 270° only
+	FIXED,     # No rotation allowed
 }
 
 @export var rotation_mode: RotationMode = RotationMode.FREE
 
 # === COLLISION ===
-@export var ignores_collision: bool = false  # Bypass AABB overlap check
+@export var ignores_collision: bool = false
 
 # === DEBUG VISUAL ===
 @export_category("Debug")
@@ -62,13 +59,7 @@ enum RotationMode {
 		visual_size = v
 		_update_visual()
 
-@export var show_direction_arrow: bool = true:
-	set(v):
-		show_direction_arrow = v
-		_update_visual()
-
 var _visual_mesh: MeshInstance3D = null
-var _arrow_mesh: MeshInstance3D = null
 
 
 func _enter_tree():
@@ -80,44 +71,50 @@ func _exit_tree():
 	if _visual_mesh and is_instance_valid(_visual_mesh):
 		_visual_mesh.queue_free()
 		_visual_mesh = null
-	if _arrow_mesh and is_instance_valid(_arrow_mesh):
-		_arrow_mesh.queue_free()
-		_arrow_mesh = null
 
 
 # === PUBLIC API ===
 
-# Get the world-space direction this connection faces (outward from block)
+# Get world-space direction this connection faces (outward)
 func get_world_direction() -> Vector3:
-	return -global_basis.z  # -Z is the "inward" direction, so we return it as outward
+	return -global_basis.z
 
 
 # Check if this connection can connect to another
 func can_connect_to(other: ConnectionPoint) -> bool:
-	# One must be plug, one must be socket
-	if not (is_plug or other.is_plug):
-		return false
-	if not (is_socket or other.is_socket):
-		return false
-	
-	# Type must match (with CAP special case)
-	if not _types_compatible(connection_type, other.connection_type):
+	# One must be plug, other must be socket (or both have both)
+	var plug_socket_ok = (is_plug and other.is_socket) or (is_socket and other.is_plug)
+	if not plug_socket_ok:
 		return false
 	
-	# Size must match
-	if connection_size != other.connection_size:
+	# Types must overlap
+	if not types_overlap(other.type_flags):
+		return false
+	
+	# Sizes must overlap
+	if not sizes_overlap(other.size_flags):
 		return false
 	
 	return true
 
 
-# Check if this connection matches a seed's requirements
-func matches_seed_type(seed_type: ConnectionType, seed_size: ConnectionSize) -> bool:
+# Check if type flags overlap (any bit in common)
+func types_overlap(other_flags: int) -> bool:
+	return (type_flags & other_flags) != 0
+
+
+# Check if size flags overlap (any bit in common)
+func sizes_overlap(other_flags: int) -> bool:
+	return (size_flags & other_flags) != 0
+
+
+# Check if this plug matches specific requirements from a seed/parent
+func matches_requirements(required_types: int, required_sizes: int) -> bool:
 	if not is_plug:
 		return false
-	if connection_type != seed_type:
+	if (type_flags & required_types) == 0:
 		return false
-	if connection_size != seed_size:
+	if (size_flags & required_sizes) == 0:
 		return false
 	return true
 
@@ -126,7 +123,6 @@ func matches_seed_type(seed_type: ConnectionType, seed_size: ConnectionSize) -> 
 func get_allowed_rotations() -> Array[float]:
 	match rotation_mode:
 		RotationMode.FREE:
-			# Return a sampling of rotations (could be made continuous)
 			return [0.0, PI/6, PI/3, PI/2, 2*PI/3, 5*PI/6, PI, 7*PI/6, 4*PI/3, 3*PI/2, 5*PI/3, 11*PI/6]
 		RotationMode.CARDINAL:
 			return [0.0, PI/2, PI, 3*PI/2]
@@ -135,41 +131,93 @@ func get_allowed_rotations() -> Array[float]:
 	return [0.0]
 
 
-# === INTERNAL ===
+# === HELPER FUNCTIONS ===
 
-func _types_compatible(type_a: ConnectionType, type_b: ConnectionType) -> bool:
-	# Same type always compatible
-	if type_a == type_b:
-		return true
+# Check if a specific type flag is set
+func has_type(type: TypeFlags) -> bool:
+	return (type_flags & type) != 0
+
+func has_seed() -> bool:
+	return has_type(TypeFlags.SEED)
+
+func has_structural() -> bool:
+	return has_type(TypeFlags.STRUCTURAL)
+
+func has_junction() -> bool:
+	return has_type(TypeFlags.JUNCTION)
+
+func has_cap() -> bool:
+	return has_type(TypeFlags.CAP)
+
+
+# Check if a specific size flag is set
+func has_size(size: SizeFlags) -> bool:
+	return (size_flags & size) != 0
+
+func has_small() -> bool:
+	return has_size(SizeFlags.SMALL)
+
+func has_medium() -> bool:
+	return has_size(SizeFlags.MEDIUM)
+
+func has_large() -> bool:
+	return has_size(SizeFlags.LARGE)
+
+
+# Get human-readable description of this connection
+func get_description() -> String:
+	var types: Array[String] = []
+	if has_seed(): types.append("Seed")
+	if has_structural(): types.append("Struct")
+	if has_junction(): types.append("Junct")
+	if has_cap(): types.append("Cap")
 	
-	# CAP can connect to anything (it's a universal terminator)
-	if type_a == ConnectionType.CAP or type_b == ConnectionType.CAP:
-		return true
+	var sizes: Array[String] = []
+	if has_small(): sizes.append("S")
+	if has_medium(): sizes.append("M")
+	if has_large(): sizes.append("L")
 	
-	return false
+	var role = ""
+	if is_plug and is_socket:
+		role = "plug+socket"
+	elif is_plug:
+		role = "plug"
+	elif is_socket:
+		role = "socket"
+	else:
+		role = "none"
+	
+	return "%s [%s] (%s)" % ["+".join(types), "+".join(sizes), role]
 
 
 # === EDITOR VISUALS ===
 
 func _create_visual():
-	_clear_visuals()
+	if _visual_mesh and is_instance_valid(_visual_mesh):
+		_visual_mesh.queue_free()
 	
-	# Main shape - cone pointing inward (-Z)
 	_visual_mesh = MeshInstance3D.new()
 	_visual_mesh.name = "_DebugVisual"
+	
+	# Shape based on type count (more types = more complex shape)
+	var type_count = 0
+	if has_seed(): type_count += 1
+	if has_structural(): type_count += 1
+	if has_junction(): type_count += 1
+	if has_cap(): type_count += 1
 	
 	var cone = CylinderMesh.new()
 	cone.top_radius = 0.0
 	cone.bottom_radius = visual_size * 0.4
 	cone.height = visual_size
-	cone.radial_segments = _get_visual_segments()
+	cone.radial_segments = 4 + type_count * 2  # More sides = more types
 	_visual_mesh.mesh = cone
 	
-	# Rotate so cone points in -Z direction
+	# Point in -Z direction
 	_visual_mesh.rotation.x = -PI / 2
 	_visual_mesh.position.z = -(visual_size*2) + (visual_size/0.5)
 	
-	# Material based on type and size
+	# Material - color encodes primary type, brightness encodes size
 	var mat = StandardMaterial3D.new()
 	mat.albedo_color = _get_visual_color()
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -179,84 +227,53 @@ func _create_visual():
 	
 	add_child(_visual_mesh)
 	_visual_mesh.owner = null
-	
-	# Direction arrow (small cylinder showing -Z)
-	if show_direction_arrow:
-		_arrow_mesh = MeshInstance3D.new()
-		_arrow_mesh.name = "_DirectionArrow"
-		
-		var arrow = CylinderMesh.new()
-		arrow.top_radius = visual_size * 0.1
-		arrow.bottom_radius = visual_size * 0.1
-		arrow.height = visual_size * 1.5
-		arrow.radial_segments = 4
-		_arrow_mesh.mesh = arrow
-		
-		_arrow_mesh.rotation.x = -PI / 2
-		_arrow_mesh.position.z = (visual_size*2) - (visual_size)
-		
-		var arrow_mat = StandardMaterial3D.new()
-		arrow_mat.albedo_color = Color(1, 1, 1, 0.3)
-		arrow_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		arrow_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		_arrow_mesh.material_override = arrow_mat
-		
-		add_child(_arrow_mesh)
-		_arrow_mesh.owner = null
-
-
-func _clear_visuals():
-	if _visual_mesh and is_instance_valid(_visual_mesh):
-		_visual_mesh.queue_free()
-		_visual_mesh = null
-	if _arrow_mesh and is_instance_valid(_arrow_mesh):
-		_arrow_mesh.queue_free()
-		_arrow_mesh = null
 
 
 func _update_visual():
-	if not Engine.is_editor_hint():
+	if not Engine.is_editor_hint() or not is_inside_tree():
 		return
-	if not is_inside_tree():
-		return
-	_create_visual()  # Recreate with new settings
+	_create_visual()
 
 
 func _get_visual_color() -> Color:
-	# Color encodes both type and size
-	# Type = hue, Size = saturation/brightness
-	
+	# Primary color based on highest-priority type
 	var base_color: Color
-	match connection_type:
-		ConnectionType.SEED:
-			base_color = Color(1.0, 0.8, 0.0)  # Gold/yellow
-		ConnectionType.STRUCTURAL:
-			base_color = Color(0.2, 0.6, 1.0)  # Blue
-		ConnectionType.JUNCTION:
-			base_color = Color(0.2, 1.0, 0.4)  # Green
-		ConnectionType.CAP:
-			base_color = Color(1.0, 0.3, 0.3)  # Red
+	if has_seed():
+		base_color = Color(1.0, 0.8, 0.0)  # Gold
+	elif has_structural():
+		base_color = Color(0.2, 0.6, 1.0)  # Blue
+	elif has_junction():
+		base_color = Color(0.2, 1.0, 0.4)  # Green
+	elif has_cap():
+		base_color = Color(1.0, 0.3, 0.3)  # Red
+	else:
+		base_color = Color(0.5, 0.5, 0.5)  # Gray (no type??)
 	
-	# Size affects brightness
-	match connection_size:
-		ConnectionSize.LARGE:
-			base_color = base_color.lightened(0.2)
-		ConnectionSize.MEDIUM:
-			pass  # Keep as-is
-		ConnectionSize.SMALL:
-			base_color = base_color.darkened(0.3)
+	# Mix in secondary types
+	var type_count = 0
+	if has_seed(): type_count += 1
+	if has_structural(): type_count += 1
+	if has_junction(): type_count += 1
+	if has_cap(): type_count += 1
+	
+	if type_count > 1:
+		# Multiple types: shift toward white/cyan to indicate flexibility
+		base_color = base_color.lerp(Color(0.7, 0.9, 1.0), 0.3)
+	
+	# Brightness based on size flags
+	var size_count = 0
+	if has_small(): size_count += 1
+	if has_medium(): size_count += 1
+	if has_large(): size_count += 1
+	
+	if has_large():
+		base_color = base_color.lightened(0.2)
+	elif has_small() and not has_medium():
+		base_color = base_color.darkened(0.2)
+	
+	if size_count > 1:
+		# Multiple sizes: add slight saturation to indicate flexibility
+		base_color.s = min(1.0, base_color.s + 0.2)
 	
 	base_color.a = 0.7
 	return base_color
-
-
-func _get_visual_segments() -> int:
-	# More segments = rounder = larger visual distinction
-	match connection_size:
-		ConnectionSize.LARGE:
-			return 8
-		ConnectionSize.MEDIUM:
-			return 6
-		ConnectionSize.SMALL:
-			return 4
-	return 6

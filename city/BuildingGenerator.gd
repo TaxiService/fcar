@@ -1,53 +1,26 @@
 # BuildingGenerator.gd - Breadth-first modular building growth
-# Grows ALL buildings simultaneously, one depth layer at a time
-# This prevents early buildings from hogging all the space
+# Uses bitmask flags for flexible type/size matching
 class_name BuildingGenerator
 extends Node3D
 
-# Block library - loaded from scenes
+# Shorthand for flag enums
+const TF = ConnectionPoint.TypeFlags
+const SF = ConnectionPoint.SizeFlags
+
+# Block library
 var block_library: Array[PackedScene] = []
-var block_data: Array[Dictionary] = []  # Cached block info for quick filtering
+var block_data: Array[Dictionary] = []
 
 # Generation settings
 @export var blocks_folder: String = "res://city/building/"
-@export var max_growth_depth: int = 5  # Max blocks from seed point
-@export var branch_probability: float = 0.5  # Chance to use each available socket
-@export var floor_probability: float = 0.2  # Chance to force a floor block
-@export var max_blocks_total: int = 500  # Hard limit to prevent freezing
+@export var max_growth_depth: int = 5
+@export var branch_probability: float = 0.5
+@export var max_blocks_total: int = 500
 
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
-var _placed_aabbs: Array[AABB] = []  # Track placed block bounds for overlap detection
-
-# The growth queue - each entry represents a potential block placement
-# Processed in rounds (all depth-0, then all depth-1, etc.)
-var _growth_queue: Array[Dictionary] = []  # [{pos, dir, biome, depth, size_filter, heading, parent_block}]
-
-# Statistics - now tracks per-seed outcomes
-var _stats: Dictionary = {
-	"blocks_placed": 0,
-	"seeds_received": 0,
-	"seeds_succeeded": 0,  # At least one block placed
-	"seeds_failed_overlap": 0,
-	"seeds_failed_no_anchor": 0,
-	"seeds_failed_no_valid_blocks": 0,
-	"overlap_rejects": 0,
-	"no_anchor_rejects": 0,
-	"size_filter_rejects": 0,
-	"rotation_retries": 0,
-	"block_retries": 0,
-	"depth_distribution": {},  # depth -> count of blocks placed at that depth
-}
-
-# Y-rotation offsets to try for vertical connections (in radians)
-const VERTICAL_ROTATION_OFFSETS = [0.0, PI / 2.0, -PI / 2.0, PI]
-
-@export_category("Overlap Detection")
-@export var check_overlaps: bool = true
-@export var overlap_margin: float = 1.0  # Shrink AABBs by this to allow slight overlaps
-@export var max_block_attempts: int = 5  # Max different blocks to try per queue entry
-
-@export_category("Debug")
-@export var verbose: bool = false  # Print per-seed outcomes
+var _placed_aabbs: Array[AABB] = []
+var _growth_queue: Array[Dictionary] = []
+var _stats: Dictionary = {}
 
 
 func _ready():
@@ -62,21 +35,18 @@ func reset():
 		"seeds_received": 0,
 		"seeds_succeeded": 0,
 		"seeds_failed_overlap": 0,
-		"seeds_failed_no_anchor": 0,
-		"seeds_failed_no_valid_blocks": 0,
+		"seeds_failed_no_blocks": 0,
 		"overlap_rejects": 0,
-		"no_anchor_rejects": 0,
-		"size_filter_rejects": 0,
+		"no_match_rejects": 0,
 		"rotation_retries": 0,
 		"block_retries": 0,
 		"depth_distribution": {},
+		"type_distribution": {},
 	}
-	# Clear any existing blocks
 	for child in get_children():
 		child.queue_free()
 
 
-# Legacy compatibility
 func reset_counter():
 	reset()
 
@@ -84,29 +54,36 @@ func reset_counter():
 func register_external_aabbs(aabbs: Array[AABB]):
 	for aabb in aabbs:
 		_placed_aabbs.append(aabb)
-	if verbose:
-		print("BuildingGenerator: Registered %d external AABBs" % aabbs.size())
 
 
 # === PUBLIC API ===
 
-# Queue a seed for later processing (call this for each seed point)
-func queue_seed(position: Vector3, direction: Vector3, biome_idx: int, size_filter: String = "any", heading: float = 0.0):
+# Queue a seed with bitmask flags
+# type_flags: e.g., TF.SEED or TF.SEED | TF.STRUCTURAL
+# size_flags: e.g., SF.LARGE or SF.MEDIUM | SF.SMALL
+func queue_seed(position: Vector3, direction: Vector3, biome_idx: int,
+				type_flags: int, size_flags: int, heading: float = 0.0):
 	_stats.seeds_received += 1
 	_growth_queue.append({
 		"pos": position,
 		"dir": direction,
 		"biome": biome_idx,
 		"depth": 0,
-		"size_filter": size_filter,
+		"type_flags": type_flags,
+		"size_flags": size_flags,
 		"heading": heading,
-		"parent_block": null,
-		"is_seed": true,  # Track this for statistics
+		"is_seed": true,
 	})
 
 
-# Process all queued growth in breadth-first order
-# Call this AFTER queueing all seeds
+# Legacy API using ConnectionPoint enums (for CityGenerator compatibility)
+func queue_seed_typed(position: Vector3, direction: Vector3, biome_idx: int,
+					  conn_type: ConnectionPoint.TypeFlags, 
+					  conn_size: ConnectionPoint.SizeFlags,
+					  heading: float = 0.0):
+	queue_seed(position, direction, biome_idx, conn_type, conn_size, heading)
+
+
 func process_queue():
 	if _growth_queue.is_empty():
 		print("BuildingGenerator: No seeds queued")
@@ -119,24 +96,17 @@ func process_queue():
 	var current_depth = 0
 	
 	while not _growth_queue.is_empty() and _stats.blocks_placed < max_blocks_total:
-		# Find minimum depth in queue
 		var min_depth = 999
 		for entry in _growth_queue:
 			min_depth = mini(min_depth, entry.depth)
 		
 		if min_depth > current_depth:
-			if verbose:
-				print("  Depth %d complete, %d blocks placed so far" % [current_depth, _stats.blocks_placed])
 			current_depth = min_depth
 		
 		if current_depth >= max_growth_depth:
-			# All remaining entries are at or beyond max depth - terminate them
-			if verbose:
-				print("  Reached max depth, %d entries terminated" % _growth_queue.size())
 			_growth_queue.clear()
 			break
 		
-		# Process all entries at current depth
 		var entries_at_depth: Array[Dictionary] = []
 		var remaining: Array[Dictionary] = []
 		
@@ -147,97 +117,62 @@ func process_queue():
 				remaining.append(entry)
 		
 		_growth_queue = remaining
-		
-		# Shuffle entries at this depth for variety
 		entries_at_depth.shuffle()
 		
-		# Process each entry
 		for entry in entries_at_depth:
 			if _stats.blocks_placed >= max_blocks_total:
 				break
-			_process_single_entry(entry)
+			_process_entry(entry)
 	
 	print("BuildingGenerator: Complete")
 	print_stats()
 
 
-# Legacy API - grow a single seed immediately (depth-first, old behavior)
-# Kept for compatibility but now just queues and processes
-func _grow_from_seed(position: Vector3, direction: Vector3, biome_idx: int, depth: int, size_filter: String = "any", base_heading: float = 0.0):
-	queue_seed(position, direction, biome_idx, size_filter, base_heading)
-	# Note: Won't process until process_queue() is called
-	# For immediate processing, caller should call process_queue() after all seeds
-
-
 # === INTERNAL ===
 
-func _process_single_entry(entry: Dictionary):
+func _process_entry(entry: Dictionary):
 	var position: Vector3 = entry.pos
 	var direction: Vector3 = entry.dir
 	var biome_idx: int = entry.biome
 	var depth: int = entry.depth
-	var size_filter: String = entry.size_filter
+	var type_flags: int = entry.type_flags
+	var size_flags: int = entry.size_flags
 	var base_heading: float = entry.heading
 	var is_seed: bool = entry.get("is_seed", false)
 	
-	# Get valid blocks for this biome/depth
-	var valid_blocks = _get_valid_blocks(biome_idx, depth)
+	# Get blocks that have a plug matching our type+size flags
+	var valid_blocks = _get_matching_blocks(biome_idx, depth, type_flags, size_flags)
+	
 	if valid_blocks.is_empty():
+		_stats.no_match_rejects += 1
 		if is_seed:
-			_stats.seeds_failed_no_valid_blocks += 1
+			_stats.seeds_failed_no_blocks += 1
 		return
 	
-	# Filter by required connection size
-	if size_filter != "any":
-		valid_blocks = valid_blocks.filter(func(b):
-			match size_filter:
-				"small": return b.has_small_plug
-				"medium": return b.has_medium_plug
-				"large": return b.has_large_plug
-				_: return true
-		)
-		if valid_blocks.is_empty():
-			_stats.size_filter_rejects += 1
-			if is_seed:
-				_stats.seeds_failed_no_valid_blocks += 1
-			return
-	
-	# Maybe force floor blocks deeper in
-	if depth > 0 and _rng.randf() < floor_probability:
-		var floor_blocks = valid_blocks.filter(func(b): return b.type == BuildingBlock.BlockType.FLOOR)
-		if not floor_blocks.is_empty():
-			valid_blocks = floor_blocks
-	
-	# Shuffle and try blocks until one succeeds
 	var shuffled = valid_blocks.duplicate()
 	shuffled.shuffle()
 	
-	var target_dir = -direction  # Connection faces opposite to growth direction
-	var attempts = mini(max_block_attempts, shuffled.size())
+	var target_dir = -direction
 	var placed_block: BuildingBlock = null
 	
-	for attempt_idx in range(attempts):
+	for attempt_idx in range(mini(5, shuffled.size())):
 		var block_info = shuffled[attempt_idx]
-		var result = _try_place_block(block_info, position, target_dir, base_heading, depth)
+		var result = _try_place_block(block_info, position, target_dir, type_flags, size_flags, base_heading)
 		
 		if result.success:
 			placed_block = result.block
 			if attempt_idx > 0:
 				_stats.block_retries += 1
 			break
-		else:
-			match result.reason:
-				"overlap":
-					_stats.overlap_rejects += 1
-				"no_anchor":
-					_stats.no_anchor_rejects += 1
+		elif result.reason == "overlap":
+			_stats.overlap_rejects += 1
 	
 	if placed_block == null:
 		if is_seed:
 			_stats.seeds_failed_overlap += 1
 		return
 	
-	# Success! Update stats
+	# Success
 	_stats.blocks_placed += 1
 	if is_seed:
 		_stats.seeds_succeeded += 1
@@ -245,11 +180,26 @@ func _process_single_entry(entry: Dictionary):
 	var depth_key = str(depth)
 	_stats.depth_distribution[depth_key] = _stats.depth_distribution.get(depth_key, 0) + 1
 	
-	# Queue children from available sockets
-	_queue_children(placed_block, biome_idx, depth, size_filter)
+	# Track types used
+	_track_type_stats(type_flags)
+	
+	# Queue children
+	_queue_children(placed_block, biome_idx, depth)
 
 
-func _try_place_block(block_info: Dictionary, position: Vector3, target_dir: Vector3, base_heading: float, depth: int) -> Dictionary:
+func _track_type_stats(flags: int):
+	if flags & TF.SEED:
+		_stats.type_distribution["SEED"] = _stats.type_distribution.get("SEED", 0) + 1
+	if flags & TF.STRUCTURAL:
+		_stats.type_distribution["STRUCTURAL"] = _stats.type_distribution.get("STRUCTURAL", 0) + 1
+	if flags & TF.JUNCTION:
+		_stats.type_distribution["JUNCTION"] = _stats.type_distribution.get("JUNCTION", 0) + 1
+	if flags & TF.CAP:
+		_stats.type_distribution["CAP"] = _stats.type_distribution.get("CAP", 0) + 1
+
+
+func _try_place_block(block_info: Dictionary, position: Vector3, target_dir: Vector3,
+					  required_types: int, required_sizes: int, base_heading: float) -> Dictionary:
 	var scene: PackedScene = block_info.scene
 	var instance = scene.instantiate() as BuildingBlock
 	if not instance:
@@ -257,61 +207,55 @@ func _try_place_block(block_info: Dictionary, position: Vector3, target_dir: Vec
 	
 	add_child(instance)
 	
-	var connections = instance.get_connection_points()
-	
-	if connections.is_empty():
-		# Block with no connections - just position directly
-		instance.global_position = position
-		var block_aabb = _get_block_aabb(instance)
-		if check_overlaps and _overlaps_existing(block_aabb):
-			instance.queue_free()
-			return {"success": false, "reason": "overlap"}
-		_placed_aabbs.append(block_aabb)
-		return {"success": true, "block": instance}
-	
-	# Find a compatible anchor connection
-	var anchor = _find_compatible_connection(connections, target_dir, block_info)
+	# Find a plug that matches requirements
+	var anchor = _find_matching_plug(instance, required_types, required_sizes)
 	if anchor == null:
 		instance.queue_free()
-		return {"success": false, "reason": "no_anchor"}
+		return {"success": false, "reason": "no_match"}
 	
-	# Try to place with rotation variants for vertical connections
-	var is_vertical = abs(target_dir.y) > 0.9
-	var rotations_to_try = VERTICAL_ROTATION_OFFSETS if is_vertical else [0.0]
+	# Try rotations
+	var rotations = anchor.get_allowed_rotations()
 	
-	for rot_idx in range(rotations_to_try.size()):
-		var extra_rotation = rotations_to_try[rot_idx]
+	for rot_idx in range(rotations.size()):
+		var extra_rotation = rotations[rot_idx]
 		_align_block(instance, anchor, position, target_dir, base_heading, extra_rotation)
 		
 		var block_aabb = _get_block_aabb(instance)
 		
-		if not check_overlaps or anchor.ignores_collision or not _overlaps_existing(block_aabb):
-			# Success!
+		if anchor.ignores_collision or not _overlaps_existing(block_aabb):
 			_placed_aabbs.append(block_aabb)
 			instance.mark_connection_used(anchor)
 			if rot_idx > 0:
 				_stats.rotation_retries += 1
-			return {"success": true, "block": instance}
+			return {"success": true, "block": instance, "anchor": anchor}
 	
-	# All rotations failed
 	instance.queue_free()
 	return {"success": false, "reason": "overlap"}
 
 
-func _queue_children(block: BuildingBlock, biome_idx: int, parent_depth: int, parent_size_filter: String):
+func _find_matching_plug(block: BuildingBlock, required_types: int, required_sizes: int) -> ConnectionPoint:
+	for conn in block.get_connection_points():
+		if conn.matches_requirements(required_types, required_sizes):
+			return conn
+	return null
+
+
+func _queue_children(block: BuildingBlock, biome_idx: int, parent_depth: int):
 	var child_depth = parent_depth + 1
 	if child_depth >= max_growth_depth:
 		return
 	
-	var available = block.get_available_connections()
 	var child_heading = block.rotation.y
 	
-	for conn in available:
-		# Only sockets can spawn children
+	for conn in block.get_available_connections():
 		if not conn.is_socket:
 			continue
 		
-		# Probability check (but always branch at depth 0 to ensure buildings grow)
+		# CAP-only sockets don't spawn children (they're terminators)
+		if conn.type_flags == TF.CAP:
+			continue
+		
+		# Probability check (always branch at depth 0)
 		if parent_depth > 0 and _rng.randf() > branch_probability:
 			continue
 		
@@ -319,88 +263,72 @@ func _queue_children(block: BuildingBlock, biome_idx: int, parent_depth: int, pa
 		var world_dir = block.get_connection_world_direction(conn)
 		block.mark_connection_used(conn)
 		
-		# Pick size from connection's available sizes
-		var child_size = _pick_random_size(conn)
-		
+		# Child inherits the socket's type and size flags
 		_growth_queue.append({
 			"pos": world_pos,
 			"dir": world_dir,
 			"biome": biome_idx,
 			"depth": child_depth,
-			"size_filter": child_size,
+			"type_flags": conn.type_flags,
+			"size_flags": conn.size_flags,
 			"heading": child_heading,
-			"parent_block": block,
 			"is_seed": false,
 		})
 
 
-func _find_compatible_connection(connections: Array[ConnectionPoint], target_dir: Vector3, block_info: Dictionary) -> ConnectionPoint:
-	# Look for a plug that matches the required size
-	for conn in connections:
-		if not conn.is_plug:
+func _get_matching_blocks(biome_idx: int, depth: int, type_flags: int, size_flags: int) -> Array:
+	var valid: Array = []
+	
+	for data in block_data:
+		if biome_idx < data.min_biome or biome_idx > data.max_biome:
 			continue
 		
-		# Check size - use block_info's cached size data for efficiency
-		# The target_dir tells us what size we need (inherited from parent)
-		# For now, any plug of any size works - size filtering happened at block selection
+		# Check if any plug matches our requirements
+		if not _block_has_matching_plug(data, type_flags, size_flags):
+			continue
 		
-		return conn  # Return first available plug
+		# Prefer caps at max depth
+		if depth >= max_growth_depth - 1:
+			if data.type == BuildingBlock.BlockType.CAP:
+				valid.append(data)
+		else:
+			valid.append(data)
 	
-	return null
+	# Fallback
+	if valid.is_empty():
+		for data in block_data:
+			if biome_idx >= data.min_biome and biome_idx <= data.max_biome:
+				if _block_has_matching_plug(data, type_flags, size_flags):
+					valid.append(data)
+	
+	return valid
 
 
-func _align_block(block: BuildingBlock, conn: ConnectionPoint, target_pos: Vector3, target_dir: Vector3, base_heading: float, extra_y_rotation: float = 0.0):
-	# Get horizontal components for Y-rotation calculation
+func _block_has_matching_plug(data: Dictionary, type_flags: int, size_flags: int) -> bool:
+	for plug in data.get("plugs", []):
+		# Check if flags overlap (any bit in common)
+		var types_match = (plug.type_flags & type_flags) != 0
+		var sizes_match = (plug.size_flags & size_flags) != 0
+		if types_match and sizes_match:
+			return true
+	return false
+
+
+func _align_block(block: BuildingBlock, conn: ConnectionPoint, target_pos: Vector3,
+				  target_dir: Vector3, base_heading: float, extra_y_rotation: float = 0.0):
 	var target_horiz = Vector2(target_dir.x, target_dir.z)
-	var conn_local_dir = -conn.basis.z  # Local inward direction (cone points -Z)
+	var conn_local_dir = -conn.basis.z
 	var conn_horiz = Vector2(conn_local_dir.x, conn_local_dir.z)
 	
-	# Calculate required Y rotation
 	if target_horiz.length() > 0.1 and conn_horiz.length() > 0.1:
 		var target_yaw = atan2(target_dir.x, target_dir.z)
 		var conn_yaw = atan2(conn_local_dir.x, conn_local_dir.z)
 		block.rotation.y = target_yaw - conn_yaw + extra_y_rotation
 	else:
-		# Vertical connection - use base heading
 		block.rotation.y = base_heading + extra_y_rotation
 	
-	# Position block so connection point lands at target_pos
 	var rotated_offset = block.basis * conn.position
 	block.global_position = target_pos - rotated_offset
-
-
-func _pick_random_size(conn: ConnectionPoint) -> String:
-	var available: Array[String] = []
-	if conn.size_small:
-		available.append("small")
-	if conn.size_medium:
-		available.append("medium")
-	if conn.size_large:
-		available.append("large")
-	
-	if available.is_empty():
-		return "any"
-	return available[_rng.randi() % available.size()]
-
-
-func _get_valid_blocks(biome_idx: int, depth: int) -> Array:
-	var valid: Array = []
-	for data in block_data:
-		if biome_idx >= data.min_biome and biome_idx <= data.max_biome:
-			# Prefer caps at max depth
-			if depth >= max_growth_depth - 1:
-				if data.type == BuildingBlock.BlockType.CAP:
-					valid.append(data)
-			else:
-				valid.append(data)
-	
-	# Fallback if no caps found
-	if valid.is_empty():
-		for data in block_data:
-			if biome_idx >= data.min_biome and biome_idx <= data.max_biome:
-				valid.append(data)
-	
-	return valid
 
 
 # === AABB UTILITIES ===
@@ -435,8 +363,7 @@ func _get_block_aabb(block: Node3D) -> AABB:
 
 func _get_shape_aabb(shape: Shape3D) -> AABB:
 	if shape is BoxShape3D:
-		var half = shape.size / 2
-		return AABB(-half, shape.size)
+		return AABB(-shape.size / 2, shape.size)
 	elif shape is SphereShape3D:
 		var r = shape.radius
 		return AABB(Vector3(-r, -r, -r), Vector3(r * 2, r * 2, r * 2))
@@ -448,24 +375,22 @@ func _get_shape_aabb(shape: Shape3D) -> AABB:
 		var r = shape.radius
 		var h = shape.height / 2
 		return AABB(Vector3(-r, -h, -r), Vector3(r * 2, shape.height, r * 2))
-	else:
-		return AABB(Vector3(-5, -5, -5), Vector3(10, 10, 10))
+	return AABB(Vector3(-5, -5, -5), Vector3(10, 10, 10))
 
 
 func _transform_aabb(local_aabb: AABB, xform: Transform3D) -> AABB:
-	var corners: Array[Vector3] = []
 	var pos = local_aabb.position
 	var size = local_aabb.size
-	
-	corners.append(xform * pos)
-	corners.append(xform * (pos + Vector3(size.x, 0, 0)))
-	corners.append(xform * (pos + Vector3(0, size.y, 0)))
-	corners.append(xform * (pos + Vector3(0, 0, size.z)))
-	corners.append(xform * (pos + Vector3(size.x, size.y, 0)))
-	corners.append(xform * (pos + Vector3(size.x, 0, size.z)))
-	corners.append(xform * (pos + Vector3(0, size.y, size.z)))
-	corners.append(xform * (pos + size))
-	
+	var corners = [
+		xform * pos,
+		xform * (pos + Vector3(size.x, 0, 0)),
+		xform * (pos + Vector3(0, size.y, 0)),
+		xform * (pos + Vector3(0, 0, size.z)),
+		xform * (pos + Vector3(size.x, size.y, 0)),
+		xform * (pos + Vector3(size.x, 0, size.z)),
+		xform * (pos + Vector3(0, size.y, size.z)),
+		xform * (pos + size),
+	]
 	var result = AABB(corners[0], Vector3.ZERO)
 	for i in range(1, 8):
 		result = result.expand(corners[i])
@@ -473,7 +398,7 @@ func _transform_aabb(local_aabb: AABB, xform: Transform3D) -> AABB:
 
 
 func _overlaps_existing(new_aabb: AABB) -> bool:
-	var test_aabb = new_aabb.grow(-overlap_margin)
+	var test_aabb = new_aabb.grow(-1.0)
 	for existing in _placed_aabbs:
 		if test_aabb.intersects(existing):
 			return true
@@ -502,47 +427,72 @@ func _load_block_library():
 				block_library.append(scene)
 				var instance = scene.instantiate()
 				if instance is BuildingBlock:
-					var has_small_plug = false
-					var has_medium_plug = false
-					var has_large_plug = false
-					var has_small = false
-					var has_medium = false
-					var has_large = false
-					
-					for conn in instance.get_connection_points():
-						if conn.size_small:
-							has_small = true
-							if conn.is_plug:
-								has_small_plug = true
-						if conn.size_medium:
-							has_medium = true
-							if conn.is_plug:
-								has_medium_plug = true
-						if conn.size_large:
-							has_large = true
-							if conn.is_plug:
-								has_large_plug = true
-					
-					block_data.append({
-						"scene": scene,
-						"path": path,
-						"type": instance.block_type,
-						"can_spawn": instance.can_spawn_people,
-						"weight": instance.spawn_weight,
-						"min_biome": instance.min_biome,
-						"max_biome": instance.max_biome,
-						"connection_count": instance.get_connection_points().size(),
-						"has_small": has_small,
-						"has_medium": has_medium,
-						"has_large": has_large,
-						"has_small_plug": has_small_plug,
-						"has_medium_plug": has_medium_plug,
-						"has_large_plug": has_large_plug,
-					})
+					block_data.append(_analyze_block(instance, scene, path))
 				instance.queue_free()
 		file_name = dir.get_next()
 	
 	print("BuildingGenerator: Loaded %d blocks" % block_library.size())
+	_print_block_summary()
+
+
+func _analyze_block(instance: BuildingBlock, scene: PackedScene, path: String) -> Dictionary:
+	var plugs: Array[Dictionary] = []
+	var sockets: Array[Dictionary] = []
+	
+	for conn in instance.get_connection_points():
+		var info = {
+			"type_flags": conn.type_flags,
+			"size_flags": conn.size_flags,
+			"rotation_mode": conn.rotation_mode,
+		}
+		if conn.is_plug:
+			plugs.append(info)
+		if conn.is_socket:
+			sockets.append(info)
+	
+	return {
+		"scene": scene,
+		"path": path,
+		"type": instance.block_type,
+		"can_spawn": instance.can_spawn_people,
+		"weight": instance.spawn_weight,
+		"min_biome": instance.min_biome,
+		"max_biome": instance.max_biome,
+		"plugs": plugs,
+		"sockets": sockets,
+	}
+
+
+func _print_block_summary():
+	for data in block_data:
+		var plug_strs: Array[String] = []
+		for p in data.plugs:
+			plug_strs.append(_flags_to_string(p.type_flags, p.size_flags))
+		
+		var socket_strs: Array[String] = []
+		for s in data.sockets:
+			socket_strs.append(_flags_to_string(s.type_flags, s.size_flags))
+		
+		print("  %s: plugs=[%s] sockets=[%s]" % [
+			data.path.get_file(),
+			", ".join(plug_strs) if plug_strs.size() > 0 else "none",
+			", ".join(socket_strs) if socket_strs.size() > 0 else "none"
+		])
+
+
+func _flags_to_string(type_flags: int, size_flags: int) -> String:
+	var types: Array[String] = []
+	if type_flags & TF.SEED: types.append("Se")
+	if type_flags & TF.STRUCTURAL: types.append("St")
+	if type_flags & TF.JUNCTION: types.append("Ju")
+	if type_flags & TF.CAP: types.append("Ca")
+	
+	var sizes: Array[String] = []
+	if size_flags & SF.SMALL: sizes.append("S")
+	if size_flags & SF.MEDIUM: sizes.append("M")
+	if size_flags & SF.LARGE: sizes.append("L")
+	
+	return "%s/%s" % ["+".join(types), "+".join(sizes)]
 
 
 # === DEBUG ===
@@ -554,32 +504,36 @@ func print_stats():
 		_stats.seeds_succeeded,
 		100.0 * _stats.seeds_succeeded / max(_stats.seeds_received, 1)
 	])
-	print("  Seed failures: %d overlap, %d no anchor, %d no valid blocks" % [
+	print("  Seed failures: %d overlap, %d no matching blocks" % [
 		_stats.seeds_failed_overlap,
-		_stats.seeds_failed_no_anchor,
-		_stats.seeds_failed_no_valid_blocks
+		_stats.seeds_failed_no_blocks
 	])
 	print("  Blocks placed: %d" % _stats.blocks_placed)
-	print("  Rejects: %d overlap, %d no anchor, %d size filter" % [
+	print("  Rejects: %d overlap, %d no match" % [
 		_stats.overlap_rejects,
-		_stats.no_anchor_rejects,
-		_stats.size_filter_rejects
+		_stats.no_match_rejects
 	])
-	print("  Retries saved: %d rotation, %d block" % [
+	print("  Retries: %d rotation, %d block" % [
 		_stats.rotation_retries,
 		_stats.block_retries
 	])
 	
-	# Depth distribution
 	var depths = _stats.depth_distribution.keys()
 	depths.sort()
-	var depth_str = ""
-	for d in depths:
-		depth_str += "d%s:%d " % [d, _stats.depth_distribution[d]]
-	if depth_str != "":
-		print("  Depth distribution: %s" % depth_str.strip_edges())
+	if depths.size() > 0:
+		var depth_str = ""
+		for d in depths:
+			depth_str += "d%s:%d " % [d, _stats.depth_distribution[d]]
+		print("  Depth: %s" % depth_str.strip_edges())
+	
+	var types = _stats.type_distribution.keys()
+	if types.size() > 0:
+		types.sort()
+		var type_str = ""
+		for t in types:
+			type_str += "%s:%d " % [t, _stats.type_distribution[t]]
+		print("  Types: %s" % type_str.strip_edges())
 
 
-# Legacy compatibility
 func print_debug_stats():
 	print_stats()

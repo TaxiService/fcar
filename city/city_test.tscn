@@ -49,6 +49,7 @@ transform = Transform3D(1, 0, 0, 0, 0.9658184, 0.25921968, 0, -0.25921968, 0.965
 
 [node name="CityGenerator" type="Node3D" parent="."]
 script = ExtResource("1_generator")
+building_branch_chance = 1.0
 
 [node name="PeopleManager" type="Node" parent="."]
 script = ExtResource("1_yage8")
