@@ -24,7 +24,7 @@ bounds_size = Vector3(25, 0, 25)
 [node name="Conn_Plug_Large" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 2.5, 0)
 script = ExtResource("4_1oxgn")
-connection_type = 3
+type_flags = 8
 is_socket = false
 rotation_mode = 1
 

@@ -1,9 +1,9 @@
-[gd_scene load_steps=9 format=3 uid="uid://bciqxf8rr648o"]
+[gd_scene load_steps=9 format=3 uid="uid://dyev2rjxlw6eq"]
 
-[ext_resource type="Script" uid="uid://cmafag82uyxu7" path="res://city/BuildingBlock.gd" id="1_2l77p"]
-[ext_resource type="Script" uid="uid://c72sj768vn5do" path="res://SpawnSurface.gd" id="2_c3me5"]
-[ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://city/ConnectionPoint.gd" id="3_ok4mr"]
-[ext_resource type="Material" uid="uid://c84qehqsj2tk1" path="res://mats/floor_small.tres" id="3_qvju2"]
+[ext_resource type="Script" uid="uid://cmafag82uyxu7" path="res://city/BuildingBlock.gd" id="1_10m4x"]
+[ext_resource type="Script" uid="uid://c72sj768vn5do" path="res://SpawnSurface.gd" id="2_7k576"]
+[ext_resource type="Material" uid="uid://c84qehqsj2tk1" path="res://mats/floor_small.tres" id="3_td5dq"]
+[ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://city/ConnectionPoint.gd" id="4_sjj7c"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_5dwv6"]
 size = Vector3(90, 5, 30)
@@ -22,12 +22,12 @@ material = SubResource("StandardMaterial3D_c3qcp")
 size = Vector3(90, 5, 30)
 
 [node name="FloorSmall5" type="StaticBody3D"]
-script = ExtResource("1_2l77p")
+script = ExtResource("1_10m4x")
 block_type = 1
 
 [node name="SpawnSurface7" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5432281, 0)
-script = ExtResource("2_c3me5")
+script = ExtResource("2_7k576")
 enabled = true
 max_people = 21
 bounds_size = Vector3(80, 0, 25)
@@ -39,93 +39,75 @@ shape = SubResource("BoxShape3D_5dwv6")
 transform = Transform3D(-4.371139e-08, -1, -4.371139e-08, 0, -4.371139e-08, 1, -1, 4.371139e-08, 1.9106855e-15, 45, 3.48, 0)
 mesh = SubResource("TorusMesh_6dmbk")
 skeleton = NodePath("../MeshInstance3D")
-surface_material_override/0 = ExtResource("3_qvju2")
+surface_material_override/0 = ExtResource("3_td5dq")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="."]
 mesh = SubResource("BoxMesh_nrjh1")
 
 [node name="Conn_Plug_Large" type="Marker3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 30, -2.5, 0)
-script = ExtResource("3_ok4mr")
-size_flags = 4
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 20, -2.5, 0)
+script = ExtResource("4_sjj7c")
+type_flags = null
+size_flags = null
 is_socket = false
-rotation_mode = 1
-
-[node name="Conn_Plug_Large5" type="Marker3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, -2.5, 0)
-script = ExtResource("3_ok4mr")
-size_flags = 4
-is_socket = false
-rotation_mode = 1
 
 [node name="Conn_Plug_Large2" type="Marker3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, -30, -2.5, 0)
-script = ExtResource("3_ok4mr")
-size_flags = 4
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, -20, -2.5, 0)
+script = ExtResource("4_sjj7c")
+type_flags = null
+size_flags = null
 is_socket = false
-rotation_mode = 1
 
 [node name="Conn_Plug_Large3" type="Marker3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 30, 2.5, 0)
-script = ExtResource("3_ok4mr")
-size_flags = 6
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 20, 2.5, 0)
+script = ExtResource("4_sjj7c")
+type_flags = null
+size_flags = null
 is_plug = false
-rotation_mode = 1
-
-[node name="Conn_Plug_Large6" type="Marker3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 2.5, 0)
-script = ExtResource("3_ok4mr")
-size_flags = 6
-is_plug = false
-rotation_mode = 1
 
 [node name="Conn_Plug_Large4" type="Marker3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -30, 2.5, 0)
-script = ExtResource("3_ok4mr")
-size_flags = 6
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -20, 2.5, 0)
+script = ExtResource("4_sjj7c")
+type_flags = null
+size_flags = null
 is_plug = false
-rotation_mode = 1
 
 [node name="Conn_Plug_Medium" type="Marker3D" parent="."]
 transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 45, 0, 0)
-script = ExtResource("3_ok4mr")
-type_flags = 4
-rotation_mode = 2
+script = ExtResource("4_sjj7c")
+type_flags = null
+size_flags = null
 
 [node name="Conn_Plug_Medium2" type="Marker3D" parent="."]
 transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, -45, 0, 0)
-script = ExtResource("3_ok4mr")
-type_flags = 4
-rotation_mode = 2
+script = ExtResource("4_sjj7c")
+type_flags = null
+size_flags = null
 
 [node name="Conn_Socket_Medium" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 30, 0, 15)
-script = ExtResource("3_ok4mr")
-type_flags = 4
-size_flags = 3
+script = ExtResource("4_sjj7c")
+type_flags = null
+size_flags = null
 is_plug = false
-rotation_mode = 2
 
 [node name="Conn_Socket_Medium3" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -30, 0, 15)
-script = ExtResource("3_ok4mr")
-type_flags = 4
-size_flags = 3
+script = ExtResource("4_sjj7c")
+type_flags = null
+size_flags = null
 is_plug = false
-rotation_mode = 2
 
 [node name="Conn_Socket_Medium2" type="Marker3D" parent="."]
 transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 30, 0, -15)
-script = ExtResource("3_ok4mr")
-type_flags = 4
-size_flags = 3
+script = ExtResource("4_sjj7c")
+type_flags = null
+size_flags = null
 is_plug = false
-rotation_mode = 2
 
 [node name="Conn_Socket_Medium4" type="Marker3D" parent="."]
 transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, -30, 0, -15)
-script = ExtResource("3_ok4mr")
-type_flags = 4
-size_flags = 3
+script = ExtResource("4_sjj7c")
+type_flags = null
+size_flags = null
 is_plug = false
-rotation_mode = 2

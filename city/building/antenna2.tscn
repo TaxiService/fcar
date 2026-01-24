@@ -61,11 +61,13 @@ surface_material_override/0 = ExtResource("3_fubs0")
 [node name="Conn_Plug_Large" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, -1.7, 0)
 script = ExtResource("4_5g2un")
+type_flags = 8
+size_flags = 3
 is_socket = false
 
 [node name="Conn_Socket_Medium2" type="Marker3D" parent="."]
 transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, -2.1)
 script = ExtResource("4_5g2un")
-size_small = true
-size_medium = false
+type_flags = 8
+size_flags = 3
 is_socket = false

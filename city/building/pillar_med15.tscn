@@ -26,9 +26,11 @@ mesh = SubResource("BoxMesh_nrjh1")
 transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, -7.5, 0)
 script = ExtResource("3_1hy1k")
 is_socket = false
+rotation_mode = 2
 
 [node name="Conn_Plug_Large2" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 7.5, 0)
 script = ExtResource("3_1hy1k")
-size_small = true
+size_flags = 3
 is_plug = false
+rotation_mode = 1

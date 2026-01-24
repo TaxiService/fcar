@@ -1,0 +1,102 @@
+[gd_scene load_steps=8 format=3 uid="uid://bm0mlrp46rnq6"]
+
+[ext_resource type="Script" uid="uid://cmafag82uyxu7" path="res://city/BuildingBlock.gd" id="1_lmmvm"]
+[ext_resource type="Material" uid="uid://c84qehqsj2tk1" path="res://mats/floor_small.tres" id="2_fxgwy"]
+[ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://city/ConnectionPoint.gd" id="3_kotqw"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_5dwv6"]
+size = Vector3(60, 5, 30)
+
+[sub_resource type="TorusMesh" id="TorusMesh_6dmbk"]
+inner_radius = 3.105
+outer_radius = 5.0
+rings = 5
+ring_segments = 3
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_c3qcp"]
+albedo_color = Color(0.160784, 0.184314, 0.156863, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_nrjh1"]
+material = SubResource("StandardMaterial3D_c3qcp")
+size = Vector3(60, 5, 30)
+
+[node name="FloorSmall5" type="StaticBody3D"]
+script = ExtResource("1_lmmvm")
+block_type = 1
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("BoxShape3D_5dwv6")
+
+[node name="MeshInstance3D2" type="MeshInstance3D" parent="."]
+transform = Transform3D(-4.371139e-08, -1, -4.371139e-08, 0, -4.371139e-08, 1, -1, 4.371139e-08, 1.9106855e-15, 30, 3.48, 0)
+mesh = SubResource("TorusMesh_6dmbk")
+skeleton = NodePath("../MeshInstance3D")
+surface_material_override/0 = ExtResource("2_fxgwy")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+mesh = SubResource("BoxMesh_nrjh1")
+
+[node name="Conn_Plug_Large" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, -2.5, 0)
+script = ExtResource("3_kotqw")
+size_flags = 4
+is_socket = false
+rotation_mode = 1
+
+[node name="Conn_Plug_Large3" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 15, 2.5, 0)
+script = ExtResource("3_kotqw")
+size_flags = 6
+is_plug = false
+rotation_mode = 1
+
+[node name="Conn_Plug_Large4" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -15, 2.5, 0)
+script = ExtResource("3_kotqw")
+size_flags = 6
+is_plug = false
+rotation_mode = 1
+
+[node name="Conn_Plug_Medium" type="Marker3D" parent="."]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 30, 0, 0)
+script = ExtResource("3_kotqw")
+type_flags = 4
+rotation_mode = 2
+
+[node name="Conn_Plug_Medium2" type="Marker3D" parent="."]
+transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, -30, 0, 0)
+script = ExtResource("3_kotqw")
+type_flags = 4
+rotation_mode = 2
+
+[node name="Conn_Socket_Medium" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 15, 0, 15)
+script = ExtResource("3_kotqw")
+type_flags = 4
+size_flags = 3
+is_plug = false
+rotation_mode = 2
+
+[node name="Conn_Socket_Medium3" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -15, 0, 15)
+script = ExtResource("3_kotqw")
+type_flags = 4
+size_flags = 3
+is_plug = false
+rotation_mode = 2
+
+[node name="Conn_Socket_Medium2" type="Marker3D" parent="."]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 15, 0, -15)
+script = ExtResource("3_kotqw")
+type_flags = 4
+size_flags = 3
+is_plug = false
+rotation_mode = 2
+
+[node name="Conn_Socket_Medium4" type="Marker3D" parent="."]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, -15, 0, -15)
+script = ExtResource("3_kotqw")
+type_flags = 4
+size_flags = 3
+is_plug = false
+rotation_mode = 2
