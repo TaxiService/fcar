@@ -1,6 +1,7 @@
-# BuildingGenerator.gd - Two-pass building generation with progress reporting
+# BuildingGenerator.gd - Three-pass building generation with progress reporting
 # Pass 1: Main structural growth (SEED → STRUCTURAL → JUNCTION)
-# Pass 2: Decoration/caps on remaining open sockets
+# Pass 2: Functional blocks (spawners, POIs, refuel stations) - gameplay priority
+# Pass 3: Decoration/caps on remaining open sockets - visual polish
 class_name BuildingGenerator
 extends Node3D
 
@@ -19,17 +20,26 @@ var block_data: Array[Dictionary] = []
 
 # Categorized block lists (populated during loading)
 var _structural_blocks: Array[Dictionary] = []  # Has SEED or STRUCTURAL plugs
-var _decoration_blocks: Array[Dictionary] = []  # Has CAP plugs (caps, spawners, etc.)
+var _decoration_blocks: Array[Dictionary] = []  # Has CAP plugs (caps, antennas, etc.)
+var _functional_blocks: Array[Dictionary] = []  # Gameplay blocks (spawners, POIs, etc.)
 
 # Generation settings
 @export var blocks_folder: String = "res://city/building/"
+@export var functional_folder: String = "res://city/building/functional/"
 
 @export_category("Pass 1: Structure")
 @export var max_growth_depth: int = 5
 @export var branch_probability: float = 0.5
 @export var max_structural_blocks: int = 500
 
-@export_category("Pass 2: Decoration")
+@export_category("Pass 2: Functional")
+@export var functional_enabled: bool = true
+@export var min_functional_blocks: int = 20  # Guaranteed minimum (tries harder to place)
+@export var max_functional_blocks: int = 100
+@export var functional_probability: float = 0.5  # Chance per eligible socket
+@export var prefer_spawners: bool = true  # Prioritize spawner blocks over other functional
+
+@export_category("Pass 3: Decoration")
 @export var decoration_enabled: bool = true
 @export var decoration_probability: float = 0.3  # Chance to decorate each open socket
 @export var max_decoration_blocks: int = 200
@@ -58,6 +68,7 @@ func reset():
 		"blocks_placed": 0,
 		"structural_placed": 0,
 		"decoration_placed": 0,
+		"functional_placed": 0,
 		"seeds_received": 0,
 		"seeds_succeeded": 0,
 		"seeds_failed_overlap": 0,
@@ -71,6 +82,9 @@ func reset():
 		"type_distribution": {},
 		"open_sockets_before_decoration": 0,
 		"sockets_decorated": 0,
+		"open_sockets_before_functional": 0,
+		"sockets_functional": 0,
+		"spawners_placed": 0,
 	}
 	for child in get_children():
 		child.queue_free()
@@ -103,7 +117,7 @@ func queue_seed(position: Vector3, direction: Vector3, biome_idx: int,
 	})
 
 
-# Main entry point - runs both passes
+# Main entry point - runs all three passes
 func process_queue():
 	if _is_generating:
 		push_warning("BuildingGenerator: Already generating!")
@@ -112,17 +126,21 @@ func process_queue():
 	_is_generating = true
 	
 	# Estimate total steps for progress
-	var estimated_steps = _growth_queue.size() + (max_decoration_blocks if decoration_enabled else 0)
+	var estimated_steps = _growth_queue.size() + (max_functional_blocks if functional_enabled else 0) + (max_decoration_blocks if decoration_enabled else 0)
 	generation_started.emit(estimated_steps)
 	
 	print("BuildingGenerator: Starting generation...")
 	print("  Seeds queued: %d" % _stats.seeds_received)
-	print("  Max structural: %d, Max decoration: %d" % [max_structural_blocks, max_decoration_blocks])
+	print("  Max structural: %d, Max functional: %d, Max decoration: %d" % [max_structural_blocks, max_functional_blocks, max_decoration_blocks])
 	
 	# Pass 1: Structural growth
 	await _run_structural_pass()
 	
-	# Pass 2: Decoration
+	# Pass 2: Functional (spawners, POIs, etc.) - gameplay priority
+	if functional_enabled:
+		await _run_functional_pass()
+	
+	# Pass 3: Decoration - visual polish on remaining sockets
 	if decoration_enabled:
 		await _run_decoration_pass()
 	
@@ -137,6 +155,8 @@ func process_queue():
 func process_queue_sync():
 	_is_generating = true
 	_run_structural_pass_sync()
+	if functional_enabled:
+		_run_functional_pass_sync()
 	if decoration_enabled:
 		_run_decoration_pass_sync()
 	_is_generating = false
@@ -495,6 +515,261 @@ func _run_decoration_pass_sync():
 				break
 
 
+# === PASS 3: FUNCTIONAL ===
+
+func _run_functional_pass():
+	generation_progress.emit(_stats.blocks_placed, "Starting functional pass...")
+	
+	if _functional_blocks.is_empty():
+		print("  Functional pass: No functional blocks loaded, skipping")
+		return
+	
+	# Collect open sockets that could accept functional blocks
+	var open_sockets: Array[Dictionary] = []
+	
+	for block in _placed_blocks:
+		if not is_instance_valid(block):
+			continue
+		
+		var biome = block.get_meta("biome_idx", 0)
+		
+		for conn in block.get_available_connections():
+			if not conn.is_socket:
+				continue
+			
+			open_sockets.append({
+				"block": block,
+				"conn": conn,
+				"biome": biome,
+				"pos": block.get_connection_world_position(conn),
+				"dir": block.get_connection_world_direction(conn),
+				"heading": block.rotation.y,
+			})
+	
+	_stats.open_sockets_before_functional = open_sockets.size()
+	print("  Functional pass: %d open sockets, %d functional blocks available" % [open_sockets.size(), _functional_blocks.size()])
+	
+	# Separate spawner blocks from other functional blocks
+	var spawner_blocks: Array[Dictionary] = []
+	var other_functional: Array[Dictionary] = []
+	
+	for func_block in _functional_blocks:
+		if func_block.can_spawn:
+			spawner_blocks.append(func_block)
+		else:
+			other_functional.append(func_block)
+	
+	print("  Functional blocks: %d spawners, %d other" % [spawner_blocks.size(), other_functional.size()])
+	
+	# Shuffle sockets
+	open_sockets.shuffle()
+	
+	var placed = 0
+	var blocks_this_batch = 0
+	var guaranteed_phase = true  # First phase: try to meet minimum
+	
+	for socket_data in open_sockets:
+		if placed >= max_functional_blocks:
+			break
+		
+		# After meeting minimum, apply probability
+		if placed >= min_functional_blocks:
+			guaranteed_phase = false
+		
+		if not guaranteed_phase and _rng.randf() > functional_probability:
+			continue
+		
+		var conn: ConnectionPoint = socket_data.conn
+		var block: BuildingBlock = socket_data.block
+		
+		if not is_instance_valid(block):
+			continue
+		
+		var target_dir = -socket_data.dir
+		
+		# Choose block list based on preference and what's available
+		var blocks_to_try: Array[Dictionary] = []
+		if prefer_spawners and not spawner_blocks.is_empty():
+			blocks_to_try = spawner_blocks
+		elif not other_functional.is_empty():
+			blocks_to_try = other_functional
+		else:
+			blocks_to_try = _functional_blocks
+		
+		var valid_blocks = _get_matching_blocks(
+			blocks_to_try,
+			socket_data.biome,
+			max_growth_depth,
+			conn.type_flags,
+			conn.size_flags,
+			target_dir
+		)
+		
+		# Fallback to all functional if preferred type didn't match
+		if valid_blocks.is_empty() and blocks_to_try != _functional_blocks:
+			valid_blocks = _get_matching_blocks(
+				_functional_blocks,
+				socket_data.biome,
+				max_growth_depth,
+				conn.type_flags,
+				conn.size_flags,
+				target_dir
+			)
+		
+		if valid_blocks.is_empty():
+			continue
+		
+		var shuffled = valid_blocks.duplicate()
+		shuffled.shuffle()
+		
+		for func_info in shuffled.slice(0, 3):
+			var result = _try_place_block(
+				func_info,
+				socket_data.pos,
+				target_dir,
+				conn.type_flags,
+				conn.size_flags,
+				socket_data.heading
+			)
+			
+			if result.success:
+				block.mark_connection_used(conn)
+				placed += 1
+				_stats.blocks_placed += 1
+				_stats.functional_placed += 1
+				_stats.sockets_functional += 1
+				
+				if func_info.can_spawn:
+					_stats.spawners_placed += 1
+				
+				blocks_this_batch += 1
+				
+				if blocks_this_batch >= yield_every_n_blocks:
+					generation_progress.emit(
+						_stats.blocks_placed,
+						"Functional: %d/%d (spawners: %d)" % [placed, max_functional_blocks, _stats.spawners_placed]
+					)
+					await get_tree().process_frame
+					blocks_this_batch = 0
+				break
+	
+	generation_progress.emit(_stats.blocks_placed, "Functional complete: %d added (%d spawners)" % [placed, _stats.spawners_placed])
+
+
+func _run_functional_pass_sync():
+	if _functional_blocks.is_empty():
+		return
+	
+	var open_sockets: Array[Dictionary] = []
+	
+	for block in _placed_blocks:
+		if not is_instance_valid(block):
+			continue
+		
+		var biome = block.get_meta("biome_idx", 0)
+		
+		for conn in block.get_available_connections():
+			if not conn.is_socket:
+				continue
+			
+			open_sockets.append({
+				"block": block,
+				"conn": conn,
+				"biome": biome,
+				"pos": block.get_connection_world_position(conn),
+				"dir": block.get_connection_world_direction(conn),
+				"heading": block.rotation.y,
+			})
+	
+	_stats.open_sockets_before_functional = open_sockets.size()
+	
+	var spawner_blocks: Array[Dictionary] = []
+	var other_functional: Array[Dictionary] = []
+	
+	for func_block in _functional_blocks:
+		if func_block.can_spawn:
+			spawner_blocks.append(func_block)
+		else:
+			other_functional.append(func_block)
+	
+	open_sockets.shuffle()
+	
+	var placed = 0
+	var guaranteed_phase = true
+	
+	for socket_data in open_sockets:
+		if placed >= max_functional_blocks:
+			break
+		
+		if placed >= min_functional_blocks:
+			guaranteed_phase = false
+		
+		if not guaranteed_phase and _rng.randf() > functional_probability:
+			continue
+		
+		var conn: ConnectionPoint = socket_data.conn
+		var block: BuildingBlock = socket_data.block
+		
+		if not is_instance_valid(block):
+			continue
+		
+		var target_dir = -socket_data.dir
+		
+		var blocks_to_try: Array[Dictionary] = []
+		if prefer_spawners and not spawner_blocks.is_empty():
+			blocks_to_try = spawner_blocks
+		elif not other_functional.is_empty():
+			blocks_to_try = other_functional
+		else:
+			blocks_to_try = _functional_blocks
+		
+		var valid_blocks = _get_matching_blocks(
+			blocks_to_try,
+			socket_data.biome,
+			max_growth_depth,
+			conn.type_flags,
+			conn.size_flags,
+			target_dir
+		)
+		
+		if valid_blocks.is_empty() and blocks_to_try != _functional_blocks:
+			valid_blocks = _get_matching_blocks(
+				_functional_blocks,
+				socket_data.biome,
+				max_growth_depth,
+				conn.type_flags,
+				conn.size_flags,
+				target_dir
+			)
+		
+		if valid_blocks.is_empty():
+			continue
+		
+		var shuffled = valid_blocks.duplicate()
+		shuffled.shuffle()
+		
+		for func_info in shuffled.slice(0, 3):
+			var result = _try_place_block(
+				func_info,
+				socket_data.pos,
+				target_dir,
+				conn.type_flags,
+				conn.size_flags,
+				socket_data.heading
+			)
+			
+			if result.success:
+				block.mark_connection_used(conn)
+				placed += 1
+				_stats.blocks_placed += 1
+				_stats.functional_placed += 1
+				_stats.sockets_functional += 1
+				
+				if func_info.can_spawn:
+					_stats.spawners_placed += 1
+				break
+
+
 # === BLOCK PLACEMENT ===
 
 func _try_place_block(block_info: Dictionary, position: Vector3, target_dir: Vector3,
@@ -718,45 +993,64 @@ func _overlaps_existing(new_aabb: AABB) -> bool:
 # === BLOCK LIBRARY ===
 
 func _load_block_library():
-	print("BuildingGenerator: Loading blocks from %s..." % blocks_folder)
+	print("BuildingGenerator: Loading blocks...")
 	block_library.clear()
 	block_data.clear()
 	_structural_blocks.clear()
 	_decoration_blocks.clear()
+	_functional_blocks.clear()
 	
-	var dir = DirAccess.open(blocks_folder)
+	# Load main blocks folder
+	_load_blocks_from_folder(blocks_folder, false)
+	
+	# Load functional blocks folder (if exists)
+	if DirAccess.dir_exists_absolute(functional_folder):
+		_load_blocks_from_folder(functional_folder, true)
+	else:
+		print("  Functional folder not found: %s (skipping)" % functional_folder)
+	
+	print("BuildingGenerator: Loaded %d blocks (%d structural, %d decoration, %d functional)" % [
+		block_library.size(), _structural_blocks.size(), _decoration_blocks.size(), _functional_blocks.size()
+	])
+	_print_block_summary()
+
+
+func _load_blocks_from_folder(folder_path: String, is_functional_folder: bool):
+	var dir = DirAccess.open(folder_path)
 	if not dir:
-		push_error("BuildingGenerator: Cannot open blocks folder: %s" % blocks_folder)
+		push_error("BuildingGenerator: Cannot open folder: %s" % folder_path)
 		return
+	
+	var folder_name = folder_path.get_file()
+	if folder_name.is_empty():
+		folder_name = folder_path.trim_suffix("/").get_file()
 	
 	dir.list_dir_begin()
 	var file_name = dir.get_next()
 	while file_name != "":
 		if file_name.ends_with(".tscn"):
-			var path = blocks_folder + file_name
+			var path = folder_path + file_name
 			var scene = load(path) as PackedScene
 			if scene:
 				block_library.append(scene)
 				var instance = scene.instantiate()
 				if instance is BuildingBlock:
-					var data = _analyze_block(instance, scene, path)
+					var data = _analyze_block(instance, scene, path, is_functional_folder)
 					block_data.append(data)
 					
 					# Categorize
-					if data.is_structural:
-						_structural_blocks.append(data)
-					if data.is_decoration:
-						_decoration_blocks.append(data)
+					if is_functional_folder or data.is_functional:
+						_functional_blocks.append(data)
+					else:
+						if data.is_structural:
+							_structural_blocks.append(data)
+						if data.is_decoration:
+							_decoration_blocks.append(data)
 				instance.queue_free()
 		file_name = dir.get_next()
-	
-	print("BuildingGenerator: Loaded %d blocks (%d structural, %d decoration)" % [
-		block_library.size(), _structural_blocks.size(), _decoration_blocks.size()
-	])
-	_print_block_summary()
 
 
-func _analyze_block(instance: BuildingBlock, scene: PackedScene, path: String) -> Dictionary:
+func _analyze_block(instance: BuildingBlock, scene: PackedScene, path: String, force_functional: bool = false) -> Dictionary:
 	var plugs: Array[Dictionary] = []
 	var sockets: Array[Dictionary] = []
 	
@@ -796,6 +1090,7 @@ func _analyze_block(instance: BuildingBlock, scene: PackedScene, path: String) -
 		"sockets": sockets,
 		"is_structural": has_structural_plug,
 		"is_decoration": has_cap_plug or (instance.block_type == BuildingBlock.BlockType.CAP),
+		"is_functional": force_functional or instance.can_spawn_people,
 	}
 
 
@@ -810,7 +1105,12 @@ func _print_block_summary():
 			])
 		
 		var category = ""
-		if data.is_structural and data.is_decoration:
+		if data.is_functional:
+			if data.can_spawn:
+				category = " [FUNC:SPAWN]"
+			else:
+				category = " [FUNC]"
+		elif data.is_structural and data.is_decoration:
 			category = " [STRUCT+DECO]"
 		elif data.is_structural:
 			category = " [STRUCT]"
@@ -857,11 +1157,18 @@ func print_stats():
 		_stats.seeds_succeeded,
 		100.0 * _stats.seeds_succeeded / max(_stats.seeds_received, 1)
 	])
-	print("  Blocks: %d total (%d structural + %d decoration)" % [
+	print("  Blocks: %d total (%d structural + %d functional + %d decoration)" % [
 		_stats.blocks_placed,
 		_stats.structural_placed,
+		_stats.get("functional_placed", 0),
 		_stats.decoration_placed
 	])
+	if _stats.get("functional_placed", 0) > 0:
+		print("  Functional: %d placed (%d spawners) from %d open sockets" % [
+			_stats.get("functional_placed", 0),
+			_stats.get("spawners_placed", 0),
+			_stats.get("open_sockets_before_functional", 0)
+		])
 	print("  Decoration: %d/%d open sockets decorated" % [
 		_stats.sockets_decorated,
 		_stats.open_sockets_before_decoration
