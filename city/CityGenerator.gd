@@ -11,6 +11,14 @@ signal city_generation_complete()
 const TF = ConnectionPoint.TypeFlags
 const SF = ConnectionPoint.SizeFlags
 
+@export_category("Random Seed")
+@export var world_seed: int = 0  # 0 = use random seed
+@export var use_random_seed: bool = true  # Generate new seed each run
+@export var show_seed_in_log: bool = true  # Print seed for reproduction
+
+var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
+var _current_seed: int = 0
+
 # Grid settings
 @export var hex_edge_length: float = 420.0  # Distance between adjacent spires (meters)
 @export var grid_rings: int = 3  # Number of hex rings around center (0 = just center hex)
@@ -197,7 +205,9 @@ func _create_containers():
 
 func generate_city():
 	city_generation_started.emit()
-	
+	# Initialize RNG first!
+	_initialize_rng()
+		
 	print("CityGenerator: Starting city generation...")
 	print("  Hex edge length: %.0fm" % hex_edge_length)
 	print("  Grid rings: %d" % grid_rings)
@@ -461,7 +471,7 @@ func _pick_weighted_from_dict(weights: Dictionary) -> String:
 		total_weight += weights[pattern_name]
 
 	# Roll and pick
-	var roll = randf() * total_weight
+	var roll = _rng.randf() * total_weight
 	var cumulative = 0.0
 	for pattern_name in weights:
 		cumulative += weights[pattern_name]
@@ -502,7 +512,7 @@ func _generate_crosslinks():
 				continue
 
 			# Pick random rotation (0-5)
-			var rotation = randi() % 6
+			var rotation = _rng.randi() % 6
 
 			# Calculate height for this biome's crosslinks
 			var biome_base = biome_height * biome_idx
@@ -779,12 +789,12 @@ func _generate_buildings():
 			var center_y = seed_pos.y
 			var half_height = conn_height / 2.0
 			
-			if top_seeds_enabled and randf() <= top_seed_probability:
+			if top_seeds_enabled and _rng.randf() <= top_seed_probability:
 				var top_pos = Vector3(seed_pos.x, center_y + half_height, seed_pos.z)
 				building_generator.queue_seed(top_pos, Vector3.UP, biome_idx, seed_type, current_top_sizes, connector_heading)
 				top_count += 1
 			
-			if bottom_seeds_enabled and randf() <= bottom_seed_probability:
+			if bottom_seeds_enabled and _rng.randf() <= bottom_seed_probability:
 				var bottom_pos = Vector3(seed_pos.x, center_y - half_height, seed_pos.z)
 				building_generator.queue_seed(bottom_pos, Vector3.DOWN, biome_idx, seed_type, current_bottom_sizes, connector_heading)
 				bottom_count += 1
@@ -867,11 +877,11 @@ func _generate_buildings_sync():
 			var center_y = seed_pos.y
 			var half_height = conn_height / 2.0
 			
-			if top_seeds_enabled and randf() <= top_seed_probability:
+			if top_seeds_enabled and _rng.randf() <= top_seed_probability:
 				var top_pos = Vector3(seed_pos.x, center_y + half_height, seed_pos.z)
 				building_generator.queue_seed(top_pos, Vector3.UP, biome_idx, seed_type, current_top_sizes, connector_heading)
 			
-			if bottom_seeds_enabled and randf() <= bottom_seed_probability:
+			if bottom_seeds_enabled and _rng.randf() <= bottom_seed_probability:
 				var bottom_pos = Vector3(seed_pos.x, center_y - half_height, seed_pos.z)
 				building_generator.queue_seed(bottom_pos, Vector3.DOWN, biome_idx, seed_type, current_bottom_sizes, connector_heading)
 	
@@ -880,3 +890,25 @@ func _generate_buildings_sync():
 # Public API for regeneration
 func regenerate():
 	generate_city()
+
+func _initialize_rng():
+	if use_random_seed:
+		# Generate a random seed based on system time
+		_current_seed = int(Time.get_unix_time_from_system() * 1000) % 2147483647
+	else:
+		_current_seed = world_seed
+	_rng.seed = _current_seed
+	
+	if show_seed_in_log:
+		print("CityGenerator: Using seed %d" % _current_seed)
+
+func get_current_seed() -> int:
+	return _current_seed
+
+func _shuffle_array(array: Array):
+	# Fisher-Yates shuffle using seeded RNG
+	for i in range(array.size() - 1, 0, -1):
+		var j = _rng.randi() % (i + 1)
+		var temp = array[i]
+		array[i] = array[j]
+		array[j] = temp

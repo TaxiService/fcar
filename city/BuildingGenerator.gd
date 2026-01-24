@@ -54,10 +54,29 @@ var _growth_queue: Array[Dictionary] = []
 var _placed_blocks: Array[BuildingBlock] = []  # Track for decoration pass
 var _stats: Dictionary = {}
 var _is_generating: bool = false
+var _current_seed: int = 0
 
 
 func _ready():
 	_load_block_library()
+
+
+func set_seed(seed_value: int):
+	_current_seed = seed_value
+	_rng.seed = seed_value
+
+
+func get_seed() -> int:
+	return _current_seed
+
+
+func _shuffle_array(array: Array):
+	# Fisher-Yates shuffle using seeded RNG
+	for i in range(array.size() - 1, 0, -1):
+		var j = _rng.randi() % (i + 1)
+		var temp = array[i]
+		array[i] = array[j]
+		array[j] = temp
 
 
 func reset():
@@ -194,7 +213,7 @@ func _run_structural_pass():
 				remaining.append(entry)
 		
 		_growth_queue = remaining
-		entries_at_depth.shuffle()
+		_shuffle_array(entries_at_depth)
 		
 		for entry in entries_at_depth:
 			if _stats.structural_placed >= max_structural_blocks:
@@ -237,7 +256,7 @@ func _run_structural_pass_sync():
 				remaining.append(entry)
 		
 		_growth_queue = remaining
-		entries_at_depth.shuffle()
+		_shuffle_array(entries_at_depth)
 		
 		for entry in entries_at_depth:
 			if _stats.structural_placed >= max_structural_blocks:
@@ -267,7 +286,7 @@ func _process_structural_entry(entry: Dictionary):
 		return
 	
 	var shuffled = valid_blocks.duplicate()
-	shuffled.shuffle()
+	_shuffle_array(shuffled)
 	
 	var placed_block: BuildingBlock = null
 	
@@ -374,7 +393,7 @@ func _run_decoration_pass():
 	print("  Decoration pass: %d open sockets found" % open_sockets.size())
 	
 	# Shuffle for variety
-	open_sockets.shuffle()
+	_shuffle_array(open_sockets)
 	
 	var decorated = 0
 	var blocks_this_batch = 0
@@ -408,7 +427,7 @@ func _run_decoration_pass():
 			continue
 		
 		var shuffled = valid_decorations.duplicate()
-		shuffled.shuffle()
+		_shuffle_array(shuffled)
 		
 		for deco_info in shuffled.slice(0, 3):  # Try up to 3
 			var result = _try_place_block(
@@ -463,7 +482,7 @@ func _run_decoration_pass_sync():
 			})
 	
 	_stats.open_sockets_before_decoration = open_sockets.size()
-	open_sockets.shuffle()
+	_shuffle_array(open_sockets)
 	
 	var decorated = 0
 	
@@ -494,7 +513,7 @@ func _run_decoration_pass_sync():
 			continue
 		
 		var shuffled = valid_decorations.duplicate()
-		shuffled.shuffle()
+		_shuffle_array(shuffled)
 		
 		for deco_info in shuffled.slice(0, 3):
 			var result = _try_place_block(
@@ -562,7 +581,7 @@ func _run_functional_pass():
 	print("  Functional blocks: %d spawners, %d other" % [spawner_blocks.size(), other_functional.size()])
 	
 	# Shuffle sockets
-	open_sockets.shuffle()
+	_shuffle_array(open_sockets)
 	
 	var placed = 0
 	var blocks_this_batch = 0
@@ -620,7 +639,7 @@ func _run_functional_pass():
 			continue
 		
 		var shuffled = valid_blocks.duplicate()
-		shuffled.shuffle()
+		_shuffle_array(shuffled)
 		
 		for func_info in shuffled.slice(0, 3):
 			var result = _try_place_block(
@@ -692,7 +711,7 @@ func _run_functional_pass_sync():
 		else:
 			other_functional.append(func_block)
 	
-	open_sockets.shuffle()
+	_shuffle_array(open_sockets)
 	
 	var placed = 0
 	var guaranteed_phase = true
@@ -746,7 +765,7 @@ func _run_functional_pass_sync():
 			continue
 		
 		var shuffled = valid_blocks.duplicate()
-		shuffled.shuffle()
+		_shuffle_array(shuffled)
 		
 		for func_info in shuffled.slice(0, 3):
 			var result = _try_place_block(
