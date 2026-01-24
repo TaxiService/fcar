@@ -1,6 +1,7 @@
-[gd_scene load_steps=7 format=3 uid="uid://c8xqj5kvmyxrf"]
+[gd_scene load_steps=8 format=3 uid="uid://c8xqj5kvmyxrf"]
 
 [ext_resource type="Script" uid="uid://crluh2jxfkkv4" path="res://city/CityGenerator.gd" id="1_generator"]
+[ext_resource type="Script" uid="uid://dg28ig0ty1t3a" path="res://ui/LoadingScreen.gd" id="1_tegu2"]
 [ext_resource type="Script" uid="uid://dvu3f10fe6r2" path="res://PeopleManager.gd" id="1_yage8"]
 [ext_resource type="PackedScene" uid="uid://ctktauacq45qg" path="res://free_cam.tscn" id="3_ao2hm"]
 
@@ -32,6 +33,9 @@ volumetric_fog_emission_energy = 2.0
 volumetric_fog_length = 2500.0
 
 [node name="CityTest" type="Node3D"]
+
+[node name="LoadingScreen" type="CanvasLayer" parent="."]
+script = ExtResource("1_tegu2")
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
 transform = Transform3D(0.86601907, -0.25000688, 0.43302146, 0, 0.8660238, 0.50000274, -0.500011, -0.4330119, 0.7499931, 0, 1000, 0)

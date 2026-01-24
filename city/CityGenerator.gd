@@ -4,6 +4,10 @@ extends Node3D
 # City generation prototype
 # Builds a hex-grid city with spires at vertices and connectors between them
 
+signal city_generation_started()
+signal city_generation_progress(phase: String, progress: float, message: String)
+signal city_generation_complete()
+
 const TF = ConnectionPoint.TypeFlags
 const SF = ConnectionPoint.SizeFlags
 
@@ -141,9 +145,13 @@ func _ready():
 	_create_containers()
 	if show_ground_grid:
 		_create_ground_grid()
-	generate_city()
+	
+	# Use call_deferred to start async generation after scene is ready
+	call_deferred("_start_generation")
 
-	# Try to spawn FCar if available
+func _start_generation():
+	await generate_city()
+	
 	if spawn_fcar:
 		_try_spawn_fcar()
 
@@ -188,30 +196,40 @@ func _create_containers():
 
 
 func generate_city():
+	city_generation_started.emit()
+	
 	print("CityGenerator: Starting city generation...")
 	print("  Hex edge length: %.0fm" % hex_edge_length)
 	print("  Grid rings: %d" % grid_rings)
-
-	# Clear existing
+	
+	city_generation_progress.emit("setup", 0.0, "Clearing previous...")
 	_clear_generated()
-
-	# Step 1: Generate hex grid and find all unique spire positions + edges
+	await get_tree().process_frame
+	
+	city_generation_progress.emit("grid", 0.1, "Generating hex grid...")
 	_generate_hex_grid()
-
-	# Step 2: Create spires at each position
+	await get_tree().process_frame
+	
+	city_generation_progress.emit("spires", 0.2, "Generating spires...")
 	_generate_spires()
-
-	# Step 3: Create crosslink connectors within hexagons
+	await get_tree().process_frame
+	
+	city_generation_progress.emit("crosslinks", 0.3, "Generating crosslinks...")
 	_generate_crosslinks()
-
-	# Step 4: Create edge connectors between spires
+	await get_tree().process_frame
+	
+	city_generation_progress.emit("connectors", 0.4, "Generating connectors...")
 	_generate_connectors()
-
-	# Step 5: Generate buildings on connectors
+	await get_tree().process_frame
+	
 	if generate_buildings:
-		_generate_buildings()
-
-	print("CityGenerator: Done! Generated %d spires, %d edge connections, %d hexagons" % [spire_positions.size(), connector_edges.size(), hex_vertex_lists.size()])
+		city_generation_progress.emit("buildings", 0.5, "Generating buildings...")
+		await _generate_buildings()
+	
+	city_generation_progress.emit("complete", 1.0, "Done!")
+	print("CityGenerator: Done! Generated %d spires, %d connectors" % [spire_positions.size(), connector_edges.size()])
+	
+	city_generation_complete.emit()
 
 
 func _clear_generated():
@@ -706,15 +724,24 @@ func _generate_buildings():
 	# Configure generator
 	building_generator.max_growth_depth = building_max_depth
 	building_generator.branch_probability = building_branch_chance
-	building_generator.max_blocks_total = building_max_total
+	building_generator.max_structural_blocks = building_max_total
+	building_generator.max_decoration_blocks = int(building_max_total * 0.3)  # 30% extra for decorations
+	building_generator.decoration_probability = 0.4
 	building_generator.reset()
 	
 	# Register spire AABBs
 	var spire_aabbs = _calculate_spire_aabbs()
 	building_generator.register_external_aabbs(spire_aabbs)
 	
-	print("  Queueing building seeds (top=%s, bottom=%s)..." % [top_seeds_enabled, bottom_seeds_enabled])
+	# Connect progress signals (disconnect first in case of regeneration)
+	if building_generator.generation_progress.is_connected(_on_building_progress):
+		building_generator.generation_progress.disconnect(_on_building_progress)
+	building_generator.generation_progress.connect(_on_building_progress)
 	
+	city_generation_progress.emit("buildings", 0.0, "Queueing seeds...")
+	await get_tree().process_frame
+	
+	# Queue seeds
 	var top_count = 0
 	var bottom_count = 0
 	
@@ -742,11 +769,8 @@ func _generate_buildings():
 		var start_offset = spire_base_radius + building_seed_spacing * 0.5
 		var connector_heading = atan2(dir_normalized.x, dir_normalized.z)
 		
-		# Get size flags based on connector type
 		var current_top_sizes: int = edge_top_sizes if is_edge else top_seed_sizes
 		var current_bottom_sizes: int = edge_bottom_sizes if is_edge else bottom_seed_sizes
-		
-		# All seeds use SEED type flag
 		var seed_type: int = TF.SEED
 		
 		for i in range(num_seeds):
@@ -755,35 +779,103 @@ func _generate_buildings():
 			var center_y = seed_pos.y
 			var half_height = conn_height / 2.0
 			
-			# TOP SEED - grows upward
 			if top_seeds_enabled and randf() <= top_seed_probability:
 				var top_pos = Vector3(seed_pos.x, center_y + half_height, seed_pos.z)
-				building_generator.queue_seed(
-					top_pos,
-					Vector3.UP,
-					biome_idx,
-					seed_type,
-					current_top_sizes,
-					connector_heading
-				)
+				building_generator.queue_seed(top_pos, Vector3.UP, biome_idx, seed_type, current_top_sizes, connector_heading)
 				top_count += 1
 			
-			# BOTTOM SEED - grows downward  
 			if bottom_seeds_enabled and randf() <= bottom_seed_probability:
 				var bottom_pos = Vector3(seed_pos.x, center_y - half_height, seed_pos.z)
-				building_generator.queue_seed(
-					bottom_pos,
-					Vector3.DOWN,
-					biome_idx,
-					seed_type,
-					current_bottom_sizes,
-					connector_heading
-				)
+				building_generator.queue_seed(bottom_pos, Vector3.DOWN, biome_idx, seed_type, current_bottom_sizes, connector_heading)
 				bottom_count += 1
 	
 	print("  Queued %d top + %d bottom = %d total seeds" % [top_count, bottom_count, top_count + bottom_count])
-	building_generator.process_queue()
+	city_generation_progress.emit("buildings", 0.1, "Processing %d seeds..." % (top_count + bottom_count))
+	
+	# Run async generation (yields periodically)
+	await building_generator.process_queue()
+	
+	city_generation_progress.emit("buildings", 1.0, "Buildings complete")
 
+
+func _on_building_progress(current: int, message: String):
+	# Forward to city generation progress
+	var max_blocks = building_generator.max_structural_blocks + building_generator.max_decoration_blocks
+	var progress = float(current) / max(max_blocks, 1)
+	city_generation_progress.emit("buildings", 0.1 + progress * 0.9, message)
+
+func generate_city_sync():
+	print("CityGenerator: Starting city generation (sync)...")
+	_clear_generated()
+	_generate_hex_grid()
+	_generate_spires()
+	_generate_crosslinks()
+	_generate_connectors()
+	
+	if generate_buildings:
+		_generate_buildings_sync()
+	
+	print("CityGenerator: Done!")
+
+
+func _generate_buildings_sync():
+	if not building_generator:
+		return
+	
+	building_generator.max_growth_depth = building_max_depth
+	building_generator.branch_probability = building_branch_chance
+	building_generator.max_structural_blocks = building_max_total
+	building_generator.max_decoration_blocks = int(building_max_total * 0.3)
+	building_generator.decoration_probability = 0.4
+	building_generator.reset()
+	
+	var spire_aabbs = _calculate_spire_aabbs()
+	building_generator.register_external_aabbs(spire_aabbs)
+	
+	# Queue seeds (same as async version but without awaits)
+	for conn in connector_data:
+		var is_edge: bool = conn.get("is_edge", true)
+		if is_edge and not buildings_on_edges:
+			continue
+		if not is_edge and not buildings_on_crosslinks:
+			continue
+		
+		var start: Vector3 = conn.start
+		var end: Vector3 = conn.end
+		var biome_idx: int = conn.biome_idx
+		var conn_height: float = conn.height
+		
+		var direction = end - start
+		var length = direction.length()
+		var dir_normalized = direction.normalized()
+		
+		var usable_length = length - spire_base_radius * 2 - building_seed_spacing
+		if usable_length <= 0:
+			continue
+		
+		var num_seeds = int(usable_length / building_seed_spacing)
+		var start_offset = spire_base_radius + building_seed_spacing * 0.5
+		var connector_heading = atan2(dir_normalized.x, dir_normalized.z)
+		
+		var current_top_sizes: int = edge_top_sizes if is_edge else top_seed_sizes
+		var current_bottom_sizes: int = edge_bottom_sizes if is_edge else bottom_seed_sizes
+		var seed_type: int = TF.SEED
+		
+		for i in range(num_seeds):
+			var t = start_offset + building_seed_spacing * i
+			var seed_pos = start + dir_normalized * t
+			var center_y = seed_pos.y
+			var half_height = conn_height / 2.0
+			
+			if top_seeds_enabled and randf() <= top_seed_probability:
+				var top_pos = Vector3(seed_pos.x, center_y + half_height, seed_pos.z)
+				building_generator.queue_seed(top_pos, Vector3.UP, biome_idx, seed_type, current_top_sizes, connector_heading)
+			
+			if bottom_seeds_enabled and randf() <= bottom_seed_probability:
+				var bottom_pos = Vector3(seed_pos.x, center_y - half_height, seed_pos.z)
+				building_generator.queue_seed(bottom_pos, Vector3.DOWN, biome_idx, seed_type, current_bottom_sizes, connector_heading)
+	
+	building_generator.process_queue_sync()
 
 # Public API for regeneration
 func regenerate():
