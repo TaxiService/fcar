@@ -1,10 +1,12 @@
-[gd_scene load_steps=9 format=3 uid="uid://c8xqj5kvmyxrf"]
+[gd_scene load_steps=11 format=3 uid="uid://c8xqj5kvmyxrf"]
 
 [ext_resource type="Script" uid="uid://crluh2jxfkkv4" path="res://city/CityGenerator.gd" id="1_generator"]
 [ext_resource type="Script" uid="uid://dg28ig0ty1t3a" path="res://ui/LoadingScreen.gd" id="1_tegu2"]
 [ext_resource type="Script" uid="uid://dvu3f10fe6r2" path="res://systems/PeopleManager.gd" id="1_yage8"]
 [ext_resource type="PackedScene" uid="uid://ctktauacq45qg" path="res://free_cam.tscn" id="3_ao2hm"]
-[ext_resource type="Script" uid="uid://5vjnpmiwnolm" path="res://systems/VisibilityManager.gd" id="5_yage8"]
+[ext_resource type="Script" uid="uid://5vjnpmiwnolm" path="res://city/VisibilityManager.gd" id="5_yage8"]
+[ext_resource type="Script" uid="uid://tpanuk0qx6yu" path="res://city/BuildingLODManager.gd" id="6_05jo7"]
+[ext_resource type="Script" uid="uid://inwuan5ora6n" path="res://city/BuildingImpostorGenerator.gd" id="7_nix7l"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
 sky_top_color = Color(0.2, 0.3, 0.5, 1)
@@ -67,3 +69,11 @@ script = ExtResource("1_yage8")
 
 [node name="VisibilityManager" type="Node" parent="."]
 script = ExtResource("5_yage8")
+max_visibility_distance = 1500.0
+
+[node name="LODManager" type="Node" parent="VisibilityManager"]
+script = ExtResource("6_05jo7")
+impostor_distance = 1000.0
+
+[node name="ImpostorGenerator" type="Node" parent="VisibilityManager"]
+script = ExtResource("7_nix7l")

@@ -28,19 +28,19 @@ const GRID_V: float = 2.5    # Vertical grid (heightlock compatible)
 # Visibility/LOD settings - applies to all MeshInstance3D children
 @export_category("Visibility Range")
 @export var use_visibility_range: bool = false  # Enable distance-based visibility
-@export var visibility_range_begin: float = 0.0:  # Start fading in at this distance
+@export var visibility_range_begin: float = 0.0:  # Visible starting from this distance (usually 0)
 	set(value):
 		visibility_range_begin = value
 		if use_visibility_range:
 			_apply_visibility_range()
 
-@export var visibility_range_end: float = 1000.0:  # Fully hidden beyond this distance
+@export var visibility_range_end: float = 1000.0:  # Hidden beyond this distance
 	set(value):
 		visibility_range_end = value
 		if use_visibility_range:
 			_apply_visibility_range()
 
-@export var visibility_fade_mode: int = 0:  # 0=Disabled, 1=Self, 2=Dependencies
+@export var visibility_fade_mode: int = 1:  # 0=Disabled (pop), 1=Self (smooth fade), 2=Dependencies
 	set(value):
 		visibility_fade_mode = value
 		if use_visibility_range:

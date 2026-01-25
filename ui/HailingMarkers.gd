@@ -53,7 +53,7 @@ func _ready():
 func _create_marker_textures():
 	# Load marker sprite sheet (144x48, three 48x48 markers)
 	# Layout: [destination | unselected fare | selected fare]
-	var sprite_sheet = load("res://markers.png")
+	var sprite_sheet = load("res://files/markers.png")
 	if not sprite_sheet:
 		push_error("HailingMarkers: Failed to load markers.png")
 		return

@@ -32,7 +32,7 @@ func _create_visuals():
 	marker_sprite.name = "WaypointSprite"
 
 	# Load destination marker from sprite sheet (leftmost 48x48 region)
-	var sprite_sheet = load("res://markers.png")
+	var sprite_sheet = load("res://files/markers.png")
 	if sprite_sheet:
 		var atlas = AtlasTexture.new()
 		atlas.atlas = sprite_sheet

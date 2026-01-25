@@ -9,8 +9,7 @@ signal visibility_updated(stats: Dictionary)
 # Global visibility settings (applied to all building blocks)
 @export_category("Distance Tiers")
 @export var enable_visibility_ranges: bool = true
-@export var near_distance: float = 300.0    # Full detail up to here
-@export var far_distance: float = 800.0     # Fade out/hide beyond here
+@export var max_visibility_distance: float = 800.0  # Hidden beyond this distance
 @export var fade_mode: int = 1              # 0=Disabled, 1=Self fade, 2=Dependencies
 
 @export_category("Auto-Apply")
@@ -88,8 +87,8 @@ func apply_to_all_blocks():
 	_stats.total_blocks = count
 	_stats.with_visibility_range = count if enable_visibility_ranges else 0
 	
-	print("VisibilityManager: Applied visibility range to %d blocks (%.0f-%.0fm)" % [
-		count, near_distance, far_distance
+	print("VisibilityManager: Applied visibility range to %d blocks (0-%.0fm)" % [
+		count, max_visibility_distance
 	])
 	
 	visibility_updated.emit(_stats)
@@ -112,7 +111,8 @@ func _apply_to_children(node: Node, count: int) -> int:
 func _apply_to_block(block: BuildingBlock):
 	"""Apply visibility settings to a single block."""
 	if enable_visibility_ranges:
-		block.set_visibility_range(near_distance, far_distance, fade_mode)
+		# begin=0 means visible from 0m, end=max means hidden beyond max
+		block.set_visibility_range(0.0, max_visibility_distance, fade_mode)
 	else:
 		block.disable_visibility_range()
 
@@ -146,10 +146,9 @@ func _scan_children(node: Node, new_count: int) -> int:
 	return new_count
 
 
-func set_distances(near: float, far: float):
-	"""Update distance thresholds and reapply to all blocks."""
-	near_distance = near
-	far_distance = far
+func set_max_distance(distance: float):
+	"""Update max visibility distance and reapply to all blocks."""
+	max_visibility_distance = distance
 	apply_to_all_blocks()
 
 
