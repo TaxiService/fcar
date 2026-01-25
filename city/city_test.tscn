@@ -78,7 +78,8 @@ impostor_distance = 1500.0
 
 [node name="ImpostorGenerator" type="Node" parent="VisibilityManager"]
 script = ExtResource("7_nix7l")
-render_scale = 0.8
+sprite_size = 64
+render_scale = 0.5
 
 [node name="LODIntegration" type="Node" parent="VisibilityManager"]
 script = ExtResource("8_nix7l")

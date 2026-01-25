@@ -157,7 +157,7 @@ func _generate_impostor_for_block(scene: PackedScene) -> Dictionary:
 		# Position camera around the block
 		_camera.position = Vector3(
 			sin(angle) * cam_distance,
-			block_size.y * 0.3,  # Slightly above center
+			-block_size.y * 0.1,  # Slightly above center
 			cos(angle) * cam_distance
 		)
 		_camera.look_at(Vector3.ZERO, Vector3.UP)
