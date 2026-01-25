@@ -33,9 +33,9 @@ signal spawn_complete(count: int)
 @export var warm_pool_on_start: bool = true  # Create pool during loading
 
 @export_category("Performance")
-@export var despawn_distance: float = 800.0  # Remove people beyond this distance
-@export var despawn_check_interval: float = 5.0  # Check every N seconds
-@export var max_total_people: int = 3000  # Hard cap on total people
+@export var despawn_distance: float = 550.0  # Remove people beyond this (should be >= LOD hide distance)
+@export var despawn_check_interval: float = 3.0  # Check every N seconds
+@export var max_total_people: int = 2000  # Hard cap on total people
 
 # Spawning configuration  
 @export_category("Spawning")
@@ -94,6 +94,11 @@ var _spawn_queue: Array[Dictionary] = []  # [{surface, wants_dest, wants_group, 
 var _material_cache: Dictionary = {}  # color_hash -> ShaderMaterial
 var _shader: Shader
 
+# Pixel LOD materials (small set for maximum batching)
+var _pixel_material_cache: Dictionary = {}  # quantized_color_key -> ShaderMaterial
+var _pixel_texture: ImageTexture = null  # 1x1 white texture for pixel sprites
+const PIXEL_LOD_COLOR_LEVELS: int = 4  # Quantize to 4 levels per channel = 64 colors max
+
 
 # Color sets
 var color_sets: Array[PackedColorArray] = []
@@ -109,7 +114,8 @@ func _ready():
 	_load_spritesheet()
 	_load_color_sets()
 	_shader = load("res://mats/person_sprite.gdshader")
-	
+	_create_pixel_texture()
+
 	# Create pool container (keeps pooled nodes in tree but hidden)
 	_pool_container = Node.new()
 	_pool_container.name = "PersonPool"
@@ -221,51 +227,66 @@ func _process(delta: float):
 		_process_check_timer = 0.0
 		_update_process_states()
 	
-	# Despawn distant people
+	# Despawn distant people and enforce cap
 	_despawn_timer += delta
 	if _despawn_timer >= despawn_check_interval:
 		_despawn_timer = 0.0
 		_despawn_distant_people()
-	# Add this temporarily at the end of _process() in PeopleManager:
-	if Engine.get_frames_drawn() % 300 == 0:
-		print("=== DEBUG ===")
-		print("Material cache size: ", _material_cache.size())
-		print("Total people: ", all_people.size())
+		_enforce_population_cap()
+	# Debug print (every 300 frames)
+	if verbose_logging and Engine.get_frames_drawn() % 300 == 0:
+		print("=== PeopleManager ===")
+		print("  Materials: %d close + %d pixel" % [_material_cache.size(), _pixel_material_cache.size()])
+		print("  Total people: ", all_people.size())
+		print("  Pool available: ", _pool.size())
 
 
 func _process_spawn_queue():
 	var spawned_this_frame = 0
-	
+
 	while not _spawn_queue.is_empty() and spawned_this_frame < spawns_per_frame:
+		# Enforce cap
+		if all_people.size() >= max_total_people:
+			_spawn_queue.clear()
+			break
+
 		var spawn_data = _spawn_queue.pop_front()
-		
+
 		# Check if surface is still valid (might have been freed)
 		if not is_instance_valid(spawn_data.surface):
 			continue
-		
+
 		if spawn_data.wants_group:
 			_do_spawn_group(spawn_data.surface, spawn_data.group_size)
 		else:
 			var person = _do_spawn_person(spawn_data.surface)
 			if person and spawn_data.wants_dest:
 				_assign_destination(person, spawn_data.surface)
-		
+
 		spawned_this_frame += 1
 
 
 func _queue_spawns_on_surfaces():
+	# Enforce population cap - don't queue spawns if at limit
+	if all_people.size() >= max_total_people:
+		return
+
 	# Clean up stale references
 	registered_surfaces = registered_surfaces.filter(func(s): return is_instance_valid(s))
-	
+
 	for surface in registered_surfaces:
 		if not surface.enabled:
 			continue
 		if not surface.can_spawn_more():
 			continue
-		
+
+		# Check cap again (might have queued enough already)
+		if all_people.size() + _spawn_queue.size() >= max_total_people:
+			break
+
 		var wants_destination = randf() < spawn_with_destination_chance
 		var wants_group = wants_destination and randf() < group_spawn_chance
-		
+
 		_spawn_queue.append({
 			"surface": surface,
 			"wants_dest": wants_destination,
@@ -302,13 +323,54 @@ func _despawn_distant_people():
 			for surface in registered_surfaces:
 				if is_instance_valid(surface):
 					surface.spawned_people.erase(person)
-			
-			person.queue_free()
-			all_people.remove_at(i)
+
+			# Return to pool (removes from all_people internally)
+			_return_to_pool(person)
 			despawned += 1
 	
 	if despawned > 0 and verbose_logging:
 		print("PeopleManager: Despawned %d distant people, %d remaining" % [despawned, all_people.size()])
+
+
+func _enforce_population_cap():
+	# If over max, cull the furthest people
+	var overflow = all_people.size() - max_total_people
+	if overflow <= 0:
+		return
+
+	if not Person.lod_camera:
+		return
+
+	var camera_pos = Person.lod_camera.global_position
+
+	# Build list of (person, distance_sq) for cullable people
+	var cullable: Array = []
+	for person in all_people:
+		if not is_instance_valid(person):
+			continue
+		# Don't cull people interacting with player
+		if person.current_state in [Person.State.BOARDING, Person.State.RIDING,
+									 Person.State.EXITING, Person.State.HAILING]:
+			continue
+		var dx = person.global_position.x - camera_pos.x
+		var dz = person.global_position.z - camera_pos.z
+		cullable.append({"person": person, "dist_sq": dx * dx + dz * dz})
+
+	# Sort by distance (furthest first)
+	cullable.sort_custom(func(a, b): return a.dist_sq > b.dist_sq)
+
+	# Cull the furthest ones
+	var culled = 0
+	for i in range(min(overflow, cullable.size())):
+		var person = cullable[i].person
+		for surface in registered_surfaces:
+			if is_instance_valid(surface):
+				surface.spawned_people.erase(person)
+		_return_to_pool(person)
+		culled += 1
+
+	if culled > 0 and verbose_logging:
+		print("PeopleManager: Culled %d overflow people, %d remaining" % [culled, all_people.size()])
 
 
 func _do_spawn_person(surface: SpawnSurface) -> Person:
@@ -339,6 +401,10 @@ func _do_spawn_person(surface: SpawnSurface) -> Person:
 	# Get cached material (shared with others using same color+sprite)
 	var mat = _get_cached_material(color, sprite_tex)
 	person.set_shared_material(mat)
+
+	# Also set pixel LOD material (quantized color for better batching)
+	var pixel_mat = _get_pixel_material(color)
+	person.set_pixel_material(pixel_mat)
 	
 	# Set sprite (texture already in material, but Sprite3D needs it too)
 	person.set_sprite(sprite_tex, sprite_index)
@@ -407,9 +473,8 @@ func _get_cached_material(color: Color, sprite_tex: AtlasTexture) -> ShaderMater
 		return _material_cache[cache_key]
 	
 	# Create new material
-	var shader = load("res://person_sprite.gdshader")
 	var mat = ShaderMaterial.new()
-	mat.shader = shader
+	mat.shader = _shader
 	mat.set_shader_parameter("color_add", Vector3(color.r, color.g, color.b))
 	mat.set_shader_parameter("texture_albedo", sprite_tex)
 	
@@ -515,8 +580,10 @@ func spawn_person_at(position: Vector3, bounds_min: Vector3 = Vector3.ZERO, boun
 	var sprite_tex = spritesheet.get_frame(sprite_index)
 	
 	# Use black tint for manually spawned (or pass color as parameter)
-	var mat = _get_cached_material(Color.BLACK, sprite_tex)
+	var color = Color.BLACK
+	var mat = _get_cached_material(color, sprite_tex)
 	person.set_shared_material(mat)
+	person.set_pixel_material(_get_pixel_material(color))
 	person.set_sprite(sprite_tex, sprite_index)
 	
 	if bounds_min != Vector3.ZERO or bounds_max != Vector3.ZERO:
@@ -726,11 +793,48 @@ func reload_sprites():
 					person.refresh_sprite(tex)
 
 
+# === PIXEL LOD ===
+
+func _create_pixel_texture():
+	# Create a 1x1 white texture for pixel LOD sprites
+	var img = Image.create(1, 1, false, Image.FORMAT_RGBA8)
+	img.set_pixel(0, 0, Color.WHITE)
+	_pixel_texture = ImageTexture.create_from_image(img)
+
+
+func _quantize_color(color: Color) -> Color:
+	# Quantize color to reduce unique materials for better batching
+	# With 4 levels per channel: 0, 0.33, 0.66, 1.0
+	var step = 1.0 / (PIXEL_LOD_COLOR_LEVELS - 1)
+	var r = round(color.r / step) * step
+	var g = round(color.g / step) * step
+	var b = round(color.b / step) * step
+	return Color(r, g, b)
+
+
+func _get_pixel_material(color: Color) -> ShaderMaterial:
+	# Get or create a pixel LOD material for this (quantized) color
+	var quantized = _quantize_color(color)
+	var key = "%02x%02x%02x" % [int(quantized.r * 255), int(quantized.g * 255), int(quantized.b * 255)]
+
+	if _pixel_material_cache.has(key):
+		return _pixel_material_cache[key]
+
+	# Create new pixel material
+	var mat = ShaderMaterial.new()
+	mat.shader = _shader
+	mat.set_shader_parameter("color_add", Vector3(quantized.r, quantized.g, quantized.b))
+	mat.set_shader_parameter("texture_albedo", _pixel_texture)
+
+	_pixel_material_cache[key] = mat
+	return mat
+
+
 # === DEBUG ===
 
 func print_status():
 	print("PeopleManager Status:")
 	print("  Pool: %d available, %d active" % [_pool.size(), all_people.size()])
 	print("  Spawn queue: %d pending" % _spawn_queue.size())
-	print("  Materials cached: %d" % _material_cache.size())
+	print("  Materials cached: %d (close) + %d (pixel)" % [_material_cache.size(), _pixel_material_cache.size()])
 	print("  Surfaces: %d registered" % registered_surfaces.size())

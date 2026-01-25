@@ -16,6 +16,8 @@ static var lod_max_distance_squared: float = 250000.0  # 500^2, for fast distanc
 static var lod_max_height_above: float = 200.0  # Hide if this much above player
 static var lod_update_interval: float = 0.5  # Check every N seconds (stagger checks)
 static var lod_enabled: bool = true
+static var lod_pixel_distance: float = 150.0  # Switch to pixel sprite beyond this
+static var lod_pixel_distance_squared: float = 22500.0  # 150^2
 
 # Configuration (set by PeopleManager)
 var walk_speed_min: float = 0.8
@@ -67,6 +69,11 @@ var relocation_speed: float = 2.0  # Faster than normal walk
 # LOD/Culling instance state
 var lod_timer: float = 0.0  # Stagger LOD checks
 var lod_check_offset: float = 0.0  # Random offset to distribute checks
+var _close_material: ShaderMaterial = null  # Full-detail material
+var _pixel_material: ShaderMaterial = null  # Distant pixel material
+var _using_pixel_lod: bool = false  # Currently using pixel material
+var _close_texture: Texture2D = null  # Full sprite texture
+var _close_pixel_size: float = 0.003  # Normal pixel size
 
 
 func _ready():
@@ -88,7 +95,32 @@ func _ready():
 
 func set_shared_material(mat: ShaderMaterial):
 	# Use shared material from PeopleManager (for color sets)
+	_close_material = mat
 	material_override = mat
+	_using_pixel_lod = false
+
+
+func set_pixel_material(mat: ShaderMaterial):
+	# Set the distant pixel LOD material
+	_pixel_material = mat
+
+
+func _switch_to_pixel_lod():
+	if _using_pixel_lod:
+		return
+	if _pixel_material:
+		material_override = _pixel_material
+		pixel_size = 0.02  # Larger pixels = smaller on screen but visible
+		_using_pixel_lod = true
+
+
+func _switch_to_close_lod():
+	if not _using_pixel_lod:
+		return
+	if _close_material:
+		material_override = _close_material
+		pixel_size = _close_pixel_size
+		_using_pixel_lod = false
 
 
 func wants_ride() -> bool:
@@ -122,37 +154,13 @@ func start_relocating(target_pos: Vector3, surface: Node):
 	_enter_state(State.RELOCATING)
 
 
-func _process_old(delta: float):
-	# RIDING passengers: force invisible and skip all LOD checks
-	if current_state == State.RIDING:
-		visible = false
-		# Still process state logic (position following car)
-		state_timer += delta
-		hail_time += delta
-		_process_riding(delta)
-		return  # Skip everything else
-
-	# LOD/Culling check (staggered for performance)
-	if lod_enabled:
-		lod_timer += delta
-		if lod_timer >= lod_check_offset:
-			lod_timer = 0.0
-			lod_check_offset = lod_update_interval  # Reset to interval after first check
-			_update_lod_visibility()
-
-# === OPTIONAL: Optimized _process() ===
-# This version skips more work when the person is hidden
-# Replace your existing _process() with this if desired:
-
 func _process(delta: float):
 	# Fast path: RIDING passengers skip everything except position update
-	# RIDING passengers: force invisible and minimal processing
 	if current_state == State.RIDING:
 		visible = false
-		# Just follow the car, nothing else
 		if is_instance_valid(target_car):
 			global_position = target_car.global_position
-		return  # Skip everything else - no LOD check needed
+		return
 
 	# LOD/Culling check (staggered for performance)
 	if lod_enabled:
@@ -161,31 +169,22 @@ func _process(delta: float):
 			lod_timer = 0.0
 			lod_check_offset = lod_update_interval
 			_update_lod_visibility()
-			# If we just got hidden, _update_lod_visibility called set_process(false)
-			# so this will be our last frame until we're visible again
+			# If we just got hidden, this will be our last frame
 			if not visible:
 				return
-	
-	# Always update timers (needed for state transitions even when hidden)
+
+	# Update timers
 	state_timer += delta
 	hail_time += delta
-	
-	# LOD check (staggered across people)
-	if lod_enabled:
-		lod_timer += delta
-		if lod_timer >= lod_check_offset:
-			lod_timer = 0.0
-			lod_check_offset = lod_update_interval
-			_update_lod_visibility()
-	
+
 	# Skip expensive logic if hidden by LOD
 	if not visible:
 		# Still handle state transitions for waiting people
 		if current_state == State.WAITING and state_timer >= state_duration:
 			_enter_state(State.WALKING)
 		return
-	
-	# Process current state (only if visible)
+
+	# Process current state
 	match current_state:
 		State.WALKING:
 			_process_walking(delta)
@@ -197,32 +196,6 @@ func _process(delta: float):
 			_process_hailing(delta)
 		State.BOARDING:
 			_process_boarding(delta)
-		State.EXITING:
-			_process_exiting(delta)
-		State.ARRIVED:
-			_process_arrived(delta)
-		State.RELOCATING:
-			_process_relocating(delta)
-
-	# Don't process logic if hidden by LOD
-	if not visible:
-		return
-
-	state_timer += delta
-	hail_time += delta
-
-	match current_state:
-		State.WALKING:
-			_process_walking(delta)
-		State.STOPPING:
-			_process_stopping(delta)
-		State.WAITING:
-			_process_waiting(delta)
-		State.HAILING:
-			_process_hailing(delta)
-		State.BOARDING:
-			_process_boarding(delta)
-		# Note: RIDING is handled at top of _process() and returns early
 		State.EXITING:
 			_process_exiting(delta)
 		State.ARRIVED:
@@ -444,16 +417,14 @@ func set_bounds(min_pos: Vector3, max_pos: Vector3):
 func set_sprite(tex: AtlasTexture, index: int):
 	texture = tex
 	sprite_index = index
-
-	# Pass texture to shader if material is set
-	#if material_override and material_override is ShaderMaterial:
-	#	material_override.set_shader_parameter("texture_albedo", tex)
+	_close_texture = tex
 
 	# Scale sprite to be ~1.8m tall max
 	# Sprite is 300x600 pixels, so aspect ratio is 0.5
 	# pixel_size controls world units per pixel
 	# At pixel_size = 0.003, 600 pixels = 1.8m
-	pixel_size = 0.003
+	_close_pixel_size = 0.003
+	pixel_size = _close_pixel_size
 
 	# Offset sprite so origin is at bottom center (feet)
 	# Shift up by half the sprite height in pixels
@@ -474,12 +445,14 @@ func _update_lod_visibility():
 		# No camera set, always visible and processing
 		visible = true
 		set_process(true)
+		_switch_to_close_lod()
 		return
 
 	# Always show people who are boarding or exiting (actively interacting with player)
 	if current_state in NEAR_PLAYER_STATES:
 		visible = true
 		set_process(true)
+		_switch_to_close_lod()
 		return
 
 	var camera_pos = lod_camera.global_position
@@ -492,7 +465,7 @@ func _update_lod_visibility():
 	# Hide if too far horizontally
 	if horiz_dist_sq > lod_max_distance_squared:
 		visible = false
-		set_process(false)  # <-- COMPLETELY STOP PROCESSING
+		set_process(false)
 		return
 
 	# Calculate height difference relative to player
@@ -501,12 +474,18 @@ func _update_lod_visibility():
 	# Hide if significantly above player (looking down on distant tiny people)
 	if height_diff > lod_max_height_above:
 		visible = false
-		set_process(false)  # <-- COMPLETELY STOP PROCESSING
+		set_process(false)
 		return
 
-	# Otherwise visible and processing
+	# Visible - choose LOD level based on distance
 	visible = true
 	set_process(true)
+
+	# Switch to pixel LOD if beyond threshold
+	if horiz_dist_sq > lod_pixel_distance_squared:
+		_switch_to_pixel_lod()
+	else:
+		_switch_to_close_lod()
 	
 func _reset_for_reuse():
 	# Called when person is acquired from pool and reused
@@ -544,6 +523,9 @@ func _reset_for_reuse():
 	# LOD - randomize offset to distribute checks across frames
 	lod_timer = 0.0
 	lod_check_offset = randf() * lod_update_interval
-	
+	_using_pixel_lod = false
+	_close_material = null
+	_pixel_material = null
+
 	# Visual
 	visible = true
