@@ -1,8 +1,8 @@
 [gd_scene load_steps=23 format=3 uid="uid://cycok6yqmtjes"]
 
-[ext_resource type="Script" uid="uid://c7m1dsqpdck13" path="res://FCar.gd" id="1_uqo8e"]
+[ext_resource type="Script" uid="uid://c7m1dsqpdck13" path="res://fcar/FCar.gd" id="1_uqo8e"]
 [ext_resource type="Script" uid="uid://bbg344k4s2ltu" path="res://ui/UIController.gd" id="2_ko0cq"]
-[ext_resource type="Script" uid="uid://313aqakyo1m1" path="res://Camera3D.gd" id="2_rue2e"]
+[ext_resource type="Script" uid="uid://313aqakyo1m1" path="res://fcar/Camera3D.gd" id="2_rue2e"]
 [ext_resource type="Material" uid="uid://cc37tlrahc1tj" path="res://mats/yellow.tres" id="3_rue2e"]
 [ext_resource type="Material" uid="uid://ce3eavktn35d4" path="res://mats/grey.tres" id="4_myg2s"]
 

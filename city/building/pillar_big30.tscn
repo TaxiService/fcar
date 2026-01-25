@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" uid="uid://cmafag82uyxu7" path="res://city/BuildingBlock.gd" id="1_tc034"]
 [ext_resource type="Material" uid="uid://c84qehqsj2tk1" path="res://mats/floor_small.tres" id="2_d04jg"]
-[ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://city/ConnectionPoint.gd" id="2_sqhew"]
+[ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://systems/ConnectionPoint.gd" id="2_sqhew"]
 
 [sub_resource type="CylinderShape3D" id="CylinderShape3D_sqhew"]
 height = 30.0

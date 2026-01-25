@@ -1,7 +1,7 @@
 [gd_scene load_steps=11 format=3 uid="uid://b56tsitj065r7"]
 
 [ext_resource type="Script" uid="uid://cmafag82uyxu7" path="res://city/BuildingBlock.gd" id="1_utfq7"]
-[ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://city/ConnectionPoint.gd" id="3_joib8"]
+[ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://systems/ConnectionPoint.gd" id="3_joib8"]
 [ext_resource type="Material" uid="uid://d1752hlai3xtn" path="res://mats/floor.tres" id="3_n7dfq"]
 [ext_resource type="Material" uid="uid://c84qehqsj2tk1" path="res://mats/floor_small.tres" id="4_kdxt2"]
 

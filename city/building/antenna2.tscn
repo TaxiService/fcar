@@ -3,7 +3,7 @@
 [ext_resource type="Script" uid="uid://cmafag82uyxu7" path="res://city/BuildingBlock.gd" id="1_gra87"]
 [ext_resource type="Material" uid="uid://c84qehqsj2tk1" path="res://mats/floor_small.tres" id="2_h4pit"]
 [ext_resource type="Material" uid="uid://d1752hlai3xtn" path="res://mats/floor.tres" id="3_fubs0"]
-[ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://city/ConnectionPoint.gd" id="4_5g2un"]
+[ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://systems/ConnectionPoint.gd" id="4_5g2un"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_5dwv6"]
 size = Vector3(1, 7.5, 3)

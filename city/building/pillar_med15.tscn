@@ -1,7 +1,7 @@
 [gd_scene load_steps=6 format=3 uid="uid://3g4er5rdumw4"]
 
 [ext_resource type="Script" uid="uid://cmafag82uyxu7" path="res://city/BuildingBlock.gd" id="1_it6v4"]
-[ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://city/ConnectionPoint.gd" id="3_1hy1k"]
+[ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://systems/ConnectionPoint.gd" id="3_1hy1k"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_5dwv6"]
 size = Vector3(5, 15, 5)

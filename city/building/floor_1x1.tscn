@@ -1,7 +1,7 @@
 [gd_scene load_steps=6 format=3 uid="uid://5wk70s313e55"]
 
 [ext_resource type="Script" uid="uid://cmafag82uyxu7" path="res://city/BuildingBlock.gd" id="1_jbuvr"]
-[ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://city/ConnectionPoint.gd" id="3_ivjda"]
+[ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://systems/ConnectionPoint.gd" id="3_ivjda"]
 [ext_resource type="Material" uid="uid://d1752hlai3xtn" path="res://mats/floor.tres" id="3_n62i2"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_5dwv6"]

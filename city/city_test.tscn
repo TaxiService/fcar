@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" uid="uid://crluh2jxfkkv4" path="res://city/CityGenerator.gd" id="1_generator"]
 [ext_resource type="Script" uid="uid://dg28ig0ty1t3a" path="res://ui/LoadingScreen.gd" id="1_tegu2"]
-[ext_resource type="Script" uid="uid://dvu3f10fe6r2" path="res://PeopleManager.gd" id="1_yage8"]
+[ext_resource type="Script" uid="uid://dvu3f10fe6r2" path="res://systems/PeopleManager.gd" id="1_yage8"]
 [ext_resource type="PackedScene" uid="uid://ctktauacq45qg" path="res://free_cam.tscn" id="3_ao2hm"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
@@ -54,7 +54,7 @@ transform = Transform3D(1, 0, 0, 0, 0.9658184, 0.25921968, 0, -0.25921968, 0.965
 [node name="CityGenerator" type="Node3D" parent="."]
 script = ExtResource("1_generator")
 building_max_depth = 7
-building_branch_chance = 0.2
+building_branch_chance = 0.1
 building_max_total = 2520
 top_seed_probability = 0.1
 bottom_seed_probability = 0.1
