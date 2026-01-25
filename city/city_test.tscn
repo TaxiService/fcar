@@ -1,9 +1,10 @@
-[gd_scene load_steps=12 format=3 uid="uid://c8xqj5kvmyxrf"]
+[gd_scene load_steps=13 format=3 uid="uid://c8xqj5kvmyxrf"]
 
 [ext_resource type="Script" uid="uid://crluh2jxfkkv4" path="res://city/CityGenerator.gd" id="1_generator"]
 [ext_resource type="Script" uid="uid://dg28ig0ty1t3a" path="res://ui/LoadingScreen.gd" id="1_tegu2"]
 [ext_resource type="Script" uid="uid://dvu3f10fe6r2" path="res://systems/PeopleManager.gd" id="1_yage8"]
 [ext_resource type="PackedScene" uid="uid://ctktauacq45qg" path="res://free_cam.tscn" id="3_ao2hm"]
+[ext_resource type="Script" uid="uid://348dsywt03wg" path="res://ui/PerformanceDebug.gd" id="5_lcptw"]
 [ext_resource type="Script" uid="uid://5vjnpmiwnolm" path="res://city/VisibilityManager.gd" id="5_yage8"]
 [ext_resource type="Script" uid="uid://tpanuk0qx6yu" path="res://city/BuildingLODManager.gd" id="6_05jo7"]
 [ext_resource type="Script" uid="uid://inwuan5ora6n" path="res://city/BuildingImpostorGenerator.gd" id="7_nix7l"]
@@ -43,6 +44,9 @@ volumetric_fog_length = 2500.0
 [node name="LoadingScreen" type="CanvasLayer" parent="."]
 script = ExtResource("1_tegu2")
 
+[node name="F3 debug" type="CanvasLayer" parent="."]
+script = ExtResource("5_lcptw")
+
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
 transform = Transform3D(0.86601907, -0.25000688, 0.43302146, 0, 0.8660238, 0.50000274, -0.500011, -0.4330119, 0.7499931, 0, 1000, 0)
 light_energy = 1.2
@@ -67,6 +71,37 @@ edge_top_sizes = 1
 
 [node name="PeopleManager" type="Node" parent="."]
 script = ExtResource("1_yage8")
+spritesheet_path = null
+sprite_width = null
+sprite_height = null
+sprite_count = null
+walk_speed_min = null
+walk_speed_max = null
+walk_duration_min = null
+walk_duration_max = null
+wait_duration_min = null
+wait_duration_max = null
+pool_size = null
+pool_growth_size = null
+warm_pool_on_start = null
+spawn_interval = null
+auto_spawn = null
+spawns_per_frame = null
+spawn_queue_enabled = null
+spawn_with_destination_chance = null
+in_a_hurry_chance = null
+hurry_time = null
+min_fare_distance = null
+group_spawn_chance = null
+default_group_size = null
+bob_rate_base = null
+bob_rate_variance = null
+bob_hurry_multiplier = null
+bob_height = null
+color_sets_folder = null
+process_distance = null
+process_check_interval = null
+verbose_logging = null
 
 [node name="VisibilityManager" type="Node" parent="."]
 script = ExtResource("5_yage8")
