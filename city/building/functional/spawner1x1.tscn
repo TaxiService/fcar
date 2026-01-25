@@ -21,7 +21,6 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5432281, 0)
 script = ExtResource("2_at7s7")
 enabled = true
 max_people = 7
-color_set_index = 2
 bounds_size = Vector3(25, 0, 25)
 
 [node name="Conn_Plug_Large" type="Marker3D" parent="."]

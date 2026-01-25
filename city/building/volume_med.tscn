@@ -51,7 +51,6 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 32.5, 0)
 script = ExtResource("2_ssnx1")
 enabled = true
 max_people = 7
-color_set_index = 0
 bounds_size = Vector3(25, 0, 15)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
