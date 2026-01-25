@@ -23,6 +23,8 @@ var current_yaw: float = 0.0
 var _alt_was_pressed: bool = false  # For detecting Alt key press
 var _booster_roll_differential: float = 0.0  # Current shin offset (left - right)
 var _smoothed_pitch_input: float = 0.0  # Smoothed pitch input to avoid bobbing
+var _backward_was_pressed: bool = false  # For detecting S key transitions
+var _crouch_locks_backward: bool = false  # When C was held before S pressed, lock boosters to C position
 
 # Control lock state (F key) - locks current inputs, player can look around freely
 var controls_locked: bool = false
@@ -841,13 +843,28 @@ func _update_booster_assist(delta: float):
 	var accumulated_thigh: float = 0.0
 	var accumulated_shin: float = 0.0
 
+	# Check input states for C+S lock logic
+	var crouch_pressed = _is_action_pressed_locked("crouch")
+	var backward_pressed = _is_action_pressed_locked("backward")
+
+	# Update C-locks-S state: when C is held before S is pressed, boosters stay at C position
+	if not backward_pressed:
+		# S released - reset lock
+		_crouch_locks_backward = false
+	elif backward_pressed and not _backward_was_pressed:
+		# S just pressed this frame
+		if crouch_pressed:
+			# C was already held when S was pressed - enable lock
+			_crouch_locks_backward = true
+	_backward_was_pressed = backward_pressed
+
 	# Check each direction and accumulate
 	if _is_action_pressed_locked("forward"):  # W
 		accumulated_thigh += booster_preset_forward.x
 		accumulated_shin += booster_preset_forward.y
 		input_count += 1
 
-	if _is_action_pressed_locked("backward"):  # S
+	if backward_pressed and not _crouch_locks_backward:  # S (skip if C locked it)
 		accumulated_thigh += booster_preset_backward.x
 		accumulated_shin += booster_preset_backward.y
 		input_count += 1
@@ -857,7 +874,7 @@ func _update_booster_assist(delta: float):
 		accumulated_shin += booster_preset_up.y
 		input_count += 1
 
-	if _is_action_pressed_locked("crouch"):  # C
+	if crouch_pressed:  # C
 		accumulated_thigh += booster_preset_down.x
 		accumulated_shin += booster_preset_down.y
 		input_count += 1
