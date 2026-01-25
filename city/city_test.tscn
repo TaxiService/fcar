@@ -53,8 +53,6 @@ transform = Transform3D(1, 0, 0, 0, 0.9658184, 0.25921968, 0, -0.25921968, 0.965
 
 [node name="CityGenerator" type="Node3D" parent="."]
 script = ExtResource("1_generator")
-world_seed = 1729
-use_random_seed = false
 building_max_depth = 7
 building_branch_chance = 0.2
 building_max_total = 2520

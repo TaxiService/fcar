@@ -12,13 +12,11 @@ const TF = ConnectionPoint.TypeFlags
 const SF = ConnectionPoint.SizeFlags
 
 @export_category("Random Seed")
-@export var world_seed: int = 0  # 0 = use random seed
-@export var use_random_seed: bool = true  # Generate new seed each run
+@export var world_seed: int = 1729  # 0 = use random seed
+@export var use_random_seed: bool = false  # Generate new seed each run
 @export var show_seed_in_log: bool = true  # Print seed for reproduction
 
-var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
-var _current_seed: int = 0
-
+@export_category("Citygen")
 # Grid settings
 @export var hex_edge_length: float = 420.0  # Distance between adjacent spires (meters)
 @export var grid_rings: int = 3  # Number of hex rings around center (0 = just center hex)
@@ -141,6 +139,8 @@ var buildings_container: Node3D
 @export_flags("Small", "Medium", "Large") var edge_bottom_sizes: int = SF.SMALL
 
 var building_generator: BuildingGenerator
+var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
+var _current_seed: int = 0
 
 # Stored connector data for building generation: [{start, end, height, biome_idx}]
 var connector_data: Array[Dictionary] = []
@@ -202,6 +202,24 @@ func _create_containers():
 	building_generator.name = "BuildingGenerator"
 	buildings_container.add_child(building_generator)
 
+func _initialize_rng():
+	if use_random_seed:
+		_current_seed = int(Time.get_unix_time_from_system() * 1000) % 2147483647
+	else:
+		_current_seed = world_seed
+	_rng.seed = _current_seed
+	if show_seed_in_log:
+		print("CityGenerator: Using seed %d" % _current_seed)
+
+func get_current_seed() -> int:
+	return _current_seed
+
+func _shuffle_array(array: Array):
+	for i in range(array.size() - 1, 0, -1):
+		var j = _rng.randi() % (i + 1)
+		var temp = array[i]
+		array[i] = array[j]
+		array[j] = temp
 
 func generate_city():
 	city_generation_started.emit()
@@ -464,12 +482,10 @@ func _make_edge_key_indices(v1: int, v2: int) -> String:
 func _pick_weighted_from_dict(weights: Dictionary) -> String:
 	if weights.is_empty():
 		return ""
-
 	# Calculate total weight
 	var total_weight = 0.0
 	for pattern_name in weights:
 		total_weight += weights[pattern_name]
-
 	# Roll and pick
 	var roll = _rng.randf() * total_weight
 	var cumulative = 0.0
@@ -477,7 +493,6 @@ func _pick_weighted_from_dict(weights: Dictionary) -> String:
 		cumulative += weights[pattern_name]
 		if roll <= cumulative:
 			return pattern_name
-
 	# Fallback to first key
 	return weights.keys()[0]
 
@@ -738,7 +753,9 @@ func _generate_buildings():
 	building_generator.max_decoration_blocks = int(building_max_total * 0.3)  # 30% extra for decorations
 	building_generator.decoration_probability = 0.4
 	building_generator.reset()
-	
+	if building_generator.has_method("set_seed"):
+		building_generator.set_seed(_current_seed + 92711)
+
 	# Register spire AABBs
 	var spire_aabbs = _calculate_spire_aabbs()
 	building_generator.register_external_aabbs(spire_aabbs)
@@ -890,25 +907,3 @@ func _generate_buildings_sync():
 # Public API for regeneration
 func regenerate():
 	generate_city()
-
-func _initialize_rng():
-	if use_random_seed:
-		# Generate a random seed based on system time
-		_current_seed = int(Time.get_unix_time_from_system() * 1000) % 2147483647
-	else:
-		_current_seed = world_seed
-	_rng.seed = _current_seed
-	
-	if show_seed_in_log:
-		print("CityGenerator: Using seed %d" % _current_seed)
-
-func get_current_seed() -> int:
-	return _current_seed
-
-func _shuffle_array(array: Array):
-	# Fisher-Yates shuffle using seeded RNG
-	for i in range(array.size() - 1, 0, -1):
-		var j = _rng.randi() % (i + 1)
-		var temp = array[i]
-		array[i] = array[j]
-		array[j] = temp
