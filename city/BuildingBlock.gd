@@ -25,6 +25,81 @@ const GRID_V: float = 2.5    # Vertical grid (heightlock compatible)
 # Optional: limit what block types can connect here
 @export var allowed_connections: Array[BlockType] = []  # Empty = allow all
 
+# Visibility/LOD settings - applies to all MeshInstance3D children
+@export_category("Visibility Range")
+@export var use_visibility_range: bool = false  # Enable distance-based visibility
+@export var visibility_range_begin: float = 0.0:  # Start fading in at this distance
+	set(value):
+		visibility_range_begin = value
+		if use_visibility_range:
+			_apply_visibility_range()
+
+@export var visibility_range_end: float = 1000.0:  # Fully hidden beyond this distance
+	set(value):
+		visibility_range_end = value
+		if use_visibility_range:
+			_apply_visibility_range()
+
+@export var visibility_fade_mode: int = 0:  # 0=Disabled, 1=Self, 2=Dependencies
+	set(value):
+		visibility_fade_mode = value
+		if use_visibility_range:
+			_apply_visibility_range()
+
+
+func _ready():
+	# Apply visibility range on spawn if enabled
+	if use_visibility_range:
+		_apply_visibility_range()
+
+
+func _apply_visibility_range():
+	"""Apply visibility range settings to all MeshInstance3D children (recursive)."""
+	_apply_visibility_to_node(self)
+
+
+func _apply_visibility_to_node(node: Node):
+	"""Recursively apply visibility settings to a node and its children."""
+	if node is MeshInstance3D:
+		var mesh_inst = node as MeshInstance3D
+		mesh_inst.visibility_range_begin = visibility_range_begin
+		mesh_inst.visibility_range_end = visibility_range_end
+		mesh_inst.visibility_range_fade_mode = visibility_fade_mode as GeometryInstance3D.VisibilityRangeFadeMode
+	
+	# Also apply to CollisionShape3D (optional - can disable for performance)
+	# Note: Collision still works even when mesh is hidden, which may or may not be desired
+	
+	for child in node.get_children():
+		_apply_visibility_to_node(child)
+
+
+func set_visibility_range(begin: float, end: float, fade: int = 0):
+	"""Convenience function to set visibility range at runtime."""
+	visibility_range_begin = begin
+	visibility_range_end = end
+	visibility_fade_mode = fade
+	use_visibility_range = true
+	_apply_visibility_range()
+
+
+func disable_visibility_range():
+	"""Disable visibility range (show at all distances)."""
+	use_visibility_range = false
+	# Reset all meshes to no range limit
+	_reset_visibility_range(self)
+
+
+func _reset_visibility_range(node: Node):
+	"""Reset visibility range on all meshes."""
+	if node is MeshInstance3D:
+		var mesh_inst = node as MeshInstance3D
+		mesh_inst.visibility_range_begin = 0.0
+		mesh_inst.visibility_range_end = 0.0  # 0 = no limit
+		mesh_inst.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
+	
+	for child in node.get_children():
+		_reset_visibility_range(child)
+
 
 # Get all ConnectionPoint children
 func get_connection_points() -> Array[ConnectionPoint]:
