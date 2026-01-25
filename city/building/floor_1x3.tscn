@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" uid="uid://cmafag82uyxu7" path="res://city/BuildingBlock.gd" id="1_2l77p"]
 [ext_resource type="Script" uid="uid://c72sj768vn5do" path="res://systems/SpawnSurface.gd" id="2_c3me5"]
-[ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://systems/ConnectionPoint.gd" id="3_ok4mr"]
+[ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://city/ConnectionPoint.gd" id="3_ok4mr"]
 [ext_resource type="Material" uid="uid://c84qehqsj2tk1" path="res://mats/floor_small.tres" id="3_qvju2"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_5dwv6"]

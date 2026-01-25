@@ -166,7 +166,7 @@ func _start_generation():
 
 func _try_spawn_fcar():
 	# Look for FCar scene (user needs to save it from main.tscn first)
-	var fcar_path = "res://f_car.tscn"
+	var fcar_path = "res://fcar/f_car.tscn"
 	if ResourceLoader.exists(fcar_path):
 		var fcar_scene = load(fcar_path)
 		var fcar = fcar_scene.instantiate()
