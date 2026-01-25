@@ -146,12 +146,25 @@ func _process_old(delta: float):
 
 func _process(delta: float):
 	# Fast path: RIDING passengers skip everything except position update
+	# RIDING passengers: force invisible and minimal processing
 	if current_state == State.RIDING:
 		visible = false
-		state_timer += delta
-		hail_time += delta
-		_process_riding(delta)
-		return
+		# Just follow the car, nothing else
+		if is_instance_valid(target_car):
+			global_position = target_car.global_position
+		return  # Skip everything else - no LOD check needed
+
+	# LOD/Culling check (staggered for performance)
+	if lod_enabled:
+		lod_timer += delta
+		if lod_timer >= lod_check_offset:
+			lod_timer = 0.0
+			lod_check_offset = lod_update_interval
+			_update_lod_visibility()
+			# If we just got hidden, _update_lod_visibility called set_process(false)
+			# so this will be our last frame until we're visible again
+			if not visible:
+				return
 	
 	# Always update timers (needed for state transitions even when hidden)
 	state_timer += delta
@@ -363,6 +376,7 @@ func _process_relocating(delta: float):
 
 
 func _enter_state(new_state: State):
+	set_process(true)
 	current_state = new_state
 	state_timer = 0.0
 
@@ -432,8 +446,8 @@ func set_sprite(tex: AtlasTexture, index: int):
 	sprite_index = index
 
 	# Pass texture to shader if material is set
-	if material_override and material_override is ShaderMaterial:
-		material_override.set_shader_parameter("texture_albedo", tex)
+	#if material_override and material_override is ShaderMaterial:
+	#	material_override.set_shader_parameter("texture_albedo", tex)
 
 	# Scale sprite to be ~1.8m tall max
 	# Sprite is 300x600 pixels, so aspect ratio is 0.5
@@ -457,13 +471,15 @@ func _update_lod_visibility():
 	# Update visibility based on distance from camera and height relative to player
 	# Note: RIDING passengers never call this (they skip LOD entirely)
 	if not lod_camera:
-		# No camera set, always visible
+		# No camera set, always visible and processing
 		visible = true
+		set_process(true)
 		return
 
 	# Always show people who are boarding or exiting (actively interacting with player)
 	if current_state in NEAR_PLAYER_STATES:
 		visible = true
+		set_process(true)
 		return
 
 	var camera_pos = lod_camera.global_position
@@ -476,6 +492,7 @@ func _update_lod_visibility():
 	# Hide if too far horizontally
 	if horiz_dist_sq > lod_max_distance_squared:
 		visible = false
+		set_process(false)  # <-- COMPLETELY STOP PROCESSING
 		return
 
 	# Calculate height difference relative to player
@@ -484,10 +501,12 @@ func _update_lod_visibility():
 	# Hide if significantly above player (looking down on distant tiny people)
 	if height_diff > lod_max_height_above:
 		visible = false
+		set_process(false)  # <-- COMPLETELY STOP PROCESSING
 		return
 
-	# Otherwise visible
+	# Otherwise visible and processing
 	visible = true
+	set_process(true)
 	
 func _reset_for_reuse():
 	# Called when person is acquired from pool and reused

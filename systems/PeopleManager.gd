@@ -32,6 +32,11 @@ signal spawn_complete(count: int)
 @export var pool_growth_size: int = 20  # Grow pool by this many if exhausted
 @export var warm_pool_on_start: bool = true  # Create pool during loading
 
+@export_category("Performance")
+@export var despawn_distance: float = 800.0  # Remove people beyond this distance
+@export var despawn_check_interval: float = 5.0  # Check every N seconds
+@export var max_total_people: int = 3000  # Hard cap on total people
+
 # Spawning configuration  
 @export_category("Spawning")
 @export var spawn_interval: float = 2.0
@@ -89,6 +94,7 @@ var _spawn_queue: Array[Dictionary] = []  # [{surface, wants_dest, wants_group, 
 var _material_cache: Dictionary = {}  # color_hash -> ShaderMaterial
 var _shader: Shader
 
+
 # Color sets
 var color_sets: Array[PackedColorArray] = []
 
@@ -97,7 +103,7 @@ var _process_check_timer: float = 0.0
 var _player_position: Vector3 = Vector3.ZERO
 var _has_player_position: bool = false
 var _camera: Camera3D = null
-
+var _despawn_timer: float = 0.0
 
 func _ready():
 	_load_spritesheet()
@@ -214,6 +220,17 @@ func _process(delta: float):
 	if _process_check_timer >= process_check_interval:
 		_process_check_timer = 0.0
 		_update_process_states()
+	
+	# Despawn distant people
+	_despawn_timer += delta
+	if _despawn_timer >= despawn_check_interval:
+		_despawn_timer = 0.0
+		_despawn_distant_people()
+	# Add this temporarily at the end of _process() in PeopleManager:
+	if Engine.get_frames_drawn() % 300 == 0:
+		print("=== DEBUG ===")
+		print("Material cache size: ", _material_cache.size())
+		print("Total people: ", all_people.size())
 
 
 func _process_spawn_queue():
@@ -256,6 +273,43 @@ func _queue_spawns_on_surfaces():
 			"group_size": default_group_size,
 		})
 
+func _despawn_distant_people():
+	if not Person.lod_camera:
+		return
+	
+	var camera_pos = Person.lod_camera.global_position
+	var despawn_dist_sq = despawn_distance * despawn_distance
+	var despawned = 0
+	
+	# Iterate backwards for safe removal
+	for i in range(all_people.size() - 1, -1, -1):
+		var person = all_people[i]
+		if not is_instance_valid(person):
+			all_people.remove_at(i)
+			continue
+		
+		# Don't despawn people actively involved with player
+		if person.current_state in [Person.State.BOARDING, Person.State.RIDING, 
+									 Person.State.EXITING, Person.State.HAILING]:
+			continue
+		
+		var dx = person.global_position.x - camera_pos.x
+		var dz = person.global_position.z - camera_pos.z
+		var dist_sq = dx * dx + dz * dz
+		
+		if dist_sq > despawn_dist_sq:
+			# Remove from surface tracking
+			for surface in registered_surfaces:
+				if is_instance_valid(surface):
+					surface.spawned_people.erase(person)
+			
+			person.queue_free()
+			all_people.remove_at(i)
+			despawned += 1
+	
+	if despawned > 0 and verbose_logging:
+		print("PeopleManager: Despawned %d distant people, %d remaining" % [despawned, all_people.size()])
+
 
 func _do_spawn_person(surface: SpawnSurface) -> Person:
 	if not spritesheet or spritesheet.get_frame_count() == 0:
@@ -273,14 +327,21 @@ func _do_spawn_person(surface: SpawnSurface) -> Person:
 	# Material (cached by color)
 	# Resolve color set index (handles -1 = random, cached per surface)
 	var resolved_set_index = _resolve_color_set_index(surface)
-	var color = get_color_from_set(resolved_set_index, spawn_counter)
-	spawn_counter += 1
-	var mat = _get_cached_material(color)
-	person.material_override = mat
 	
-	# Sprite
-	var idx = randi() % spritesheet.get_frame_count()
-	person.set_sprite(spritesheet.get_frame(idx), idx)
+	# Pick sprite first (needed for material cache key)
+	var sprite_index = randi() % spritesheet.get_frame_count()
+	var sprite_tex = spritesheet.get_frame(sprite_index)
+	
+	# Get color for this surface
+	var color = get_color_from_set(surface.color_set_index, spawn_counter)
+	spawn_counter += 1
+	
+	# Get cached material (shared with others using same color+sprite)
+	var mat = _get_cached_material(color, sprite_tex)
+	person.set_shared_material(mat)
+	
+	# Set sprite (texture already in material, but Sprite3D needs it too)
+	person.set_sprite(sprite_tex, sprite_index)
 	
 	# Position and bounds
 	var bounds = surface.get_bounds_world()
@@ -335,18 +396,25 @@ func _do_spawn_group(surface: SpawnSurface, group_size: int):
 			person.hurry_timer = hurry_time
 
 
-func _get_cached_material(color: Color) -> ShaderMaterial:
-	# Cache materials by color to enable GPU batching
-	var key = color.to_html()
+func _get_cached_material(color: Color, sprite_tex: AtlasTexture) -> ShaderMaterial:
+	# Create cache key from color and texture
+	var color_key = "%02x%02x%02x" % [int(color.r * 255), int(color.g * 255), int(color.b * 255)]
+	var tex_id = sprite_tex.get_instance_id()
+	var cache_key = "%s_%d" % [color_key, tex_id]
 	
-	if _material_cache.has(key):
-		return _material_cache[key]
+	# Return cached material if exists
+	if _material_cache.has(cache_key):
+		return _material_cache[cache_key]
 	
+	# Create new material
+	var shader = load("res://person_sprite.gdshader")
 	var mat = ShaderMaterial.new()
-	mat.shader = _shader
+	mat.shader = shader
 	mat.set_shader_parameter("color_add", Vector3(color.r, color.g, color.b))
+	mat.set_shader_parameter("texture_albedo", sprite_tex)
 	
-	_material_cache[key] = mat
+	# Cache and return
+	_material_cache[cache_key] = mat
 	return mat
 
 
@@ -442,12 +510,14 @@ func spawn_person_at(position: Vector3, bounds_min: Vector3 = Vector3.ZERO, boun
 	person.bob_rate = bob_rate_base + randf_range(-bob_rate_variance, bob_rate_variance)
 	person.walk_speed = randf_range(walk_speed_min, walk_speed_max)
 	
-	var color = get_color_from_set(0, spawn_counter)
-	spawn_counter += 1
-	person.material_override = _get_cached_material(color)
+	# Pick random sprite
+	var sprite_index = randi() % spritesheet.get_frame_count()
+	var sprite_tex = spritesheet.get_frame(sprite_index)
 	
-	var idx = randi() % spritesheet.get_frame_count()
-	person.set_sprite(spritesheet.get_frame(idx), idx)
+	# Use black tint for manually spawned (or pass color as parameter)
+	var mat = _get_cached_material(Color.BLACK, sprite_tex)
+	person.set_shared_material(mat)
+	person.set_sprite(sprite_tex, sprite_index)
 	
 	if bounds_min != Vector3.ZERO or bounds_max != Vector3.ZERO:
 		person.set_bounds(bounds_min, bounds_max)
@@ -647,6 +717,7 @@ func _load_spritesheet():
 
 
 func reload_sprites():
+	_material_cache.clear()
 	if spritesheet and spritesheet.reload():
 		for person in all_people:
 			if is_instance_valid(person):
