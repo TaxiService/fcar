@@ -12,7 +12,7 @@ signal pool_ready(pool_size: int)
 signal spawn_complete(count: int)
 
 # Spritesheet configuration
-@export var spritesheet_path: String = "res://people5.png"
+@export var spritesheet_path: String = "res://files/people5.png"
 @export var sprite_width: int = 300
 @export var sprite_height: int = 600
 @export var sprite_count: int = 11
@@ -102,7 +102,7 @@ var _camera: Camera3D = null
 func _ready():
 	_load_spritesheet()
 	_load_color_sets()
-	_shader = load("res://person_sprite.gdshader")
+	_shader = load("res://mats/person_sprite.gdshader")
 	
 	# Create pool container (keeps pooled nodes in tree but hidden)
 	_pool_container = Node.new()
