@@ -5,7 +5,7 @@ class_name BuildingImpostorGenerator
 extends Node
 
 signal generation_started(block_count: int)
-signal generation_progress(current: int, block_name: String)
+signal generation_progress(current: int, block_name: String, preview_texture: ImageTexture)
 signal generation_complete(impostor_data: Dictionary)
 
 # Render settings
@@ -20,21 +20,26 @@ var _viewport: SubViewport
 var _camera: Camera3D
 var _light: DirectionalLight3D
 var _block_container: Node3D
+var _is_setup: bool = false
 
 # Generated data: { "block_path": { "texture": ImageTexture, "size": Vector3 } }
 var impostor_data: Dictionary = {}
 
 
 func _ready():
-	_setup_render_viewport()
+	# Defer setup to avoid issues with viewport in _ready
+	call_deferred("_setup_render_viewport")
 
 
 func _setup_render_viewport():
+	if _is_setup:
+		return
+	
 	# Create SubViewport for offscreen rendering
 	_viewport = SubViewport.new()
 	_viewport.size = Vector2i(sprite_size, sprite_size)
 	_viewport.transparent_bg = true
-	_viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
+	_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	_viewport.own_world_3d = true  # Isolated rendering
 	add_child(_viewport)
 	
@@ -49,9 +54,22 @@ func _setup_render_viewport():
 	_light.light_energy = 1.2
 	_viewport.add_child(_light)
 	
+	# Ambient light for softer shadows
+	var env = Environment.new()
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color(0.3, 0.3, 0.35)
+	env.ambient_light_energy = 0.5
+	
+	var world_env = WorldEnvironment.new()
+	world_env.environment = env
+	_viewport.add_child(world_env)
+	
 	# Container for the block being rendered
 	_block_container = Node3D.new()
 	_viewport.add_child(_block_container)
+	
+	_is_setup = true
+	print("BuildingImpostorGenerator: Render viewport ready")
 
 
 func generate_impostors_for_library(block_scenes: Array[PackedScene]) -> Dictionary:
@@ -59,6 +77,11 @@ func generate_impostors_for_library(block_scenes: Array[PackedScene]) -> Diction
 	Generate impostor sprite sheets for all block types.
 	Returns dictionary mapping block path to impostor data.
 	"""
+	# Ensure viewport is set up
+	if not _is_setup:
+		_setup_render_viewport()
+		await get_tree().process_frame
+	
 	impostor_data.clear()
 	
 	generation_started.emit(block_scenes.size())
@@ -68,13 +91,15 @@ func generate_impostors_for_library(block_scenes: Array[PackedScene]) -> Diction
 		var scene = block_scenes[i]
 		var path = scene.resource_path
 		
-		generation_progress.emit(i, path.get_file())
-		
 		var data = await _generate_impostor_for_block(scene)
-		if data:
+		if data and data.has("texture"):
 			impostor_data[path] = data
+			# Emit progress with the generated texture for preview
+			generation_progress.emit(i + 1, path.get_file(), data.texture)
+		else:
+			generation_progress.emit(i + 1, path.get_file(), null)
 		
-		# Yield to prevent freezing
+		# Yield to prevent freezing and allow UI update
 		await get_tree().process_frame
 	
 	print("BuildingImpostorGenerator: Generated %d impostor sheets" % impostor_data.size())
@@ -94,13 +119,21 @@ func _generate_impostor_for_block(scene: PackedScene) -> Dictionary:
 	# Clear previous and add new
 	for child in _block_container.get_children():
 		child.queue_free()
+	
+	await get_tree().process_frame  # Let queue_free process
+	
 	_block_container.add_child(instance)
 	
-	# Wait a frame for the instance to be ready
+	# Wait for the instance to be ready and meshes to load
+	await get_tree().process_frame
 	await get_tree().process_frame
 	
 	# Calculate block bounds
 	var aabb = _get_node_aabb(instance)
+	if aabb.size == Vector3.ZERO:
+		instance.queue_free()
+		return {}
+	
 	var block_size = aabb.size
 	var block_center = aabb.position + block_size / 2.0
 	
@@ -131,6 +164,8 @@ func _generate_impostor_for_block(scene: PackedScene) -> Dictionary:
 		
 		# Render
 		_viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
+		
+		# Wait for render to complete
 		await RenderingServer.frame_post_draw
 		
 		# Capture
@@ -181,10 +216,6 @@ func _get_node_aabb(node: Node3D) -> AABB:
 					first = false
 				else:
 					combined = combined.merge(world_aabb)
-	
-	if first:
-		# No meshes found, return default
-		combined = AABB(Vector3(-1, -1, -1), Vector3(2, 2, 2))
 	
 	return combined
 

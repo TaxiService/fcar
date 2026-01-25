@@ -11,6 +11,7 @@ signal lod_stats_updated(stats: Dictionary)
 @export var hysteresis: float = 50.0  # Prevents rapid switching at boundary
 @export var update_interval: float = 0.5  # How often to check distances
 @export var batch_size: int = 50  # How many blocks to process per update
+@export var auto_find_camera: bool = true  # Automatically find camera if not set
 
 # Impostor data (from BuildingImpostorGenerator)
 var impostor_data: Dictionary = {}  # block_path -> {texture, size, angle_count}
@@ -23,6 +24,7 @@ var _update_timer: float = 0.0
 var _current_batch_index: int = 0
 var _camera: Camera3D
 var _impostor_container: Node3D
+var _enabled: bool = true
 
 # Stats
 var _stats = {
@@ -41,11 +43,24 @@ func _ready():
 
 
 func _process(delta: float):
+	if not _enabled:
+		return
+	
+	# Auto-find camera if needed
+	if not _camera and auto_find_camera:
+		_try_find_camera()
+	
 	_update_timer += delta
 	
 	if _update_timer >= update_interval:
 		_update_timer = 0.0
 		_process_lod_batch()
+
+
+func _try_find_camera():
+	_camera = get_viewport().get_camera_3d()
+	if _camera:
+		print("BuildingLODManager: Auto-found camera: %s" % _camera.name)
 
 
 func set_impostor_data(data: Dictionary):
@@ -226,3 +241,22 @@ func print_stats():
 	print("  Showing 3D: %d" % _stats.showing_3d)
 	print("  Showing impostor: %d" % _stats.showing_impostor)
 	print("  Last update: %.2f ms" % _stats.last_update_ms)
+
+
+func set_enabled(enabled: bool):
+	"""Enable or disable LOD switching."""
+	_enabled = enabled
+	if not enabled:
+		# When disabling, show all 3D blocks
+		for entry in _tracked_blocks:
+			if entry.is_impostor and is_instance_valid(entry.block):
+				_switch_lod(entry, false)
+
+
+func is_enabled() -> bool:
+	return _enabled
+
+
+func set_impostor_distance(distance: float):
+	"""Update the distance threshold for impostor switching."""
+	impostor_distance = distance
