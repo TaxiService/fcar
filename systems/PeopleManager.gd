@@ -75,7 +75,8 @@ signal spawn_complete(count: int)
 
 # Runtime state
 var spritesheet: SpriteSheet
-var registered_surfaces: Array[SpawnSurface] = []
+var registered_surfaces: Array[SpawnSurface] = []  # Legacy
+var registered_zones: Array[SpawnZone] = []  # New system
 var registered_pois: Array[PointOfInterest] = []
 var all_people: Array[Person] = []  # Active people
 var spawn_timer: float = 0.0
@@ -251,17 +252,25 @@ func _process_spawn_queue():
 			break
 
 		var spawn_data = _spawn_queue.pop_front()
+		var spawner = spawn_data.get("spawner", spawn_data.get("surface"))  # Compat
+		var is_zone = spawn_data.get("is_zone", false)
 
-		# Check if surface is still valid (might have been freed)
-		if not is_instance_valid(spawn_data.surface):
+		if not is_instance_valid(spawner):
 			continue
 
 		if spawn_data.wants_group:
-			_do_spawn_group(spawn_data.surface, spawn_data.group_size)
+			if is_zone:
+				_do_spawn_group_zone(spawner, spawn_data.group_size)
+			else:
+				_do_spawn_group(spawner, spawn_data.group_size)
 		else:
-			var person = _do_spawn_person(spawn_data.surface)
+			var person
+			if is_zone:
+				person = _do_spawn_person_zone(spawner)
+			else:
+				person = _do_spawn_person(spawner)
 			if person and spawn_data.wants_dest:
-				_assign_destination(person, spawn_data.surface)
+				_assign_destination(person, spawner)
 
 		spawned_this_frame += 1
 
@@ -273,22 +282,37 @@ func _queue_spawns_on_surfaces():
 
 	# Clean up stale references
 	registered_surfaces = registered_surfaces.filter(func(s): return is_instance_valid(s))
+	registered_zones = registered_zones.filter(func(z): return is_instance_valid(z))
 
+	# Queue spawns on legacy surfaces
 	for surface in registered_surfaces:
-		if not surface.enabled:
+		if not surface.enabled or not surface.can_spawn_more():
 			continue
-		if not surface.can_spawn_more():
-			continue
-
-		# Check cap again (might have queued enough already)
 		if all_people.size() + _spawn_queue.size() >= max_total_people:
 			break
 
 		var wants_destination = randf() < spawn_with_destination_chance
 		var wants_group = wants_destination and randf() < group_spawn_chance
-
 		_spawn_queue.append({
-			"surface": surface,
+			"spawner": surface,
+			"is_zone": false,
+			"wants_dest": wants_destination,
+			"wants_group": wants_group,
+			"group_size": default_group_size,
+		})
+
+	# Queue spawns on zones (new system)
+	for zone in registered_zones:
+		if not zone.enabled or not zone.can_spawn_more():
+			continue
+		if all_people.size() + _spawn_queue.size() >= max_total_people:
+			break
+
+		var wants_destination = randf() < spawn_with_destination_chance
+		var wants_group = wants_destination and randf() < group_spawn_chance
+		_spawn_queue.append({
+			"spawner": zone,
+			"is_zone": true,
 			"wants_dest": wants_destination,
 			"wants_group": wants_group,
 			"group_size": default_group_size,
@@ -319,10 +343,13 @@ func _despawn_distant_people():
 		var dist_sq = dx * dx + dz * dz
 		
 		if dist_sq > despawn_dist_sq:
-			# Remove from surface tracking
+			# Remove from surface/zone tracking
 			for surface in registered_surfaces:
 				if is_instance_valid(surface):
 					surface.spawned_people.erase(person)
+			for zone in registered_zones:
+				if is_instance_valid(zone):
+					zone.spawned_people.erase(person)
 
 			# Return to pool (removes from all_people internally)
 			_return_to_pool(person)
@@ -366,6 +393,9 @@ func _enforce_population_cap():
 		for surface in registered_surfaces:
 			if is_instance_valid(surface):
 				surface.spawned_people.erase(person)
+		for zone in registered_zones:
+			if is_instance_valid(zone):
+				zone.spawned_people.erase(person)
 		_return_to_pool(person)
 		culled += 1
 
@@ -462,6 +492,81 @@ func _do_spawn_group(surface: SpawnSurface, group_size: int):
 			person.hurry_timer = hurry_time
 
 
+func _do_spawn_person_zone(zone: SpawnZone) -> Person:
+	if not spritesheet or spritesheet.get_frame_count() == 0:
+		return null
+	if not is_instance_valid(zone):
+		return null
+
+	var person = _acquire_from_pool()
+
+	# Per-spawn configuration
+	person.bob_rate = bob_rate_base + randf_range(-bob_rate_variance, bob_rate_variance)
+	person.walk_speed = randf_range(walk_speed_min, walk_speed_max)
+
+	# Material (cached by color)
+	var resolved_set_index = _resolve_color_set_index_zone(zone)
+	var sprite_index = randi() % spritesheet.get_frame_count()
+	var sprite_tex = spritesheet.get_frame(sprite_index)
+	var color = get_color_from_set(zone.color_set_index, spawn_counter)
+	spawn_counter += 1
+
+	var mat = _get_cached_material(color, sprite_tex)
+	person.set_shared_material(mat)
+	person.set_pixel_material(_get_pixel_material(color))
+	person.set_sprite(sprite_tex, sprite_index)
+
+	# Position and home zone
+	person.set_home_zone(zone.get_center(), zone.get_radius())
+	person.global_position = zone.get_random_spawn_position()
+
+	# Track
+	zone.add_person(person)
+	all_people.append(person)
+
+	return person
+
+
+func _do_spawn_group_zone(zone: SpawnZone, group_size: int):
+	var available = zone.max_people - zone.get_people_count()
+	if available < group_size:
+		var person = _do_spawn_person_zone(zone)
+		if person:
+			_assign_destination(person, zone)
+		return
+
+	var group_id = next_group_id
+	next_group_id += 1
+
+	var base_pos = zone.get_random_spawn_position()
+	var group_members: Array[Person] = []
+
+	for i in range(group_size):
+		var person = _do_spawn_person_zone(zone)
+		if not person:
+			continue
+		person.group_id = group_id
+		var offset = Vector3(randf_range(-1.5, 1.5), 0, randf_range(-1.5, 1.5))
+		person.global_position = base_pos + offset
+		group_members.append(person)
+
+	if group_members.is_empty():
+		return
+
+	var destination = _find_valid_destination(group_members[0], zone)
+	if not destination:
+		for person in group_members:
+			person.group_id = -1
+		return
+
+	var is_hurry = randf() < in_a_hurry_chance
+	for person in group_members:
+		person.set_destination(destination)
+		if is_hurry:
+			person.in_a_hurry = true
+			person.hurry_timer = hurry_time
+
+
 func _get_cached_material(color: Color, sprite_tex: AtlasTexture) -> ShaderMaterial:
 	# Create cache key from color and texture
 	var color_key = "%02x%02x%02x" % [int(color.r * 255), int(color.g * 255), int(color.b * 255)]
@@ -511,19 +616,19 @@ func _update_process_states():
 		person.set_process(person_dist_sq <= dist_sq)
 
 
-func _assign_destination(person: Person, source_surface: SpawnSurface):
-	var target = _find_valid_destination(person, source_surface)
+func _assign_destination(person: Person, source_spawner: Node):
+	var target = _find_valid_destination(person, source_spawner)
 	if not target:
 		return
-	
+
 	person.set_destination(target)
-	
+
 	if randf() < in_a_hurry_chance:
 		person.in_a_hurry = true
 		person.hurry_timer = hurry_time
 
 
-func _find_valid_destination(person: Person, _source_surface: SpawnSurface) -> Node:
+func _find_valid_destination(person: Person, _source_spawner: Node) -> Node:
 	var valid_targets: Array[Node] = []
 	var person_pos = person.global_position
 	
@@ -618,9 +723,19 @@ func register_surface(surface: SpawnSurface):
 
 func unregister_surface(surface: SpawnSurface):
 	registered_surfaces.erase(surface)
-	# Clean up color cache for this surface
 	if is_instance_valid(surface):
 		_surface_color_cache.erase(surface.get_instance_id())
+
+
+func register_zone(zone: SpawnZone):
+	if zone not in registered_zones:
+		registered_zones.append(zone)
+
+
+func unregister_zone(zone: SpawnZone):
+	registered_zones.erase(zone)
+	if is_instance_valid(zone):
+		_surface_color_cache.erase(zone.get_instance_id())
 
 
 func register_poi(poi: PointOfInterest):
@@ -751,18 +866,33 @@ func _resolve_color_set_index(surface: SpawnSurface) -> int:
 	# Returns the color set index for this surface
 	# If surface.color_set_index is -1, picks a random set and caches it
 	var set_index = surface.color_set_index
-	
+
 	if set_index >= 0:
 		return set_index
-	
+
 	# Random mode: check cache first
 	var surface_id = surface.get_instance_id()
 	if _surface_color_cache.has(surface_id):
 		return _surface_color_cache[surface_id]
-	
+
 	# Pick random and cache
 	var random_index = randi() % max(color_sets.size(), 1)
 	_surface_color_cache[surface_id] = random_index
+	return random_index
+
+
+func _resolve_color_set_index_zone(zone: SpawnZone) -> int:
+	var set_index = zone.color_set_index
+
+	if set_index >= 0:
+		return set_index
+
+	var zone_id = zone.get_instance_id()
+	if _surface_color_cache.has(zone_id):
+		return _surface_color_cache[zone_id]
+
+	var random_index = randi() % max(color_sets.size(), 1)
+	_surface_color_cache[zone_id] = random_index
 	return random_index
 
 
@@ -837,4 +967,49 @@ func print_status():
 	print("  Pool: %d available, %d active" % [_pool.size(), all_people.size()])
 	print("  Spawn queue: %d pending" % _spawn_queue.size())
 	print("  Materials cached: %d (close) + %d (pixel)" % [_material_cache.size(), _pixel_material_cache.size()])
-	print("  Surfaces: %d registered" % registered_surfaces.size())
+	print("  Spawners: %d surfaces + %d zones" % [registered_surfaces.size(), registered_zones.size()])
+
+
+## Force-spawn people in zones near a position (for debugging)
+func debug_fill_nearby_zones(center: Vector3, radius: float = 200.0, max_spawns: int = 100):
+	print("PeopleManager: Filling zones within %.0fm of %s" % [radius, center])
+	var spawned = 0
+	var zones_filled = 0
+	var radius_sq = radius * radius
+
+	for zone in registered_zones:
+		if not is_instance_valid(zone) or not zone.enabled:
+			continue
+
+		var dist_sq = center.distance_squared_to(zone.global_position)
+		if dist_sq > radius_sq:
+			continue
+
+		# Fill this zone to capacity
+		while zone.can_spawn_more() and spawned < max_spawns:
+			var person = _do_spawn_person_zone(zone)
+			if person:
+				spawned += 1
+			else:
+				break
+		zones_filled += 1
+
+		if spawned >= max_spawns:
+			break
+
+	print("  Filled %d zones, spawned %d people" % [zones_filled, spawned])
+	return spawned
+
+
+## Get zones near a position (for debugging)
+func debug_get_nearby_zones(center: Vector3, radius: float = 200.0) -> Array[SpawnZone]:
+	var nearby: Array[SpawnZone] = []
+	var radius_sq = radius * radius
+
+	for zone in registered_zones:
+		if not is_instance_valid(zone):
+			continue
+		if center.distance_squared_to(zone.global_position) <= radius_sq:
+			nearby.append(zone)
+
+	return nearby

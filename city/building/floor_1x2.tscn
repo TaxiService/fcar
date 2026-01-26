@@ -23,6 +23,7 @@ size = Vector3(60, 5, 30)
 [node name="FloorSmall5" type="StaticBody3D"]
 script = ExtResource("1_kqmxi")
 block_type = 1
+can_spawn_people = true
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 shape = SubResource("BoxShape3D_5dwv6")

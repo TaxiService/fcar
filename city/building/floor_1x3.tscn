@@ -24,13 +24,15 @@ size = Vector3(90, 5, 30)
 [node name="FloorSmall5" type="StaticBody3D"]
 script = ExtResource("1_2l77p")
 block_type = 1
+can_spawn_people = true
 
 [node name="SpawnSurface7" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5432281, 0)
 script = ExtResource("2_c3me5")
 enabled = true
-max_people = 21
-bounds_size = Vector3(80, 0, 25)
+max_people = 17
+color_set_index = 0
+bounds_size = Vector3(75, 0, 23)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 shape = SubResource("BoxShape3D_5dwv6")

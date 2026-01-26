@@ -1,7 +1,7 @@
 [gd_scene load_steps=16 format=3 uid="uid://b8qwvqihw1ecv"]
 
 [ext_resource type="Script" uid="uid://cmafag82uyxu7" path="res://city/BuildingBlock.gd" id="1_o06re"]
-[ext_resource type="Script" uid="uid://c72sj768vn5do" path="res://systems/SpawnSurface.gd" id="2_ssnx1"]
+[ext_resource type="Script" uid="uid://dhck8hvi8ocih" path="res://systems/SpawnZone.gd" id="2_ssnx1"]
 [ext_resource type="Material" uid="uid://c84qehqsj2tk1" path="res://mats/floor_small.tres" id="3_27yca"]
 [ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://city/ConnectionPoint.gd" id="4_3boio"]
 [ext_resource type="Material" uid="uid://d1752hlai3xtn" path="res://mats/floor.tres" id="4_ssnx1"]
@@ -46,12 +46,11 @@ size = Vector3(35, 14.99, 20)
 [node name="FloorSmall5" type="StaticBody3D"]
 script = ExtResource("1_o06re")
 
-[node name="SpawnSurface7" type="Node3D" parent="."]
+[node name="Node3D" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 32.5, 0)
 script = ExtResource("2_ssnx1")
-enabled = true
-max_people = 7
-bounds_size = Vector3(25, 0, 15)
+radius = 15.0
+color_set_index = 2
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 30, 0)

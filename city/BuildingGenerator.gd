@@ -1,7 +1,8 @@
-# BuildingGenerator.gd - Three-pass building generation with progress reporting
+# BuildingGenerator.gd - Four-pass building generation with progress reporting
 # Pass 1: Main structural growth (SEED → STRUCTURAL → JUNCTION)
 # Pass 2: Functional blocks (spawners, POIs, refuel stations) - gameplay priority
 # Pass 3: Decoration/caps on remaining open sockets - visual polish
+# Pass 4: Spawn zones on remaining floor sockets - ensures people can spawn
 class_name BuildingGenerator
 extends Node3D
 
@@ -34,15 +35,24 @@ var _functional_blocks: Array[Dictionary] = []  # Gameplay blocks (spawners, POI
 
 @export_category("Pass 2: Functional")
 @export var functional_enabled: bool = true
-@export var min_functional_blocks: int = 20  # Guaranteed minimum (tries harder to place)
-@export var max_functional_blocks: int = 100
-@export var functional_probability: float = 0.5  # Chance per eligible socket
+@export var min_functional_blocks: int = 840  # Guaranteed minimum (tries harder to place)
+@export var max_functional_blocks: int = 1260  # Allow many more
+@export var functional_probability: float = 0.7  # Higher chance per eligible socket
 @export var prefer_spawners: bool = true  # Prioritize spawner blocks over other functional
+@export var spawner_weight: float = 3.0  # How much to favor spawners vs other functional (multiplier)
 
 @export_category("Pass 3: Decoration")
 @export var decoration_enabled: bool = true
 @export var decoration_probability: float = 0.3  # Chance to decorate each open socket
 @export var max_decoration_blocks: int = 200
+
+@export_category("Pass 4: Spawn Zones")
+@export var spawn_zones_enabled: bool = true
+@export var spawn_zone_probability: float = 1.0  # Chance per unused floor socket
+@export var spawn_zone_radius_small: float = 4.0
+@export var spawn_zone_radius_medium: float = 8.0
+@export var spawn_zone_radius_large: float = 12.0
+@export var spawn_zone_max_people_per_meter: float = 0.5  # max_people = radius * this
 
 @export_category("Performance")
 @export var yield_every_n_blocks: int = 20  # Yield to main loop periodically
@@ -104,6 +114,9 @@ func reset():
 		"open_sockets_before_functional": 0,
 		"sockets_functional": 0,
 		"spawners_placed": 0,
+		"spawn_zones_created": 0,
+		"floor_blocks_found": 0,
+		"floor_sockets_available": 0,
 	}
 	for child in get_children():
 		child.queue_free()
@@ -136,35 +149,39 @@ func queue_seed(position: Vector3, direction: Vector3, biome_idx: int,
 	})
 
 
-# Main entry point - runs all three passes
+# Main entry point - runs all four passes
 func process_queue():
 	if _is_generating:
 		push_warning("BuildingGenerator: Already generating!")
 		return
-	
+
 	_is_generating = true
-	
+
 	# Estimate total steps for progress
 	var estimated_steps = _growth_queue.size() + (max_functional_blocks if functional_enabled else 0) + (max_decoration_blocks if decoration_enabled else 0)
 	generation_started.emit(estimated_steps)
-	
+
 	print("BuildingGenerator: Starting generation...")
 	print("  Seeds queued: %d" % _stats.seeds_received)
 	print("  Max structural: %d, Max functional: %d, Max decoration: %d" % [max_structural_blocks, max_functional_blocks, max_decoration_blocks])
-	
+
 	# Pass 1: Structural growth
 	await _run_structural_pass()
-	
+
 	# Pass 2: Functional (spawners, POIs, etc.) - gameplay priority
 	if functional_enabled:
 		await _run_functional_pass()
-	
+
 	# Pass 3: Decoration - visual polish on remaining sockets
 	if decoration_enabled:
 		await _run_decoration_pass()
-	
+
+	# Pass 4: Spawn zones on remaining floor sockets
+	if spawn_zones_enabled:
+		_run_spawn_zone_pass()
+
 	_is_generating = false
-	
+
 	print("BuildingGenerator: Complete")
 	print_stats()
 	generation_complete.emit(_stats)
@@ -178,6 +195,8 @@ func process_queue_sync():
 		_run_functional_pass_sync()
 	if decoration_enabled:
 		_run_decoration_pass_sync()
+	if spawn_zones_enabled:
+		_run_spawn_zone_pass()
 	_is_generating = false
 	print_stats()
 
@@ -362,7 +381,7 @@ func _queue_structural_children(block: BuildingBlock, biome_idx: int, parent_dep
 		})
 
 
-# === PASS 2: DECORATION ===
+# === PASS 3: DECORATION ===
 
 func _run_decoration_pass():
 	generation_progress.emit(_stats.structural_placed, "Starting decoration pass...")
@@ -534,7 +553,7 @@ func _run_decoration_pass_sync():
 				break
 
 
-# === PASS 3: FUNCTIONAL ===
+# === PASS 2: FUNCTIONAL ===
 
 func _run_functional_pass():
 	generation_progress.emit(_stats.blocks_placed, "Starting functional pass...")
@@ -783,10 +802,109 @@ func _run_functional_pass_sync():
 				_stats.blocks_placed += 1
 				_stats.functional_placed += 1
 				_stats.sockets_functional += 1
-				
+
 				if func_info.can_spawn:
 					_stats.spawners_placed += 1
 				break
+
+
+# === PASS 4: SPAWN ZONES ===
+
+func _run_spawn_zone_pass():
+	# Find all floor-type blocks and add SpawnZones to unused sockets
+	# This ensures people can spawn on building floors even if no spawner blocks attached
+
+	var floor_blocks: Array[BuildingBlock] = []
+
+	# Debug: count block types
+	var type_counts: Dictionary = {}
+	for block in _placed_blocks:
+		if not is_instance_valid(block):
+			continue
+		var bt = block.block_type
+		type_counts[bt] = type_counts.get(bt, 0) + 1
+		# FLOOR = 1 in BuildingBlock.BlockType
+		if bt == BuildingBlock.BlockType.FLOOR:
+			floor_blocks.append(block)
+
+	print("  Spawn Zone pass: placed block types: %s" % str(type_counts))
+	print("  Spawn Zone pass: looking for BlockType.FLOOR = %d" % BuildingBlock.BlockType.FLOOR)
+
+	_stats.floor_blocks_found = floor_blocks.size()
+	print("  Spawn Zone pass: %d floor blocks found" % floor_blocks.size())
+
+	if floor_blocks.is_empty():
+		return
+
+	var zones_created = 0
+	var sockets_checked = 0
+
+	for block in floor_blocks:
+		if not is_instance_valid(block):
+			continue
+
+		# Get all unused sockets on this floor block
+		var available_conns = block.get_available_connections()
+
+		for conn in available_conns:
+			if not conn.is_socket:
+				continue
+
+			sockets_checked += 1
+
+			# Probability check
+			if _rng.randf() > spawn_zone_probability:
+				continue
+
+			# Determine radius based on size flags
+			var zone_radius: float = spawn_zone_radius_medium  # default
+			if conn.size_flags & SF.LARGE:
+				zone_radius = spawn_zone_radius_large
+			elif conn.size_flags & SF.SMALL:
+				zone_radius = spawn_zone_radius_small
+
+			# Create the SpawnZone
+			var zone = SpawnZone.new()
+			zone.radius = zone_radius
+			zone.max_people = int(zone_radius * spawn_zone_max_people_per_meter)
+			zone.max_people = maxi(zone.max_people, 1)  # At least 1 person
+
+			# Add to tree first (required before setting global_position)
+			add_child(zone)
+
+			# Position at the socket location, offset upward slightly
+			var socket_world_pos = block.get_connection_world_position(conn)
+			zone.global_position = socket_world_pos + Vector3(0, 0.1, 0)
+
+			# Mark the socket as used so decoration pass doesn't try to use it
+			block.mark_connection_used(conn)
+
+			zones_created += 1
+
+	_stats.floor_sockets_available = sockets_checked
+	_stats.spawn_zones_created = zones_created
+	print("  Spawn Zone pass complete: %d zones created from %d sockets" % [zones_created, sockets_checked])
+
+
+## Register all spawn zones with a PeopleManager (call if automatic registration failed)
+func register_spawn_zones_with(manager: Node):
+	var count = 0
+	for child in get_children():
+		if child is SpawnZone and not child.registered:
+			manager.register_zone(child)
+			child.registered = true
+			count += 1
+	print("BuildingGenerator: Manually registered %d spawn zones" % count)
+	return count
+
+
+## Get all spawn zones created by this generator
+func get_spawn_zones() -> Array[SpawnZone]:
+	var zones: Array[SpawnZone] = []
+	for child in get_children():
+		if child is SpawnZone:
+			zones.append(child)
+	return zones
 
 
 # === BLOCK PLACEMENT ===
@@ -1057,14 +1175,16 @@ func _load_blocks_from_folder(folder_path: String, is_functional_folder: bool):
 					var data = _analyze_block(instance, scene, path, is_functional_folder)
 					block_data.append(data)
 					
-					# Categorize
+					# Categorize - blocks can be in multiple categories
+					# Structural blocks: have SEED/STRUCTURAL/JUNCTION plugs (main building pieces)
+					# Functional blocks: have can_spawn_people OR are in functional folder
+					# Decoration blocks: have CAP plugs or are CAP type
+					if data.is_structural:
+						_structural_blocks.append(data)
+					if data.is_decoration:
+						_decoration_blocks.append(data)
 					if is_functional_folder or data.is_functional:
 						_functional_blocks.append(data)
-					else:
-						if data.is_structural:
-							_structural_blocks.append(data)
-						if data.is_decoration:
-							_decoration_blocks.append(data)
 				instance.queue_free()
 		file_name = dir.get_next()
 
@@ -1192,6 +1312,12 @@ func print_stats():
 		_stats.sockets_decorated,
 		_stats.open_sockets_before_decoration
 	])
+	if _stats.get("spawn_zones_created", 0) > 0 or _stats.get("floor_blocks_found", 0) > 0:
+		print("  Spawn Zones: %d created from %d floor blocks (%d sockets checked)" % [
+			_stats.get("spawn_zones_created", 0),
+			_stats.get("floor_blocks_found", 0),
+			_stats.get("floor_sockets_available", 0)
+		])
 	print("  Rejects: %d overlap, %d no match, %d direction" % [
 		_stats.overlap_rejects,
 		_stats.no_match_rejects,

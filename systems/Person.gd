@@ -35,10 +35,11 @@ var facing_right: bool = true
 var state_timer: float = 0.0
 var state_duration: float = 0.0
 
-# Bounds (set by SpawnSurface)
-var bounds_min: Vector3
-var bounds_max: Vector3
-var has_bounds: bool = false
+# Home zone (set by SpawnZone)
+var home_center: Vector3 = Vector3.ZERO
+var home_radius: float = 8.0
+var home_radius_squared: float = 64.0
+var has_home: bool = false
 
 # Reference to manager for sprite updates
 var sprite_index: int = 0
@@ -209,29 +210,16 @@ func _process_walking(delta: float):
 	var movement = walk_direction * walk_speed * delta
 	global_position += movement
 
-	# Check bounds and bounce if needed
-	if has_bounds:
-		var bounced = false
+	# Check if outside home zone and redirect toward center
+	if has_home:
+		var dx = global_position.x - home_center.x
+		var dz = global_position.z - home_center.z
+		var dist_sq = dx * dx + dz * dz
 
-		if global_position.x < bounds_min.x:
-			global_position.x = bounds_min.x
-			walk_direction.x = abs(walk_direction.x)
-			bounced = true
-		elif global_position.x > bounds_max.x:
-			global_position.x = bounds_max.x
-			walk_direction.x = -abs(walk_direction.x)
-			bounced = true
-
-		if global_position.z < bounds_min.z:
-			global_position.z = bounds_min.z
-			walk_direction.z = abs(walk_direction.z)
-			bounced = true
-		elif global_position.z > bounds_max.z:
-			global_position.z = bounds_max.z
-			walk_direction.z = -abs(walk_direction.z)
-			bounced = true
-
-		if bounced:
+		if dist_sq > home_radius_squared:
+			# Outside radius - turn toward home center
+			var to_center = Vector3(home_center.x - global_position.x, 0, home_center.z - global_position.z).normalized()
+			walk_direction = to_center
 			_update_facing_direction()
 
 	# Check if walk duration is over
@@ -323,11 +311,16 @@ func _process_relocating(delta: float):
 	var dist = to_target.length()
 
 	if dist < 1.0:
-		# Reached target - adopt new surface bounds and start wandering
-		if relocation_surface and relocation_surface.has_method("get_bounds_world"):
-			var bounds = relocation_surface.get_bounds_world()
-			set_bounds(bounds.min, bounds.max)
-			# Register with the new surface
+		# Reached target - adopt new zone/surface and start wandering
+		if relocation_surface:
+			# SpawnZone (new system)
+			if relocation_surface.has_method("get_center"):
+				set_home_zone(relocation_surface.get_center(), relocation_surface.get_radius())
+			# SpawnSurface (legacy)
+			elif relocation_surface.has_method("get_bounds_world"):
+				var bounds = relocation_surface.get_bounds_world()
+				set_bounds(bounds.min, bounds.max)
+			# Register with the zone/surface
 			if relocation_surface.has_method("add_person"):
 				relocation_surface.add_person(self)
 
@@ -408,10 +401,19 @@ func _update_facing_direction():
 		scale.x = 1.0 if facing_right else -1.0
 
 
+func set_home_zone(center: Vector3, radius: float):
+	home_center = center
+	home_radius = radius
+	home_radius_squared = radius * radius
+	has_home = true
+
+
+# Legacy compatibility - convert rectangle to circle
 func set_bounds(min_pos: Vector3, max_pos: Vector3):
-	bounds_min = min_pos
-	bounds_max = max_pos
-	has_bounds = true
+	var center = (min_pos + max_pos) / 2.0
+	var size = max_pos - min_pos
+	var radius = min(size.x, size.z) / 2.0
+	set_home_zone(center, radius)
 
 
 func set_sprite(tex: AtlasTexture, index: int):
@@ -500,10 +502,11 @@ func _reset_for_reuse():
 	state_duration = randf_range(wait_duration_min, wait_duration_max)
 	walk_speed = randf_range(walk_speed_min, walk_speed_max)
 	
-	# Bounds
-	bounds_min = Vector3.ZERO
-	bounds_max = Vector3.ZERO
-	has_bounds = false
+	# Home zone
+	home_center = Vector3.ZERO
+	home_radius = 8.0
+	home_radius_squared = 64.0
+	has_home = false
 	
 	# Quest/destination
 	destination = null
