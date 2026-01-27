@@ -821,8 +821,27 @@ func _generate_buildings():
 	
 	# Run async generation (yields periodically)
 	await building_generator.process_queue()
-	
+
+	# Manually register spawn zones with PeopleManager (in case automatic registration failed)
+	await _register_spawn_zones()
+
 	city_generation_progress.emit("buildings", 1.0, "Buildings complete")
+
+
+func _register_spawn_zones():
+	# Find PeopleManager as sibling
+	var people_manager = get_parent().get_node_or_null("PeopleManager")
+	if not people_manager:
+		push_warning("CityGenerator: PeopleManager not found, spawn zones won't register")
+		return
+
+	# Let BuildingGenerator do the registration
+	var registered = building_generator.register_spawn_zones_with(people_manager)
+
+	# Also wait a frame and print status for debugging
+	await get_tree().process_frame
+	if people_manager.has_method("print_status"):
+		people_manager.print_status()
 
 
 func _on_building_progress(current: int, message: String):
@@ -903,6 +922,12 @@ func _generate_buildings_sync():
 				building_generator.queue_seed(bottom_pos, Vector3.DOWN, biome_idx, seed_type, current_bottom_sizes, connector_heading)
 	
 	building_generator.process_queue_sync()
+
+	# Manual registration for sync path
+	var people_manager = get_parent().get_node_or_null("PeopleManager")
+	if people_manager:
+		building_generator.register_spawn_zones_with(people_manager)
+
 
 # Public API for regeneration
 func regenerate():

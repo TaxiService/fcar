@@ -90,16 +90,28 @@ var _registration_attempts: int = 0
 
 func _retry_registration():
 	_registration_attempts += 1
-	if _registration_attempts > 5:
-		push_warning("SpawnZone: Failed to find PeopleManager after 5 attempts")
+	if _registration_attempts > 10:
+		push_warning("SpawnZone at %s: Failed to find PeopleManager after 10 attempts" % global_position)
 		return
+
+	# Actually wait for next frame before retrying
+	await get_tree().process_frame
 	_register_with_manager()
 
 
 func _find_people_manager() -> Node:
-	if has_node("/root/PeopleManager"):
-		return get_node("/root/PeopleManager")
+	# Try common scene paths first
+	var common_paths = [
+		"/root/PeopleManager",
+		"/root/CityTest/PeopleManager",
+		"/root/city_test/PeopleManager",
+		"/root/Main/PeopleManager",
+	]
+	for path in common_paths:
+		if has_node(path):
+			return get_node(path)
 
+	# Walk up parent chain looking for PeopleManager as sibling
 	var node = get_parent()
 	while node:
 		if node.has_method("register_zone"):
@@ -109,7 +121,11 @@ func _find_people_manager() -> Node:
 				return child
 		node = node.get_parent()
 
-	return _find_in_tree(get_tree().root)
+	# Last resort: full tree search
+	var found = _find_in_tree(get_tree().root)
+	if not found:
+		push_warning("SpawnZone: Could not find PeopleManager in tree. Scene root: %s" % get_tree().root.name)
+	return found
 
 
 func _find_in_tree(node: Node) -> Node:

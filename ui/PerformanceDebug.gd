@@ -47,10 +47,24 @@ func _build_ui():
 
 
 func _input(event: InputEvent):
-	if event is InputEventKey and event.pressed and event.keycode == toggle_key:
-		_visible = !_visible
-		_panel.visible = _visible
-		get_viewport().set_input_as_handled()
+	if event is InputEventKey and event.pressed:
+		match event.keycode:
+			toggle_key:
+				_visible = !_visible
+				_panel.visible = _visible
+				get_viewport().set_input_as_handled()
+			KEY_M:
+				_debug_fill_nearby_zones()
+				get_viewport().set_input_as_handled()
+			KEY_N:
+				_debug_print_nearby_zones()
+				get_viewport().set_input_as_handled()
+			KEY_B:
+				_debug_spawn_at_camera()
+				get_viewport().set_input_as_handled()
+			KEY_V:
+				_debug_inspect_people()
+				get_viewport().set_input_as_handled()
 
 
 func _process(delta: float):
@@ -194,3 +208,148 @@ func hide_overlay():
 
 func is_overlay_visible() -> bool:
 	return _visible
+
+
+# === Debug Spawn Controls ===
+# M = Fill nearby zones with people
+# N = Print info about nearby zones
+# B = Spawn people directly at camera position
+
+func _get_people_manager() -> Node:
+	# Try common paths
+	for path in ["/root/CityTest/PeopleManager", "/root/Main/PeopleManager"]:
+		if has_node(path):
+			return get_node(path)
+	# Search from root
+	return _find_node_with_method(get_tree().root, "register_zone")
+
+
+func _find_node_with_method(node: Node, method: String) -> Node:
+	if node.has_method(method):
+		return node
+	for child in node.get_children():
+		var found = _find_node_with_method(child, method)
+		if found:
+			return found
+	return null
+
+
+func _get_camera_position() -> Vector3:
+	var camera = get_viewport().get_camera_3d()
+	if camera:
+		return camera.global_position
+	return Vector3.ZERO
+
+
+func _debug_fill_nearby_zones():
+	var pm = _get_people_manager()
+	if not pm:
+		print("[DEBUG] PeopleManager not found!")
+		return
+
+	var cam_pos = _get_camera_position()
+	print("[DEBUG] M pressed - Filling zones near %s" % cam_pos)
+
+	if pm.has_method("debug_fill_nearby_zones"):
+		var spawned = pm.debug_fill_nearby_zones(cam_pos, 500.0, 200)
+		print("[DEBUG] Spawned %d people in nearby zones" % spawned)
+	else:
+		print("[DEBUG] PeopleManager missing debug_fill_nearby_zones method")
+
+	if pm.has_method("print_status"):
+		pm.print_status()
+
+
+func _debug_print_nearby_zones():
+	var pm = _get_people_manager()
+	if not pm:
+		print("[DEBUG] PeopleManager not found!")
+		return
+
+	var cam_pos = _get_camera_position()
+	print("[DEBUG] N pressed - Checking zones near %s" % cam_pos)
+
+	if pm.has_method("debug_get_nearby_zones"):
+		var zones = pm.debug_get_nearby_zones(cam_pos, 300.0)
+		print("[DEBUG] Found %d zones within 300m:" % zones.size())
+		for i in range(mini(10, zones.size())):
+			var zone = zones[i]
+			var dist = cam_pos.distance_to(zone.global_position)
+			print("  Zone %d: pos=%s, dist=%.0fm, people=%d/%d, enabled=%s" % [
+				i, zone.global_position, dist, zone.get_people_count(), zone.max_people, zone.enabled
+			])
+		if zones.size() > 10:
+			print("  ... and %d more zones" % (zones.size() - 10))
+	else:
+		print("[DEBUG] PeopleManager missing debug_get_nearby_zones method")
+
+
+func _debug_spawn_at_camera():
+	var pm = _get_people_manager()
+	if not pm:
+		print("[DEBUG] PeopleManager not found!")
+		return
+
+	var cam_pos = _get_camera_position()
+	# Spawn slightly below camera, in a grid
+	var spawn_pos = cam_pos + Vector3(0, -5, -10)
+	print("[DEBUG] B pressed - Spawning people at %s" % spawn_pos)
+
+	if pm.has_method("spawn_person_at"):
+		for i in range(5):
+			var offset = Vector3(randf_range(-5, 5), 0, randf_range(-5, 5))
+			var person = pm.spawn_person_at(spawn_pos + offset)
+			if person:
+				print("  Spawned person at %s, visible=%s" % [person.global_position, person.visible])
+			else:
+				print("  Failed to spawn person!")
+	else:
+		print("[DEBUG] PeopleManager missing spawn_person_at method")
+
+
+func _debug_inspect_people():
+	var pm = _get_people_manager()
+	if not pm:
+		print("[DEBUG] PeopleManager not found!")
+		return
+
+	var cam_pos = _get_camera_position()
+	print("[DEBUG] V pressed - Inspecting active people")
+
+	var all_people = pm.get("all_people")
+	if all_people == null:
+		print("[DEBUG] Cannot access all_people array")
+		return
+
+	print("[DEBUG] Total active: %d" % all_people.size())
+
+	# Find closest people to camera
+	var people_with_dist: Array = []
+	for person in all_people:
+		if is_instance_valid(person):
+			var dist = cam_pos.distance_to(person.global_position)
+			people_with_dist.append({"person": person, "dist": dist})
+
+	people_with_dist.sort_custom(func(a, b): return a.dist < b.dist)
+
+	print("[DEBUG] 10 closest people:")
+	for i in range(mini(10, people_with_dist.size())):
+		var p = people_with_dist[i].person
+		var dist = people_with_dist[i].dist
+		print("  #%d: pos=%s, dist=%.0fm, visible=%s, state=%s" % [
+			i, p.global_position, dist, p.visible,
+			p.get("current_state") if p.get("current_state") != null else "?"
+		])
+
+	# Stats about positions
+	if not people_with_dist.is_empty():
+		var min_y = INF
+		var max_y = -INF
+		var avg_dist = 0.0
+		for pd in people_with_dist:
+			var pos = pd.person.global_position
+			min_y = min(min_y, pos.y)
+			max_y = max(max_y, pos.y)
+			avg_dist += pd.dist
+		avg_dist /= people_with_dist.size()
+		print("[DEBUG] Y range: %.0f to %.0f, avg distance: %.0fm" % [min_y, max_y, avg_dist])

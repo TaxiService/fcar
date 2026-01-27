@@ -811,8 +811,8 @@ func _run_functional_pass_sync():
 # === PASS 4: SPAWN ZONES ===
 
 func _run_spawn_zone_pass():
-	# Find all floor-type blocks and add SpawnZones to unused sockets
-	# This ensures people can spawn on building floors even if no spawner blocks attached
+	# Find all floor-type blocks and add SpawnZones to unused VERTICAL STRUCTURAL sockets
+	# Only creates zones on sockets pointing UP (direction.y > 0.7)
 
 	var floor_blocks: Array[BuildingBlock] = []
 
@@ -828,7 +828,6 @@ func _run_spawn_zone_pass():
 			floor_blocks.append(block)
 
 	print("  Spawn Zone pass: placed block types: %s" % str(type_counts))
-	print("  Spawn Zone pass: looking for BlockType.FLOOR = %d" % BuildingBlock.BlockType.FLOOR)
 
 	_stats.floor_blocks_found = floor_blocks.size()
 	print("  Spawn Zone pass: %d floor blocks found" % floor_blocks.size())
@@ -838,6 +837,8 @@ func _run_spawn_zone_pass():
 
 	var zones_created = 0
 	var sockets_checked = 0
+	var skipped_horizontal = 0
+	var skipped_non_structural = 0
 
 	for block in floor_blocks:
 		if not is_instance_valid(block):
@@ -851,6 +852,19 @@ func _run_spawn_zone_pass():
 				continue
 
 			sockets_checked += 1
+
+			# Get world direction of socket
+			var world_dir = block.get_connection_world_direction(conn)
+
+			# Only vertical sockets (pointing UP) - direction.y > 0.7 means mostly upward
+			if world_dir.y < 0.7:
+				skipped_horizontal += 1
+				continue
+
+			# Only STRUCTURAL type sockets (not junction/cap only)
+			if not (conn.type_flags & TF.STRUCTURAL):
+				skipped_non_structural += 1
+				continue
 
 			# Probability check
 			if _rng.randf() > spawn_zone_probability:
@@ -883,7 +897,9 @@ func _run_spawn_zone_pass():
 
 	_stats.floor_sockets_available = sockets_checked
 	_stats.spawn_zones_created = zones_created
-	print("  Spawn Zone pass complete: %d zones created from %d sockets" % [zones_created, sockets_checked])
+	print("  Spawn Zone pass: %d zones from %d sockets (skipped %d horizontal, %d non-structural)" % [
+		zones_created, sockets_checked, skipped_horizontal, skipped_non_structural
+	])
 
 
 ## Register all spawn zones with a PeopleManager (call if automatic registration failed)

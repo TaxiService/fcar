@@ -13,6 +13,8 @@ var captured: bool = true
 
 func _ready():
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	# Set up LOD camera for people visibility system
+	Person.lod_camera = self
 
 
 func _input(event: InputEvent):
@@ -64,6 +66,9 @@ func _process(delta: float):
 	# (handled in _unhandled_input for scroll)
 
 	position += input_dir * speed * delta
+
+	# Update LOD reference position
+	Person.lod_player_y = global_position.y
 
 
 func _unhandled_input(event: InputEvent):

@@ -37,12 +37,20 @@ signal spawn_complete(count: int)
 @export var despawn_check_interval: float = 3.0  # Check every N seconds
 @export var max_total_people: int = 2000  # Hard cap on total people
 
-# Spawning configuration  
+# Spawning configuration
 @export_category("Spawning")
 @export var spawn_interval: float = 2.0
 @export var auto_spawn: bool = true
 @export var spawns_per_frame: int = 2  # Max spawns per frame (spreads cost)
 @export var spawn_queue_enabled: bool = true  # Use queued spawning
+
+# Proximity spawning - "cloud" of people follows player
+@export_subgroup("Proximity Cloud")
+@export var proximity_spawn_enabled: bool = true  # Enable proximity-based spawning
+@export var proximity_spawn_radius: float = 200.0  # Spawn people within this radius of player
+@export var proximity_spawn_interval: float = 0.5  # Check for nearby empty zones every N seconds
+@export var proximity_min_per_zone: int = 1  # Ensure at least this many people per nearby zone
+@export var proximity_spawns_per_frame: int = 5  # How many proximity spawns per frame (aggressive)
 
 # Quest/destination configuration
 @export_category("Destinations")
@@ -110,6 +118,7 @@ var _player_position: Vector3 = Vector3.ZERO
 var _has_player_position: bool = false
 var _camera: Camera3D = null
 var _despawn_timer: float = 0.0
+var _proximity_spawn_timer: float = 0.0
 
 func _ready():
 	_load_spritesheet()
@@ -215,13 +224,20 @@ func _process(delta: float):
 	if spawn_queue_enabled and not _spawn_queue.is_empty():
 		_process_spawn_queue()
 	
-	# Auto spawn timer
+	# Auto spawn timer (legacy - fills random zones)
 	if auto_spawn and _pool_ready:
 		spawn_timer += delta
 		if spawn_timer >= spawn_interval:
 			spawn_timer = 0.0
 			_queue_spawns_on_surfaces()
-	
+
+	# Proximity spawning - aggressive spawning near player ("cloud" effect)
+	if proximity_spawn_enabled and _pool_ready:
+		_proximity_spawn_timer += delta
+		if _proximity_spawn_timer >= proximity_spawn_interval:
+			_proximity_spawn_timer = 0.0
+			_spawn_in_nearby_zones()
+
 	# Smart process management (periodically enable/disable _process on distant people)
 	_process_check_timer += delta
 	if _process_check_timer >= process_check_interval:
@@ -317,6 +333,72 @@ func _queue_spawns_on_surfaces():
 			"wants_group": wants_group,
 			"group_size": default_group_size,
 		})
+
+
+func _spawn_in_nearby_zones():
+	# "Cloud" spawning - aggressively fill zones near the player
+	# This creates the illusion of a populated world following the player
+
+	if not Person.lod_camera:
+		return
+
+	if all_people.size() >= max_total_people:
+		return
+
+	var camera_pos = Person.lod_camera.global_position
+	var radius_sq = proximity_spawn_radius * proximity_spawn_radius
+
+	# Find zones within range that need more people
+	var zones_needing_people: Array[SpawnZone] = []
+
+	for zone in registered_zones:
+		if not is_instance_valid(zone) or not zone.enabled:
+			continue
+
+		# Check distance
+		var dx = zone.global_position.x - camera_pos.x
+		var dz = zone.global_position.z - camera_pos.z
+		var dist_sq = dx * dx + dz * dz
+
+		if dist_sq > radius_sq:
+			continue
+
+		# Check if zone needs more people (at least proximity_min_per_zone)
+		var current_count = zone.get_people_count()
+		if current_count < proximity_min_per_zone and zone.can_spawn_more():
+			zones_needing_people.append(zone)
+
+	if zones_needing_people.is_empty():
+		return
+
+	# Sort by distance (closest first) for better experience
+	zones_needing_people.sort_custom(func(a, b):
+		var da = camera_pos.distance_squared_to(a.global_position)
+		var db = camera_pos.distance_squared_to(b.global_position)
+		return da < db
+	)
+
+	# Spawn in closest zones first
+	var spawned = 0
+	for zone in zones_needing_people:
+		if spawned >= proximity_spawns_per_frame:
+			break
+		if all_people.size() >= max_total_people:
+			break
+
+		# Fill zone to minimum
+		while zone.get_people_count() < proximity_min_per_zone and zone.can_spawn_more():
+			if spawned >= proximity_spawns_per_frame:
+				break
+			if all_people.size() >= max_total_people:
+				break
+
+			var person = _do_spawn_person_zone(zone)
+			if person:
+				spawned += 1
+			else:
+				break
+
 
 func _despawn_distant_people():
 	if not Person.lod_camera:
