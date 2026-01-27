@@ -45,14 +45,14 @@ is_socket = false
 rotation_mode = 1
 
 [node name="Conn_Plug_Large3" type="Marker3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 15, 2.5, 0)
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 15, 2.5, 0)
 script = ExtResource("3_kotqw")
 size_flags = 6
 is_plug = false
 rotation_mode = 1
 
 [node name="Conn_Plug_Large4" type="Marker3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -15, 2.5, 0)
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, -15, 2.5, 0)
 script = ExtResource("3_kotqw")
 size_flags = 6
 is_plug = false

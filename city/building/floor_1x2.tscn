@@ -1,13 +1,14 @@
 [gd_scene load_steps=8 format=3 uid="uid://3j8q7sw70xfb"]
 
 [ext_resource type="Script" uid="uid://cmafag82uyxu7" path="res://city/BuildingBlock.gd" id="1_kqmxi"]
-[ext_resource type="Material" uid="uid://c84qehqsj2tk1" path="res://mats/floor_small.tres" id="3_tig1s"]
+[ext_resource type="Material" uid="uid://d1752hlai3xtn" path="res://mats/floor.tres" id="2_dfkwg"]
 [ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://city/ConnectionPoint.gd" id="4_wffqm"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_5dwv6"]
 size = Vector3(60, 5, 30)
 
 [sub_resource type="TorusMesh" id="TorusMesh_6dmbk"]
+material = ExtResource("2_dfkwg")
 inner_radius = 3.105
 outer_radius = 5.0
 rings = 5
@@ -32,7 +33,6 @@ shape = SubResource("BoxShape3D_5dwv6")
 transform = Transform3D(-4.371139e-08, -1, -4.371139e-08, 0, -4.371139e-08, 1, -1, 4.371139e-08, 1.9106855e-15, 30, 3.48, 0)
 mesh = SubResource("TorusMesh_6dmbk")
 skeleton = NodePath("../MeshInstance3D")
-surface_material_override/0 = ExtResource("3_tig1s")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="."]
 mesh = SubResource("BoxMesh_nrjh1")
@@ -52,14 +52,14 @@ is_socket = false
 rotation_mode = 1
 
 [node name="Conn_Plug_Large3" type="Marker3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 15, 2.5, 0)
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 15, 2.5, 0)
 script = ExtResource("4_wffqm")
 size_flags = 6
 is_plug = false
 rotation_mode = 1
 
 [node name="Conn_Plug_Large4" type="Marker3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -15, 2.5, 0)
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, -15, 2.5, 0)
 script = ExtResource("4_wffqm")
 size_flags = 6
 is_plug = false
