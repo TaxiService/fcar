@@ -23,7 +23,7 @@ script = ExtResource("1_drkja")
 shape = SubResource("CylinderShape3D_sqhew")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="."]
-transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 0, 0, 0)
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 0, 0.01, 0)
 mesh = SubResource("CylinderMesh_vb8vo")
 
 [node name="Conn_Plug_Large" type="Marker3D" parent="."]

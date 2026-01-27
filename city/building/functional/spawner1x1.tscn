@@ -1,7 +1,6 @@
-[gd_scene load_steps=10 format=3 uid="uid://5uvs8lcqev74"]
+[gd_scene load_steps=9 format=3 uid="uid://5uvs8lcqev74"]
 
 [ext_resource type="Script" uid="uid://cmafag82uyxu7" path="res://city/BuildingBlock.gd" id="1_umquq"]
-[ext_resource type="Script" uid="uid://c72sj768vn5do" path="res://systems/SpawnSurface.gd" id="2_at7s7"]
 [ext_resource type="Script" uid="uid://dhck8hvi8ocih" path="res://systems/SpawnZone.gd" id="2_odf2g"]
 [ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://city/ConnectionPoint.gd" id="4_1oxgn"]
 [ext_resource type="Material" uid="uid://c84qehqsj2tk1" path="res://mats/floor_small.tres" id="5_0k77h"]
@@ -34,16 +33,10 @@ script = ExtResource("2_odf2g")
 radius = 12.5
 max_people = 7
 
-[node name="SpawnSurface7" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5432281, 0)
-script = ExtResource("2_at7s7")
-max_people = 7
-bounds_size = Vector3(25, 0, 25)
-
 [node name="MeshInstance3D" type="MeshInstance3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5432281, 0)
 mesh = SubResource("PlaneMesh_it2eq")
-skeleton = NodePath("../SpawnSurface7")
+skeleton = NodePath("")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, -10, 3.530138, -10)
