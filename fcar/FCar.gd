@@ -356,38 +356,77 @@ func engage_heightlock():
 
 
 func _toggle_control_lock():
-	controls_locked = !controls_locked
-	if controls_locked:
-		# Capture all currently pressed actions and keys
+	# New toggle system:
+	# - F + control = toggle that control's lock state
+	# - F alone = clear all locks
+
+	# Check what's currently pressed
+	var actions_to_check = [
+		"forward", "backward", "strafe_left", "strafe_right",
+		"jump", "crouch", "turn_left", "turn_right", "handbrake"
+	]
+	var keys_to_check = [KEY_SHIFT, KEY_ALT, KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN]
+
+	var pressed_actions: Array[String] = []
+	var pressed_keys: Array[int] = []
+
+	for action in actions_to_check:
+		if Input.is_action_pressed(action):
+			pressed_actions.append(action)
+
+	for key in keys_to_check:
+		if Input.is_key_pressed(key):
+			pressed_keys.append(key)
+
+	# If nothing pressed, clear all locks
+	if pressed_actions.is_empty() and pressed_keys.is_empty():
 		locked_actions.clear()
 		locked_keys.clear()
 		masked_actions.clear()
 		masked_keys.clear()
+		controls_locked = false
+		print("Controls: ALL UNLOCKED")
+		return
 
-		# Actions to capture
-		var actions_to_check = [
-			"forward", "backward", "strafe_left", "strafe_right",
-			"jump", "crouch", "turn_left", "turn_right", "handbrake"
-		]
-		for action in actions_to_check:
-			if Input.is_action_pressed(action):
-				locked_actions[action] = true
-				masked_actions[action] = true  # Ignore until released
+	# Toggle each pressed control
+	for action in pressed_actions:
+		if locked_actions.has(action):
+			# Already locked - unlock it
+			locked_actions.erase(action)
+			masked_actions.erase(action)
+			print("Controls: %s unlocked" % action)
+		else:
+			# Not locked - lock it
+			locked_actions[action] = true
+			masked_actions[action] = true  # Ignore until released
+			print("Controls: %s LOCKED" % action)
 
-		# Raw keys to capture (boosters, etc.)
-		var keys_to_check = [KEY_SHIFT, KEY_ALT, KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN]
-		for key in keys_to_check:
-			if Input.is_key_pressed(key):
-				locked_keys[key] = true
-				masked_keys[key] = true  # Ignore until released
+	for key in pressed_keys:
+		var key_name = _get_key_name(key)
+		if locked_keys.has(key):
+			# Already locked - unlock it
+			locked_keys.erase(key)
+			masked_keys.erase(key)
+			print("Controls: %s unlocked" % key_name)
+		else:
+			# Not locked - lock it
+			locked_keys[key] = true
+			masked_keys[key] = true  # Ignore until released
+			print("Controls: %s LOCKED" % key_name)
 
-		print("Controls: LOCKED")
-	else:
-		locked_actions.clear()
-		locked_keys.clear()
-		masked_actions.clear()
-		masked_keys.clear()
-		print("Controls: unlocked")
+	# Update controls_locked based on whether anything is locked
+	controls_locked = not locked_actions.is_empty() or not locked_keys.is_empty()
+
+
+func _get_key_name(key: int) -> String:
+	match key:
+		KEY_SHIFT: return "SHIFT"
+		KEY_ALT: return "ALT"
+		KEY_LEFT: return "LEFT"
+		KEY_RIGHT: return "RIGHT"
+		KEY_UP: return "UP"
+		KEY_DOWN: return "DOWN"
+		_: return "KEY_%d" % key
 
 
 func _is_action_pressed_locked(action: String) -> bool:
