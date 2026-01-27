@@ -129,6 +129,24 @@ func wants_ride() -> bool:
 	return destination != null and current_state == State.HAILING
 
 
+func get_trip_distance() -> float:
+	# Returns distance to destination in meters (0 if no destination)
+	if destination == null or not is_instance_valid(destination):
+		return 0.0
+	return global_position.distance_to(destination.global_position)
+
+
+func get_trip_tier() -> String:
+	# Returns "short", "medium", or "long" based on trip distance
+	var dist = get_trip_distance()
+	if dist < 800.0:
+		return "short"
+	elif dist < 2000.0:
+		return "medium"
+	else:
+		return "long"
+
+
 func set_destination(dest: Node):
 	destination = dest
 	if dest != null and current_state in IDLE_STATES:

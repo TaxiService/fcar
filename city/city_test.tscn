@@ -71,6 +71,10 @@ edge_top_sizes = 1
 
 [node name="PeopleManager" type="Node" parent="."]
 script = ExtResource("1_yage8")
+zone_load_distance = 450.0
+zone_unload_distance = 800.0
+max_fares_nearby = 14
+fare_chance_per_person = 0.199
 
 [node name="VisibilityManager" type="Node" parent="."]
 script = ExtResource("5_yage8")

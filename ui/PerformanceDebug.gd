@@ -59,11 +59,17 @@ func _input(event: InputEvent):
 			KEY_N:
 				_debug_print_nearby_zones()
 				get_viewport().set_input_as_handled()
-			KEY_B:
+			KEY_L:
 				_debug_spawn_at_camera()
 				get_viewport().set_input_as_handled()
-			KEY_V:
+			KEY_K:
 				_debug_inspect_people()
+				get_viewport().set_input_as_handled()
+			KEY_J:
+				_toggle_verbose_logging()
+				get_viewport().set_input_as_handled()
+			KEY_H:
+				_debug_generate_fares()
 				get_viewport().set_input_as_handled()
 
 
@@ -248,11 +254,11 @@ func _debug_fill_nearby_zones():
 		return
 
 	var cam_pos = _get_camera_position()
-	print("[DEBUG] M pressed - Filling zones near %s" % cam_pos)
+	print("[DEBUG] M pressed - Force-loading ALL zones within 500m")
 
 	if pm.has_method("debug_fill_nearby_zones"):
-		var spawned = pm.debug_fill_nearby_zones(cam_pos, 500.0, 200)
-		print("[DEBUG] Spawned %d people in nearby zones" % spawned)
+		var spawned = pm.debug_fill_nearby_zones(cam_pos, 500.0, 10000)
+		print("[DEBUG] Force-loaded zones, spawned %d people total" % spawned)
 	else:
 		print("[DEBUG] PeopleManager missing debug_fill_nearby_zones method")
 
@@ -305,6 +311,35 @@ func _debug_spawn_at_camera():
 				print("  Failed to spawn person!")
 	else:
 		print("[DEBUG] PeopleManager missing spawn_person_at method")
+
+
+func _toggle_verbose_logging():
+	var pm = _get_people_manager()
+	if not pm:
+		print("[DEBUG] PeopleManager not found!")
+		return
+
+	pm.verbose_logging = not pm.verbose_logging
+	print("[DEBUG] L pressed - Verbose logging: %s" % ("ON" if pm.verbose_logging else "OFF"))
+
+
+func _debug_generate_fares():
+	var pm = _get_people_manager()
+	if not pm:
+		print("[DEBUG] PeopleManager not found!")
+		return
+
+	var cam_pos = _get_camera_position()
+	print("[DEBUG] F pressed - Force-generating fares near player")
+
+	if pm.has_method("debug_generate_fares"):
+		var created = pm.debug_generate_fares(cam_pos, 400.0, 10)
+		print("[DEBUG] Created %d fares" % created)
+	else:
+		print("[DEBUG] PeopleManager missing debug_generate_fares method")
+
+	if pm.has_method("print_status"):
+		pm.print_status()
 
 
 func _debug_inspect_people():

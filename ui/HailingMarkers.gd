@@ -3,7 +3,7 @@ extends CanvasLayer
 
 # Configuration
 @export var max_markers: int = 10
-@export var marker_range: float = 100.0  # meters - shows markers
+@export var marker_range: float = 300.0  # meters - shows markers
 @export var selection_range: float = 15.0  # meters - max distance to select/confirm a group
 @export var look_at_angle_threshold: float = 35.0  # degrees - shows distance label
 @export var targeting_angle_threshold: float = 15.0  # degrees - tiebreaker when groups are similar distance

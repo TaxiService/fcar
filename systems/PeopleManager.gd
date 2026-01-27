@@ -44,20 +44,48 @@ signal spawn_complete(count: int)
 @export var spawns_per_frame: int = 2  # Max spawns per frame (spreads cost)
 @export var spawn_queue_enabled: bool = true  # Use queued spawning
 
-# Proximity spawning - "cloud" of people follows player
-@export_subgroup("Proximity Cloud")
-@export var proximity_spawn_enabled: bool = true  # Enable proximity-based spawning
-@export var proximity_spawn_radius: float = 200.0  # Spawn people within this radius of player
-@export var proximity_spawn_interval: float = 0.5  # Check for nearby empty zones every N seconds
-@export var proximity_min_per_zone: int = 1  # Ensure at least this many people per nearby zone
-@export var proximity_spawns_per_frame: int = 5  # How many proximity spawns per frame (aggressive)
+# Zone loading - zones load/unload instantly like chunks around player
+@export_subgroup("Zone Loading")
+@export var zone_loading_enabled: bool = true  # Enable zone-based load/unload
+@export var zone_load_distance: float = 300.0  # Fill zones within this radius
+@export var zone_unload_distance: float = 500.0  # Clear zones beyond this radius
+@export var zone_check_interval: float = 0.1  # How often to check zones (10x per second)
+@export var zone_fill_percent: float = 1.0  # Fill zones to 100% of max_people
+@export var zones_to_process_per_frame: int = 20  # Max zones to load/unload per frame (aggressive)
 
-# Quest/destination configuration
-@export_category("Destinations")
-@export_range(0.0, 1.0) var spawn_with_destination_chance: float = 0.3
-@export_range(0.0, 1.0) var in_a_hurry_chance: float = 0.1
-@export var hurry_time: float = 60.0
-@export var min_fare_distance: float = 100.0
+# Dynamic fare system - continuously generates ride requests
+@export_category("Fares")
+@export var dynamic_fares_enabled: bool = true  # Enable dynamic fare generation
+@export var fare_check_interval: float = 1.0  # How often to generate new fares (faster)
+@export var fare_search_radius: float = 400.0  # Look for potential fares within this range
+@export var min_fares_nearby: int = 5  # Ensure at least this many fares near player
+@export var max_fares_nearby: int = 15  # Don't exceed this many fares near player
+@export_range(0.0, 1.0) var fare_chance_per_person: float = 0.15  # Chance per idle person to want a ride
+@export_range(0.0, 1.0) var in_a_hurry_chance: float = 0.2  # Chance fare is in a hurry
+@export var hurry_time: float = 90.0  # Time limit for hurried fares
+
+# Fare distance tiers - ensures variety in trip lengths
+@export_subgroup("Distance Tiers")
+@export var fare_dist_short_min: float = 200.0  # Short trips: 200m-800m
+@export var fare_dist_short_max: float = 800.0
+@export var fare_dist_medium_min: float = 800.0  # Medium trips: 800m-2km
+@export var fare_dist_medium_max: float = 2000.0
+@export var fare_dist_long_min: float = 2000.0  # Long trips: 2km-5km
+@export var fare_dist_long_max: float = 5000.0
+@export_range(0.0, 1.0) var fare_tier_short_weight: float = 0.4  # 40% short
+@export_range(0.0, 1.0) var fare_tier_medium_weight: float = 0.35  # 35% medium
+@export_range(0.0, 1.0) var fare_tier_long_weight: float = 0.25  # 25% long
+
+# Emergency fare guarantee - ensures player always has fares nearby
+@export_subgroup("Fare Guarantee")
+@export var fare_guarantee_enabled: bool = true  # Enable emergency fare spawning
+@export var fare_guarantee_radius: float = 200.0  # Check for fares within this distance
+@export var fare_guarantee_timeout: float = 5.0  # Seconds without nearby fare before forcing
+@export var fare_guarantee_min: int = 5  # Guarantee at least this many fares nearby
+
+# Legacy - used at spawn time (lower now since dynamic system handles it)
+@export_subgroup("Spawn-time Fares")
+@export_range(0.0, 1.0) var spawn_with_destination_chance: float = 0.02
 
 # Group configuration
 @export_category("Groups")
@@ -118,7 +146,10 @@ var _player_position: Vector3 = Vector3.ZERO
 var _has_player_position: bool = false
 var _camera: Camera3D = null
 var _despawn_timer: float = 0.0
-var _proximity_spawn_timer: float = 0.0
+var _zone_load_timer: float = 0.0
+var _loaded_zones: Dictionary = {}  # zone instance_id -> true (tracks which zones are populated)
+var _fare_timer: float = 0.0
+var _time_without_nearby_fare: float = 0.0  # Emergency fare tracking
 
 func _ready():
 	_load_spritesheet()
@@ -150,6 +181,12 @@ func _warm_pool():
 	
 	var elapsed = Time.get_ticks_msec() - start_time
 	print("PeopleManager: Pool ready (%d people in %dms)" % [_pool.size(), elapsed])
+	print("PeopleManager: Fare settings:")
+	print("  dynamic_fares_enabled: %s" % dynamic_fares_enabled)
+	print("  fare_guarantee_enabled: %s" % fare_guarantee_enabled)
+	print("  fare_guarantee_radius: %.0fm, timeout: %.1fs, min: %d" % [
+		fare_guarantee_radius, fare_guarantee_timeout, fare_guarantee_min
+	])
 	_pool_ready = true
 	pool_ready.emit(_pool.size())
 
@@ -231,12 +268,23 @@ func _process(delta: float):
 			spawn_timer = 0.0
 			_queue_spawns_on_surfaces()
 
-	# Proximity spawning - aggressive spawning near player ("cloud" effect)
-	if proximity_spawn_enabled and _pool_ready:
-		_proximity_spawn_timer += delta
-		if _proximity_spawn_timer >= proximity_spawn_interval:
-			_proximity_spawn_timer = 0.0
-			_spawn_in_nearby_zones()
+	# Zone loading - fill nearby zones, clear distant ones
+	if zone_loading_enabled and _pool_ready:
+		_zone_load_timer += delta
+		if _zone_load_timer >= zone_check_interval:
+			_zone_load_timer = 0.0
+			_update_zone_loading()
+
+	# Dynamic fare generation - ensure there are always fares nearby
+	if dynamic_fares_enabled:
+		_fare_timer += delta
+		if _fare_timer >= fare_check_interval:
+			_fare_timer = 0.0
+			_generate_dynamic_fares()
+
+	# Emergency fare guarantee - force fares if none nearby for too long
+	if fare_guarantee_enabled:
+		_update_fare_guarantee(delta)
 
 	# Smart process management (periodically enable/disable _process on distant people)
 	_process_check_timer += delta
@@ -252,10 +300,13 @@ func _process(delta: float):
 		_enforce_population_cap()
 	# Debug print (every 300 frames)
 	if verbose_logging and Engine.get_frames_drawn() % 300 == 0:
-		print("=== PeopleManager ===")
-		print("  Materials: %d close + %d pixel" % [_material_cache.size(), _pixel_material_cache.size()])
-		print("  Total people: ", all_people.size())
-		print("  Pool available: ", _pool.size())
+		print("=== PeopleManager Heartbeat ===")
+		print("  _pool_ready: %s" % _pool_ready)
+		print("  dynamic_fares_enabled: %s" % dynamic_fares_enabled)
+		print("  fare_guarantee_enabled: %s" % fare_guarantee_enabled)
+		print("  Person.lod_camera: %s" % (Person.lod_camera != null))
+		print("  Total people: %d, Pool: %d" % [all_people.size(), _pool.size()])
+		print("  Time without fare: %.1fs" % _time_without_nearby_fare)
 
 
 func _process_spawn_queue():
@@ -335,69 +386,431 @@ func _queue_spawns_on_surfaces():
 		})
 
 
-func _spawn_in_nearby_zones():
-	# "Cloud" spawning - aggressively fill zones near the player
-	# This creates the illusion of a populated world following the player
+func _update_zone_loading():
+	# Zone-based load/unload system - instant fill like chunk loading
+	# When zone enters range: fill it completely
+	# When zone leaves range: clear it completely
 
 	if not Person.lod_camera:
 		return
 
-	if all_people.size() >= max_total_people:
-		return
-
 	var camera_pos = Person.lod_camera.global_position
-	var radius_sq = proximity_spawn_radius * proximity_spawn_radius
+	var load_dist_sq = zone_load_distance * zone_load_distance
+	var unload_dist_sq = zone_unload_distance * zone_unload_distance
 
-	# Find zones within range that need more people
-	var zones_needing_people: Array[SpawnZone] = []
+	var zones_to_load: Array[SpawnZone] = []
+	var zones_to_unload: Array[SpawnZone] = []
 
+	# Categorize zones by distance and loaded state
 	for zone in registered_zones:
 		if not is_instance_valid(zone) or not zone.enabled:
 			continue
 
-		# Check distance
+		var zone_id = zone.get_instance_id()
+		var is_loaded = _loaded_zones.has(zone_id)
+
 		var dx = zone.global_position.x - camera_pos.x
 		var dz = zone.global_position.z - camera_pos.z
 		var dist_sq = dx * dx + dz * dz
 
-		if dist_sq > radius_sq:
-			continue
+		if dist_sq <= load_dist_sq:
+			# Within load distance - should be loaded
+			if not is_loaded:
+				zones_to_load.append(zone)
+		elif dist_sq > unload_dist_sq:
+			# Beyond unload distance - should be unloaded
+			if is_loaded:
+				zones_to_unload.append(zone)
 
-		# Check if zone needs more people (at least proximity_min_per_zone)
-		var current_count = zone.get_people_count()
-		if current_count < proximity_min_per_zone and zone.can_spawn_more():
-			zones_needing_people.append(zone)
-
-	if zones_needing_people.is_empty():
-		return
-
-	# Sort by distance (closest first) for better experience
-	zones_needing_people.sort_custom(func(a, b):
+	# Sort zones to load by distance (closest first)
+	zones_to_load.sort_custom(func(a, b):
 		var da = camera_pos.distance_squared_to(a.global_position)
 		var db = camera_pos.distance_squared_to(b.global_position)
 		return da < db
 	)
 
-	# Spawn in closest zones first
-	var spawned = 0
-	for zone in zones_needing_people:
-		if spawned >= proximity_spawns_per_frame:
+	# LOAD: Fill zones that just entered range (instant fill)
+	var zones_loaded = 0
+	var total_spawned = 0
+	for zone in zones_to_load:
+		if zones_loaded >= zones_to_process_per_frame:
 			break
 		if all_people.size() >= max_total_people:
 			break
 
-		# Fill zone to minimum
-		while zone.get_people_count() < proximity_min_per_zone and zone.can_spawn_more():
-			if spawned >= proximity_spawns_per_frame:
-				break
+		var target_people = int(zone.max_people * zone_fill_percent)
+		var spawned_in_zone = 0
+
+		# Fill the entire zone at once
+		while zone.get_people_count() < target_people and zone.can_spawn_more():
 			if all_people.size() >= max_total_people:
 				break
 
 			var person = _do_spawn_person_zone(zone)
 			if person:
-				spawned += 1
+				spawned_in_zone += 1
+				total_spawned += 1
 			else:
 				break
+
+		# Mark zone as loaded
+		_loaded_zones[zone.get_instance_id()] = true
+		zones_loaded += 1
+
+	# UNLOAD: Clear zones that left range (instant clear)
+	var zones_unloaded = 0
+	var total_despawned = 0
+	for zone in zones_to_unload:
+		if zones_unloaded >= zones_to_process_per_frame:
+			break
+
+		# Clear all people from this zone
+		var people_in_zone = zone.spawned_people.duplicate()
+		for person in people_in_zone:
+			if not is_instance_valid(person):
+				continue
+			# Don't despawn people interacting with player
+			if person.current_state in [Person.State.BOARDING, Person.State.RIDING,
+										Person.State.EXITING, Person.State.HAILING]:
+				continue
+
+			zone.remove_person(person)
+			_return_to_pool(person)
+			total_despawned += 1
+
+		# Mark zone as unloaded
+		_loaded_zones.erase(zone.get_instance_id())
+		zones_unloaded += 1
+
+	if verbose_logging and (zones_loaded > 0 or zones_unloaded > 0):
+		print("ZoneLoad: loaded %d zones (+%d people), unloaded %d zones (-%d people) | %d loaded total" % [
+			zones_loaded, total_spawned, zones_unloaded, total_despawned, _loaded_zones.size()
+		])
+
+
+func _generate_dynamic_fares():
+	# Dynamically generate ride requests from idle people near the player
+	# Ensures there's always someone wanting a ride nearby
+
+	# Skip if a fare is already in progress
+	for person in all_people:
+		if is_instance_valid(person) and person.current_state in [Person.State.BOARDING, Person.State.RIDING]:
+			return
+
+	var camera_pos: Vector3
+
+	# Try to get camera position from multiple sources
+	if Person.lod_camera and is_instance_valid(Person.lod_camera):
+		camera_pos = Person.lod_camera.global_position
+	else:
+		var viewport_cam = get_viewport().get_camera_3d()
+		if viewport_cam:
+			camera_pos = viewport_cam.global_position
+		else:
+			return
+
+	var search_radius_sq = fare_search_radius * fare_search_radius
+
+	# Count current fares (people in HAILING state) nearby
+	var current_fares: Array[Person] = []
+	var idle_people: Array[Person] = []
+
+	for person in all_people:
+		if not is_instance_valid(person):
+			continue
+
+		var dist_sq = camera_pos.distance_squared_to(person.global_position)
+		if dist_sq > search_radius_sq:
+			continue
+
+		match person.current_state:
+			Person.State.HAILING:
+				current_fares.append(person)
+			Person.State.WALKING, Person.State.WAITING:
+				# Eligible for becoming a fare
+				if person.destination == null:
+					idle_people.append(person)
+
+	# If we already have enough fares, don't generate more
+	if current_fares.size() >= max_fares_nearby:
+		return
+
+	# Calculate how many new fares we need
+	var fares_needed = min_fares_nearby - current_fares.size()
+	if fares_needed <= 0:
+		# We have minimum, but maybe generate more based on chance
+		fares_needed = 0
+
+	# Shuffle idle people for randomness
+	idle_people.shuffle()
+
+	var fares_created = 0
+	for person in idle_people:
+		# Stop if we have enough
+		if current_fares.size() + fares_created >= max_fares_nearby:
+			break
+
+		# Guaranteed fares if below minimum, otherwise use chance
+		var should_become_fare = false
+		if fares_created < fares_needed:
+			should_become_fare = true
+		else:
+			should_become_fare = randf() < fare_chance_per_person
+
+		if not should_become_fare:
+			continue
+
+		# Find a destination for this person
+		var destination = _find_fare_destination(person)
+		if destination == null:
+			continue
+
+		# Convert to fare
+		person.destination = destination
+		person.in_a_hurry = randf() < in_a_hurry_chance
+		if person.in_a_hurry:
+			person.hurry_timer = hurry_time
+		person.base_y = person.global_position.y
+		person.current_state = Person.State.HAILING
+
+		fares_created += 1
+
+	if verbose_logging and fares_created > 0:
+		print("Fares: created %d new fares (%d total nearby, %d idle candidates)" % [
+			fares_created, current_fares.size() + fares_created, idle_people.size()
+		])
+
+
+func _update_fare_guarantee(delta: float):
+	# Emergency fare guarantee - if no fares nearby for too long, force-spawn them
+
+	# Skip if a fare is already in progress (someone is boarding or riding)
+	for person in all_people:
+		if is_instance_valid(person) and person.current_state in [Person.State.BOARDING, Person.State.RIDING]:
+			_time_without_nearby_fare = 0.0  # Reset timer
+			return
+
+	var camera_pos: Vector3
+
+	# Try to get camera position from multiple sources
+	if Person.lod_camera and is_instance_valid(Person.lod_camera):
+		camera_pos = Person.lod_camera.global_position
+	else:
+		# Fallback: get camera from viewport
+		var viewport_cam = get_viewport().get_camera_3d()
+		if viewport_cam:
+			camera_pos = viewport_cam.global_position
+		else:
+			if verbose_logging:
+				print("FARE GUARANTEE: No camera found!")
+			return
+	var guarantee_radius_sq = fare_guarantee_radius * fare_guarantee_radius
+
+	# Count fares within guarantee radius
+	var nearby_fares = 0
+	for person in all_people:
+		if not is_instance_valid(person):
+			continue
+		if person.current_state != Person.State.HAILING:
+			continue
+		var dist_sq = camera_pos.distance_squared_to(person.global_position)
+		if dist_sq <= guarantee_radius_sq:
+			nearby_fares += 1
+
+	# If we have enough fares, reset timer
+	if nearby_fares >= fare_guarantee_min:
+		_time_without_nearby_fare = 0.0
+		return
+
+	# Increment time without enough fares
+	_time_without_nearby_fare += delta
+
+	# Debug: show countdown
+	if verbose_logging and int(_time_without_nearby_fare) != int(_time_without_nearby_fare - delta):
+		print("FARE GUARANTEE: %d/%d fares nearby, waiting %.1f/%.1fs" % [
+			nearby_fares, fare_guarantee_min, _time_without_nearby_fare, fare_guarantee_timeout
+		])
+
+	# If timeout reached, FORCE spawn fares
+	if _time_without_nearby_fare >= fare_guarantee_timeout:
+		print("FARE GUARANTEE: Timeout! Forcing %d fares..." % (fare_guarantee_min - nearby_fares))
+		_force_spawn_nearby_fares(camera_pos, guarantee_radius_sq, fare_guarantee_min - nearby_fares)
+		_time_without_nearby_fare = 0.0
+
+
+func _force_spawn_nearby_fares(camera_pos: Vector3, radius_sq: float, count_needed: int):
+	# Emergency: Force-convert nearby people to fares, or spawn new ones
+	print("FARE GUARANTEE: Need %d fares, searching..." % count_needed)
+
+	var fares_created = 0
+
+	# First, try to convert ANY nearby idle person (ignore normal restrictions)
+	var nearby_idle: Array[Person] = []
+	for person in all_people:
+		if not is_instance_valid(person):
+			continue
+		if person.destination != null:
+			continue
+		# Accept anyone who isn't already in a fare-related state
+		if person.current_state in [Person.State.HAILING, Person.State.BOARDING,
+									Person.State.RIDING, Person.State.EXITING]:
+			continue
+
+		var dist_sq = camera_pos.distance_squared_to(person.global_position)
+		if dist_sq <= radius_sq:
+			nearby_idle.append(person)
+
+	print("FARE GUARANTEE: Found %d idle people within range" % nearby_idle.size())
+
+	# Shuffle and convert
+	nearby_idle.shuffle()
+	var dest_failures = 0
+	for person in nearby_idle:
+		if fares_created >= count_needed:
+			break
+
+		var destination = _find_fare_destination(person)
+		if destination == null:
+			dest_failures += 1
+			continue
+
+		# Force conversion
+		person.destination = destination
+		person.in_a_hurry = randf() < in_a_hurry_chance
+		if person.in_a_hurry:
+			person.hurry_timer = hurry_time
+		person.base_y = person.global_position.y
+		person.current_state = Person.State.HAILING
+		fares_created += 1
+		print("FARE GUARANTEE: Converted person to fare (dest: %s, dist: %.0fm)" % [
+			destination.name if destination else "null",
+			person.global_position.distance_to(destination.global_position) if destination else 0
+		])
+
+	if dest_failures > 0:
+		print("FARE GUARANTEE: %d people couldn't find destinations!" % dest_failures)
+
+	# If still not enough, spawn new people as fares in nearby zones
+	if fares_created < count_needed:
+		var zones_nearby: Array[SpawnZone] = []
+		for zone in registered_zones:
+			if not is_instance_valid(zone) or not zone.enabled:
+				continue
+			var dist_sq = camera_pos.distance_squared_to(zone.global_position)
+			if dist_sq <= radius_sq:
+				zones_nearby.append(zone)
+
+		print("FARE GUARANTEE: Still need %d, found %d zones to spawn in" % [
+			count_needed - fares_created, zones_nearby.size()
+		])
+
+		zones_nearby.shuffle()
+		for zone in zones_nearby:
+			if fares_created >= count_needed:
+				break
+			if all_people.size() >= max_total_people:
+				print("FARE GUARANTEE: Hit max_total_people cap!")
+				break
+
+			# Spawn a new person directly as a fare
+			var person = _do_spawn_person_zone(zone)
+			if person:
+				var destination = _find_fare_destination(person)
+				if destination:
+					person.destination = destination
+					person.in_a_hurry = randf() < in_a_hurry_chance
+					if person.in_a_hurry:
+						person.hurry_timer = hurry_time
+					person.base_y = person.global_position.y
+					person.current_state = Person.State.HAILING
+					fares_created += 1
+				else:
+					print("FARE GUARANTEE: Spawned person but no destination found")
+
+	print("FARE GUARANTEE: Created %d/%d emergency fares" % [fares_created, count_needed])
+
+
+func _find_fare_destination(person: Person) -> Node:
+	# Find a valid destination zone for a fare
+	# Uses distance tiers for variety (short/medium/long trips)
+
+	var person_pos = person.global_position
+
+	# Pick a distance tier based on weights
+	var tier = _pick_fare_distance_tier()
+	var min_dist: float
+	var max_dist: float
+
+	match tier:
+		0:  # Short
+			min_dist = fare_dist_short_min
+			max_dist = fare_dist_short_max
+		1:  # Medium
+			min_dist = fare_dist_medium_min
+			max_dist = fare_dist_medium_max
+		2:  # Long
+			min_dist = fare_dist_long_min
+			max_dist = fare_dist_long_max
+		_:
+			min_dist = fare_dist_short_min
+			max_dist = fare_dist_long_max
+
+	var min_dist_sq = min_dist * min_dist
+	var max_dist_sq = max_dist * max_dist
+
+	# Collect valid destination zones in this distance range
+	var valid_zones: Array[SpawnZone] = []
+
+	for zone in registered_zones:
+		if not is_instance_valid(zone) or not zone.enabled:
+			continue
+
+		var dist_sq = person_pos.distance_squared_to(zone.global_position)
+		if dist_sq >= min_dist_sq and dist_sq <= max_dist_sq:
+			valid_zones.append(zone)
+
+	# If no zones in preferred range, try expanding search
+	if valid_zones.is_empty():
+		# Try any zone beyond minimum short distance
+		min_dist_sq = fare_dist_short_min * fare_dist_short_min
+		for zone in registered_zones:
+			if not is_instance_valid(zone) or not zone.enabled:
+				continue
+			var dist_sq = person_pos.distance_squared_to(zone.global_position)
+			if dist_sq >= min_dist_sq:
+				valid_zones.append(zone)
+
+	if valid_zones.is_empty() and verbose_logging:
+		print("_find_fare_destination: No valid zones! Total zones: %d, person at %s" % [
+			registered_zones.size(), person_pos
+		])
+
+	# Also consider POIs
+	for poi in registered_pois:
+		if not is_instance_valid(poi):
+			continue
+		var dist_sq = person_pos.distance_squared_to(poi.global_position)
+		if dist_sq >= min_dist_sq and dist_sq <= max_dist_sq:
+			valid_zones.append(poi)
+
+	if valid_zones.is_empty():
+		return null
+
+	# Pick random destination from valid options
+	return valid_zones[randi() % valid_zones.size()]
+
+
+func _pick_fare_distance_tier() -> int:
+	# Returns 0=short, 1=medium, 2=long based on weights
+	var total = fare_tier_short_weight + fare_tier_medium_weight + fare_tier_long_weight
+	var roll = randf() * total
+
+	if roll < fare_tier_short_weight:
+		return 0
+	elif roll < fare_tier_short_weight + fare_tier_medium_weight:
+		return 1
+	else:
+		return 2
 
 
 func _despawn_distant_people():
@@ -723,7 +1136,7 @@ func _find_valid_destination(person: Person, _source_spawner: Node) -> Node:
 			continue
 		if other.current_state in [Person.State.BOARDING, Person.State.RIDING, Person.State.HAILING]:
 			continue
-		if person_pos.distance_to(other.global_position) < min_fare_distance:
+		if person_pos.distance_to(other.global_position) < fare_dist_short_min:
 			continue
 		if other.group_id != -1 and other.group_id == person.group_id:
 			continue
@@ -731,7 +1144,7 @@ func _find_valid_destination(person: Person, _source_spawner: Node) -> Node:
 	
 	for poi in registered_pois:
 		if is_instance_valid(poi) and poi.enabled:
-			if person_pos.distance_to(poi.global_position) < min_fare_distance:
+			if person_pos.distance_to(poi.global_position) < fare_dist_short_min:
 				continue
 			valid_targets.append(poi)
 	
@@ -1051,10 +1464,57 @@ func print_status():
 	print("  Materials cached: %d (close) + %d (pixel)" % [_material_cache.size(), _pixel_material_cache.size()])
 	print("  Spawners: %d surfaces + %d zones" % [registered_surfaces.size(), registered_zones.size()])
 
+	# Fare stats
+	if Person.lod_camera:
+		var camera_pos = Person.lod_camera.global_position
+		var fare_radius_sq = fare_search_radius * fare_search_radius
+		var fares_nearby = 0
+		var fares_total = 0
+		var short_fares = 0
+		var medium_fares = 0
+		var long_fares = 0
+		for person in all_people:
+			if not is_instance_valid(person):
+				continue
+			if person.current_state == Person.State.HAILING:
+				fares_total += 1
+				var dist_sq = camera_pos.distance_squared_to(person.global_position)
+				if dist_sq <= fare_radius_sq:
+					fares_nearby += 1
+				# Categorize by trip distance
+				if person.destination and is_instance_valid(person.destination):
+					var trip_dist = person.global_position.distance_to(person.destination.global_position)
+					if trip_dist < fare_dist_medium_min:
+						short_fares += 1
+					elif trip_dist < fare_dist_long_min:
+						medium_fares += 1
+					else:
+						long_fares += 1
+		print("  Fares: %d nearby, %d total (short:%d med:%d long:%d)" % [
+			fares_nearby, fares_total, short_fares, medium_fares, long_fares
+		])
 
-## Force-spawn people in zones near a position (for debugging)
-func debug_fill_nearby_zones(center: Vector3, radius: float = 200.0, max_spawns: int = 100):
-	print("PeopleManager: Filling zones within %.0fm of %s" % [radius, center])
+	# Zone loading stats
+	if zone_loading_enabled and Person.lod_camera:
+		var camera_pos = Person.lod_camera.global_position
+		var load_dist_sq = zone_load_distance * zone_load_distance
+		var zones_in_range = 0
+		var people_in_range = 0
+		for zone in registered_zones:
+			if not is_instance_valid(zone):
+				continue
+			var dist_sq = camera_pos.distance_squared_to(zone.global_position)
+			if dist_sq <= load_dist_sq:
+				zones_in_range += 1
+				people_in_range += zone.get_people_count()
+		print("  Zone loading: %d/%d zones loaded, %d in range (%.0fm), %d people nearby" % [
+			_loaded_zones.size(), registered_zones.size(), zones_in_range, zone_load_distance, people_in_range
+		])
+
+
+## Force-load all zones near a position (fills them completely)
+func debug_fill_nearby_zones(center: Vector3, radius: float = 300.0, max_spawns: int = 5000):
+	print("PeopleManager: Force-loading zones within %.0fm of %s" % [radius, center])
 	var spawned = 0
 	var zones_filled = 0
 	var radius_sq = radius * radius
@@ -1068,19 +1528,66 @@ func debug_fill_nearby_zones(center: Vector3, radius: float = 200.0, max_spawns:
 			continue
 
 		# Fill this zone to capacity
-		while zone.can_spawn_more() and spawned < max_spawns:
+		var target = int(zone.max_people * zone_fill_percent)
+		while zone.get_people_count() < target and zone.can_spawn_more() and spawned < max_spawns:
 			var person = _do_spawn_person_zone(zone)
 			if person:
 				spawned += 1
 			else:
 				break
+
+		# Mark as loaded
+		_loaded_zones[zone.get_instance_id()] = true
 		zones_filled += 1
 
 		if spawned >= max_spawns:
 			break
 
-	print("  Filled %d zones, spawned %d people" % [zones_filled, spawned])
+	print("  Loaded %d zones, spawned %d people, %d total loaded" % [zones_filled, spawned, _loaded_zones.size()])
 	return spawned
+
+
+## Force-generate fares near a position (for debugging)
+func debug_generate_fares(center: Vector3, radius: float = 400.0, count: int = 5) -> int:
+	print("PeopleManager: Force-generating %d fares within %.0fm" % [count, radius])
+	var radius_sq = radius * radius
+
+	# Find idle people near the center
+	var idle_people: Array[Person] = []
+	for person in all_people:
+		if not is_instance_valid(person):
+			continue
+		if person.destination != null:
+			continue
+		if person.current_state not in [Person.State.WALKING, Person.State.WAITING]:
+			continue
+
+		var dist_sq = center.distance_squared_to(person.global_position)
+		if dist_sq <= radius_sq:
+			idle_people.append(person)
+
+	idle_people.shuffle()
+
+	var fares_created = 0
+	for person in idle_people:
+		if fares_created >= count:
+			break
+
+		var destination = _find_fare_destination(person)
+		if destination == null:
+			continue
+
+		person.destination = destination
+		person.in_a_hurry = randf() < in_a_hurry_chance
+		if person.in_a_hurry:
+			person.hurry_timer = hurry_time
+		person.base_y = person.global_position.y
+		person.current_state = Person.State.HAILING
+
+		fares_created += 1
+
+	print("  Created %d fares from %d idle candidates" % [fares_created, idle_people.size()])
+	return fares_created
 
 
 ## Get zones near a position (for debugging)
