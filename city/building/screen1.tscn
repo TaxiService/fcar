@@ -1,0 +1,78 @@
+[gd_scene load_steps=12 format=3 uid="uid://bnx1fcut3h3co"]
+
+[ext_resource type="Script" uid="uid://cmafag82uyxu7" path="res://city/BuildingBlock.gd" id="1_t8v4r"]
+[ext_resource type="Material" uid="uid://c84qehqsj2tk1" path="res://mats/floor_small.tres" id="2_auxbn"]
+[ext_resource type="Material" uid="uid://bqb6xr3pfb6vl" path="res://mats/holo.tres" id="3_auxbn"]
+[ext_resource type="Material" uid="uid://d1752hlai3xtn" path="res://mats/floor.tres" id="3_ho5aj"]
+[ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://city/ConnectionPoint.gd" id="4_nmuf4"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_5dwv6"]
+size = Vector3(0.61224365, 7.9005127, 0.9892578)
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_gra87"]
+height = 3.76
+radius = 1.76
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_h4pit"]
+top_radius = 2.0
+bottom_radius = 2.0
+height = 4.0
+radial_segments = 5
+
+[sub_resource type="BoxMesh" id="BoxMesh_4adtr"]
+material = ExtResource("2_auxbn")
+size = Vector3(0.6, 10, 1)
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_ho5aj"]
+material = ExtResource("3_auxbn")
+size = Vector2(8, 4)
+
+[sub_resource type="SphereMesh" id="SphereMesh_j0xe6"]
+radius = 1.624
+height = 1.955
+radial_segments = 6
+rings = 2
+
+[node name="FloorSmall5" type="StaticBody3D"]
+script = ExtResource("1_t8v4r")
+block_type = 2
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.002532959, 6.050523, -1.5063477)
+shape = SubResource("BoxShape3D_5dwv6")
+
+[node name="CollisionShape3D2" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 0.17, 0)
+shape = SubResource("CylinderShape3D_gra87")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 0, 0)
+mesh = SubResource("CylinderMesh_h4pit")
+surface_material_override/0 = ExtResource("2_auxbn")
+
+[node name="MeshInstance3D2" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 5, -1.51)
+mesh = SubResource("BoxMesh_4adtr")
+
+[node name="MeshInstance3D4" type="MeshInstance3D" parent="."]
+transform = Transform3D(-4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 0, 0, 1, 0, 6, 1)
+mesh = SubResource("PlaneMesh_ho5aj")
+
+[node name="MeshInstance3D3" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 0, 1.7)
+mesh = SubResource("SphereMesh_j0xe6")
+surface_material_override/0 = ExtResource("3_ho5aj")
+
+[node name="Conn_Plug_Large" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, -1.7, 0)
+script = ExtResource("4_nmuf4")
+type_flags = 8
+size_flags = 3
+is_socket = false
+
+[node name="Conn_Socket_Medium2" type="Marker3D" parent="."]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, -2.1)
+script = ExtResource("4_nmuf4")
+type_flags = 8
+size_flags = 3
+is_socket = false
