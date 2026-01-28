@@ -67,6 +67,10 @@ var relocation_target: Vector3 = Vector3.ZERO
 var relocation_surface: Node = null  # SpawnSurface to adopt bounds from
 var relocation_speed: float = 2.0  # Faster than normal walk
 
+# Fare cooldown (prevent immediate re-fare after delivery)
+var fare_cooldown: float = 0.0  # Time remaining before can become fare again
+const FARE_COOLDOWN_TIME: float = 30.0  # Seconds after delivery before eligible
+
 # LOD/Culling instance state
 var lod_timer: float = 0.0  # Stagger LOD checks
 var lod_check_offset: float = 0.0  # Random offset to distribute checks
@@ -147,6 +151,18 @@ func get_trip_tier() -> String:
 		return "long"
 
 
+func can_become_fare() -> bool:
+	# Returns true if this person is eligible to become a fare
+	# Must be idle, have no destination, and not on cooldown
+	if destination != null:
+		return false
+	if fare_cooldown > 0.0:
+		return false
+	if current_state not in [State.WALKING, State.WAITING]:
+		return false
+	return true
+
+
 func set_destination(dest: Node):
 	destination = dest
 	if dest != null and current_state in IDLE_STATES:
@@ -174,6 +190,10 @@ func start_relocating(target_pos: Vector3, surface: Node):
 
 
 func _process(delta: float):
+	# Decrement fare cooldown
+	if fare_cooldown > 0.0:
+		fare_cooldown -= delta
+
 	# Fast path: RIDING passengers skip everything except position update
 	if current_state == State.RIDING:
 		visible = false
@@ -404,6 +424,7 @@ func _enter_state(new_state: State):
 
 		State.ARRIVED:
 			walk_direction = Vector3.ZERO
+			fare_cooldown = FARE_COOLDOWN_TIME  # Prevent immediate re-fare
 
 		State.RELOCATING:
 			walk_direction = Vector3.ZERO

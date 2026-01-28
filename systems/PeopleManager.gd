@@ -523,13 +523,10 @@ func _generate_dynamic_fares():
 		if dist_sq > search_radius_sq:
 			continue
 
-		match person.current_state:
-			Person.State.HAILING:
-				current_fares.append(person)
-			Person.State.WALKING, Person.State.WAITING:
-				# Eligible for becoming a fare
-				if person.destination == null:
-					idle_people.append(person)
+		if person.current_state == Person.State.HAILING:
+			current_fares.append(person)
+		elif person.can_become_fare():
+			idle_people.append(person)
 
 	# If we already have enough fares, don't generate more
 	if current_fares.size() >= max_fares_nearby:
@@ -644,16 +641,12 @@ func _force_spawn_nearby_fares(camera_pos: Vector3, radius_sq: float, count_need
 
 	var fares_created = 0
 
-	# First, try to convert ANY nearby idle person (ignore normal restrictions)
+	# First, try to convert ANY nearby idle person
 	var nearby_idle: Array[Person] = []
 	for person in all_people:
 		if not is_instance_valid(person):
 			continue
-		if person.destination != null:
-			continue
-		# Accept anyone who isn't already in a fare-related state
-		if person.current_state in [Person.State.HAILING, Person.State.BOARDING,
-									Person.State.RIDING, Person.State.EXITING]:
+		if not person.can_become_fare():
 			continue
 
 		var dist_sq = camera_pos.distance_squared_to(person.global_position)
