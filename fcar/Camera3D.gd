@@ -75,12 +75,15 @@ func _input(event):
 				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 				right_click_start_time = Time.get_ticks_msec() / 1000.0
 				right_click_mouse_moved = false
+				# Immediately take control - stop any auto-return
+				auto_returning = false
+				manual_reset_active = false
 			else:
 				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 				# Check if this was a quick click (not a hold)
 				var hold_duration = Time.get_ticks_msec() / 1000.0 - right_click_start_time
 				if hold_duration < click_threshold and not right_click_mouse_moved:
-					# Quick click = reset camera to default (works in both modes)
+					# Quick click = reset camera to default
 					_reset_camera_to_default()
 
 	# Handle mouse movement for mouselook
@@ -138,20 +141,28 @@ func _physics_process(delta):
 	var speed = velocity.length()
 	var current_direction = velocity.normalized() if speed > 0.1 else Vector3.ZERO
 
-	# Mouselook state management
-	if is_mouselooking:
-		# Not actively mouselooking if no mouse buttons pressed
-		if not Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) and not Input.is_mouse_button_pressed(MOUSE_BUTTON_MIDDLE):
-			is_mouselooking = false
-			auto_returning = false  # Stop any auto-return when user takes control
-			# Capture baseline when mouselook ends (if camera was moved from default)
-			if not is_at_default_position() and speed > min_speed_for_tracking:
-				baseline_direction = current_direction
-				baseline_speed = speed
-				has_baseline = true
+	# Check if user is holding mouse button (even if not moving yet)
+	var mouse_button_held = Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) or Input.is_mouse_button_pressed(MOUSE_BUTTON_MIDDLE)
+
+	# If mouse button is held, cancel any auto-return and don't start new ones
+	if mouse_button_held:
+		if auto_returning:
+			auto_returning = false
+			has_baseline = false
+		# Keep is_mouselooking true while button is held (set by _input on motion)
+
+	# Mouselook state management - detect when user releases mouse button
+	if is_mouselooking and not mouse_button_held:
+		is_mouselooking = false
+		# Capture baseline when mouselook ends (if camera was moved from default)
+		if not is_at_default_position() and speed > min_speed_for_tracking:
+			baseline_direction = current_direction
+			baseline_speed = speed
+			has_baseline = true
 
 	# Determine if we should START auto-returning based on CHANGES in driving
-	if not is_mouselooking and not is_at_default_position() and not auto_returning:
+	# Only check when: not mouselooking, not holding mouse button, camera not at default, not already returning
+	if not is_mouselooking and not mouse_button_held and not is_at_default_position() and not auto_returning:
 		if has_baseline and speed > min_speed_for_tracking:
 			# Check for significant direction change
 			var direction_changed = false
@@ -175,8 +186,8 @@ func _physics_process(delta):
 			baseline_speed = speed
 			has_baseline = true
 
-	# Apply auto-return animation until we reach default
-	if auto_returning:
+	# Apply auto-return animation until we reach default (but not while mouse is held)
+	if auto_returning and not mouse_button_held:
 		# Use lerp_angle for yaw to always take the shortest path
 		mouse_yaw_offset = lerp_angle(mouse_yaw_offset, 0.0, auto_return_speed * delta)
 		mouse_pitch_offset = lerp(mouse_pitch_offset, 0.0, auto_return_speed * delta)
