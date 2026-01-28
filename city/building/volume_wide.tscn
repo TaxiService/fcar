@@ -1,0 +1,268 @@
+[gd_scene load_steps=18 format=3 uid="uid://df0e37gnfp2ry"]
+
+[ext_resource type="Script" uid="uid://cmafag82uyxu7" path="res://city/BuildingBlock.gd" id="1_k8u28"]
+[ext_resource type="Script" uid="uid://dhck8hvi8ocih" path="res://systems/SpawnZone.gd" id="2_26prw"]
+[ext_resource type="Material" uid="uid://c84qehqsj2tk1" path="res://mats/floor_small.tres" id="3_o7fgk"]
+[ext_resource type="Material" uid="uid://d1752hlai3xtn" path="res://mats/floor.tres" id="4_iyfce"]
+[ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://city/ConnectionPoint.gd" id="5_xoq5h"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_5dwv6"]
+size = Vector3(90, 5, 60)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_c3qcp"]
+albedo_color = Color(0.160784, 0.184314, 0.156863, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_nrjh1"]
+material = SubResource("StandardMaterial3D_c3qcp")
+size = Vector3(90, 5, 59.9)
+
+[sub_resource type="TorusMesh" id="TorusMesh_6dmbk"]
+inner_radius = 3.105
+outer_radius = 5.0
+rings = 5
+ring_segments = 3
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_ssnx1"]
+size = Vector3(18.5, 14.511597, 18.5)
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_k8u28"]
+height = 10.687866
+radius = 4.983
+
+[sub_resource type="SphereMesh" id="SphereMesh_26prw"]
+material = ExtResource("3_o7fgk")
+radius = 15.0
+height = 30.0
+radial_segments = 4
+rings = 2
+is_hemisphere = true
+
+[sub_resource type="BoxMesh" id="BoxMesh_27yca"]
+material = SubResource("StandardMaterial3D_c3qcp")
+size = Vector3(25, 60, 25)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_27yca"]
+size = Vector3(30, 15, 60)
+
+[sub_resource type="BoxMesh" id="BoxMesh_3boio"]
+material = ExtResource("4_iyfce")
+size = Vector3(30, 15, 60)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_3boio"]
+size = Vector3(90, 5, 30)
+
+[sub_resource type="BoxMesh" id="BoxMesh_qge6t"]
+material = ExtResource("4_iyfce")
+size = Vector3(90, 5, 30)
+
+[node name="FloorSmall5" type="StaticBody3D"]
+script = ExtResource("1_k8u28")
+can_spawn_people = true
+
+[node name="Node3D" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 32.5, 0)
+script = ExtResource("2_26prw")
+enabled = false
+radius = 15.0
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 30, 0)
+shape = SubResource("BoxShape3D_5dwv6")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="CollisionShape3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.01, 0)
+mesh = SubResource("BoxMesh_nrjh1")
+skeleton = NodePath("../..")
+
+[node name="MeshInstance3D2" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.7071067, -0.7071068, -3.090862e-08, 0, -4.371139e-08, 1, -0.7071068, -0.7071067, -3.090862e-08, 23.063934, 33.48, -6.991827)
+mesh = SubResource("TorusMesh_6dmbk")
+skeleton = NodePath("../CollisionShape3D/MeshInstance3D")
+surface_material_override/0 = ExtResource("3_o7fgk")
+
+[node name="CollisionShape3D2" type="CollisionShape3D" parent="."]
+transform = Transform3D(0.70710677, 0, 0.70710677, 0, 1, 0, -0.70710677, 0, 0.70710677, -30, 39.7558, 0)
+shape = SubResource("BoxShape3D_ssnx1")
+
+[node name="CollisionShape3D6" type="CollisionShape3D" parent="."]
+transform = Transform3D(0.70710677, 0, 0.70710677, 0, 1, 0, -0.70710677, 0, 0.70710677, -30, 52.19951, 0)
+shape = SubResource("CylinderShape3D_k8u28")
+
+[node name="CollisionShape3D7" type="CollisionShape3D" parent="."]
+transform = Transform3D(0.70710677, 0, 0.70710677, 0, 1, 0, -0.70710677, 0, 0.70710677, 30, 52.2, 0)
+shape = SubResource("CylinderShape3D_k8u28")
+
+[node name="MeshInstance3D4" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -30, 32, 0)
+mesh = SubResource("SphereMesh_26prw")
+
+[node name="MeshInstance3D3" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 30, 32, 0)
+mesh = SubResource("SphereMesh_26prw")
+
+[node name="CollisionShape3D3" type="CollisionShape3D" parent="."]
+transform = Transform3D(0.70710677, 0, 0.70710677, 0, 1, 0, -0.70710677, 0, 0.70710677, 30, 39.756, 0)
+shape = SubResource("BoxShape3D_ssnx1")
+
+[node name="MeshInstance3D4" type="MeshInstance3D" parent="CollisionShape3D3"]
+visible = false
+mesh = SubResource("BoxMesh_27yca")
+skeleton = NodePath("../..")
+
+[node name="CollisionShape3D4" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 25, 0)
+shape = SubResource("BoxShape3D_27yca")
+
+[node name="MeshInstance3D5" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 25.001, 0)
+mesh = SubResource("BoxMesh_3boio")
+
+[node name="CollisionShape3D5" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 60, 0)
+shape = SubResource("BoxShape3D_3boio")
+
+[node name="MeshInstance3D6" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 60, 0)
+mesh = SubResource("BoxMesh_qge6t")
+
+[node name="Conn_Plug_Medium5" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 32.5, -15)
+script = ExtResource("5_xoq5h")
+size_flags = 3
+is_plug = false
+rotation_mode = 1
+
+[node name="Conn_Plug_Medium6" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 32.5, 15)
+script = ExtResource("5_xoq5h")
+size_flags = 3
+is_plug = false
+rotation_mode = 1
+
+[node name="Conn_Plug_Large" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 30, 27.5, 0)
+script = ExtResource("5_xoq5h")
+size_flags = 4
+rotation_mode = 1
+
+[node name="Conn_Plug_Large2" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, -30, 27.5, 0)
+script = ExtResource("5_xoq5h")
+size_flags = 4
+rotation_mode = 1
+
+[node name="Conn_Plug_Large5" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 17.5, -15)
+script = ExtResource("5_xoq5h")
+type_flags = 3
+size_flags = 4
+rotation_mode = 1
+
+[node name="Conn_Plug_Large7" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 17.5, 15)
+script = ExtResource("5_xoq5h")
+type_flags = 3
+size_flags = 4
+rotation_mode = 1
+
+[node name="Conn_Plug_Large3" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 30, 62.5, 0)
+script = ExtResource("5_xoq5h")
+size_flags = 4
+rotation_mode = 1
+
+[node name="Conn_Plug_Large6" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 62.5, 0)
+script = ExtResource("5_xoq5h")
+type_flags = 3
+size_flags = 4
+
+[node name="Conn_Plug_Large4" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -30, 62.5, 0)
+script = ExtResource("5_xoq5h")
+size_flags = 4
+rotation_mode = 1
+
+[node name="Conn_Plug_Medium3" type="Marker3D" parent="."]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 45, 30, -15)
+script = ExtResource("5_xoq5h")
+type_flags = 4
+size_flags = 3
+is_plug = false
+
+[node name="Conn_Plug_Medium4" type="Marker3D" parent="."]
+transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, -45, 30, -15)
+script = ExtResource("5_xoq5h")
+type_flags = 4
+size_flags = 3
+is_plug = false
+
+[node name="Conn_Plug_Medium" type="Marker3D" parent="."]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 45, 30, 15)
+script = ExtResource("5_xoq5h")
+type_flags = 4
+size_flags = 3
+is_plug = false
+
+[node name="Conn_Plug_Medium2" type="Marker3D" parent="."]
+transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, -45, 30, 15)
+script = ExtResource("5_xoq5h")
+type_flags = 4
+size_flags = 3
+is_plug = false
+
+[node name="Conn_Socket_Medium" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 30, 30, 30)
+script = ExtResource("5_xoq5h")
+type_flags = 4
+size_flags = 3
+is_plug = false
+
+[node name="Conn_Socket_Medium3" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -30, 30, 30)
+script = ExtResource("5_xoq5h")
+type_flags = 4
+size_flags = 3
+is_plug = false
+
+[node name="Conn_Socket_Medium2" type="Marker3D" parent="."]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 30, 30, -30)
+script = ExtResource("5_xoq5h")
+type_flags = 4
+size_flags = 3
+is_plug = false
+
+[node name="Conn_Socket_Medium4" type="Marker3D" parent="."]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, -30, 30, -30)
+script = ExtResource("5_xoq5h")
+type_flags = 4
+size_flags = 3
+is_plug = false
+
+[node name="Conn_Socket_Medium5" type="Marker3D" parent="."]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 30, 40, -12.5)
+script = ExtResource("5_xoq5h")
+type_flags = 4
+size_flags = 1
+is_plug = false
+
+[node name="Conn_Socket_Medium6" type="Marker3D" parent="."]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, -30, 40, -12.5)
+script = ExtResource("5_xoq5h")
+type_flags = 4
+size_flags = 1
+is_plug = false
+
+[node name="Conn_Socket_Medium7" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 30, 40, 12.5)
+script = ExtResource("5_xoq5h")
+type_flags = 4
+size_flags = 1
+is_plug = false
+
+[node name="Conn_Socket_Medium8" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -30, 40, 12.5)
+script = ExtResource("5_xoq5h")
+type_flags = 4
+size_flags = 1
+is_plug = false
