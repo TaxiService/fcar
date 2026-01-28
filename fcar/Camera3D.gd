@@ -100,37 +100,12 @@ func _input(event):
 			mouse_pitch_offset = clamp(mouse_pitch_offset, deg_to_rad(-max_mouse_pitch), deg_to_rad(max_mouse_pitch))
 
 func _reset_camera_to_default():
-	# Start smooth reset of mouselook offsets
+	# Start smooth reset - both camera_yaw and mouse offsets will lerp toward their targets
+	# Using lerp_angle ensures we always take the shortest path
 	manual_reset_active = true
 	is_mouselooking = false
-	has_baseline = false  # Clear baseline on manual reset
-	auto_returning = false  # Cancel any auto-return in progress
-
-	# FIX: To avoid the "jump" bug, we need to keep effective_yaw constant
-	# while transferring the offset to camera_yaw
-	if target:
-		var target_forward = -target.global_transform.basis.z
-		var target_yaw_forward = Vector3(target_forward.x, 0, target_forward.z).normalized()
-		if target_yaw_forward.length() > 0.01:
-			var target_yaw = atan2(target_yaw_forward.x, target_yaw_forward.z)
-
-			# Current effective yaw (what the camera is actually showing)
-			var current_effective_yaw = camera_yaw + mouse_yaw_offset
-
-			# Snap camera_yaw to car's heading
-			camera_yaw = target_yaw
-
-			# Adjust mouse_yaw_offset so effective_yaw stays the same
-			# effective_yaw = camera_yaw + mouse_yaw_offset
-			# current_effective_yaw = new_camera_yaw + new_mouse_yaw_offset
-			# new_mouse_yaw_offset = current_effective_yaw - new_camera_yaw
-			mouse_yaw_offset = current_effective_yaw - camera_yaw
-
-	# Normalize yaw offset to take shortest path to 0
-	while mouse_yaw_offset > PI:
-		mouse_yaw_offset -= TAU
-	while mouse_yaw_offset < -PI:
-		mouse_yaw_offset += TAU
+	has_baseline = false
+	auto_returning = false
 
 func is_at_default_position() -> bool:
 	# Check if camera is at default position (no significant mouselook offset)
@@ -202,14 +177,8 @@ func _physics_process(delta):
 
 	# Apply auto-return animation until we reach default
 	if auto_returning:
-		# Normalize yaw offset to -PI to PI to take the shortest path (fixes the "laps" bug)
-		while mouse_yaw_offset > PI:
-			mouse_yaw_offset -= TAU
-		while mouse_yaw_offset < -PI:
-			mouse_yaw_offset += TAU
-
-		# Lerp mouse offsets back to 0
-		mouse_yaw_offset = lerp(mouse_yaw_offset, 0.0, auto_return_speed * delta)
+		# Use lerp_angle for yaw to always take the shortest path
+		mouse_yaw_offset = lerp_angle(mouse_yaw_offset, 0.0, auto_return_speed * delta)
 		mouse_pitch_offset = lerp(mouse_pitch_offset, 0.0, auto_return_speed * delta)
 
 		# Stop when we've reached default
@@ -220,7 +189,8 @@ func _physics_process(delta):
 
 	# Apply manual reset (from right-click) with smooth interpolation
 	if manual_reset_active:
-		mouse_yaw_offset = lerp(mouse_yaw_offset, 0.0, manual_reset_speed * delta)
+		# Use lerp_angle for yaw to always take the shortest path
+		mouse_yaw_offset = lerp_angle(mouse_yaw_offset, 0.0, manual_reset_speed * delta)
 		mouse_pitch_offset = lerp(mouse_pitch_offset, 0.0, manual_reset_speed * delta)
 
 		# Check if we've reached default position
@@ -236,17 +206,16 @@ func _physics_process(delta):
 		current_yaw_speed = crash_rotation_lerp_speed
 
 	# Smoothly lerp camera yaw towards car's yaw (creates lag effect)
-	# But ONLY if camera is at default position - otherwise freeze camera yaw
-	# This makes Q/E not rotate the camera when you've manually positioned it
-	if is_at_default_position():
-		# Normalize angle difference to handle wraparound
-		var yaw_diff = target_yaw - camera_yaw
-		while yaw_diff > PI:
-			yaw_diff -= TAU
-		while yaw_diff < -PI:
-			yaw_diff += TAU
+	# Allow yaw tracking during:
+	# - Default position (normal following)
+	# - Manual reset (so camera tracks car while returning)
+	# - Auto return (so camera tracks car while returning)
+	# Freeze yaw only when user has manually positioned camera and isn't resetting
+	var should_track_yaw = is_at_default_position() or manual_reset_active or auto_returning
 
-		camera_yaw += yaw_diff * current_yaw_speed * delta
+	if should_track_yaw:
+		# Use lerp_angle to always take the shortest path around the circle
+		camera_yaw = lerp_angle(camera_yaw, target_yaw, current_yaw_speed * delta)
 
 	# Calculate effective yaw including mouse offset
 	var effective_yaw = camera_yaw + mouse_yaw_offset
