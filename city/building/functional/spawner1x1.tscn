@@ -2,17 +2,12 @@
 
 [ext_resource type="Script" uid="uid://cmafag82uyxu7" path="res://city/BuildingBlock.gd" id="1_umquq"]
 [ext_resource type="Script" uid="uid://dhck8hvi8ocih" path="res://systems/SpawnZone.gd" id="2_odf2g"]
+[ext_resource type="Material" uid="uid://bqb6xr3pfb6vl" path="res://mats/holo.tres" id="3_odf2g"]
 [ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://city/ConnectionPoint.gd" id="4_1oxgn"]
 [ext_resource type="Material" uid="uid://c84qehqsj2tk1" path="res://mats/floor_small.tres" id="5_0k77h"]
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_odf2g"]
-transparency = 1
-blend_mode = 1
-cull_mode = 2
-albedo_color = Color(0.08088628, 0.33429295, 0.5158293, 1)
-
 [sub_resource type="PlaneMesh" id="PlaneMesh_it2eq"]
-material = SubResource("StandardMaterial3D_odf2g")
+material = ExtResource("3_odf2g")
 size = Vector2(22.5, 22.5)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_orayl"]
