@@ -8,8 +8,9 @@ enum State { WALKING, STOPPING, WAITING, HAILING, BOARDING, RIDING, EXITING, ARR
 const IDLE_STATES = [State.WALKING, State.STOPPING, State.WAITING]
 const NEAR_PLAYER_STATES = [State.BOARDING, State.EXITING]
 
-# LOD/Culling settings (static, shared by all people)
+# Static references (shared by all people, set by main scene)
 static var lod_camera: Camera3D = null  # Set by main scene/FCar
+static var people_manager: Node = null  # Set by PeopleManager on ready
 static var lod_player_y: float = 0.0  # Player's Y position (for vertical culling)
 static var lod_max_distance: float = 500.0  # Hide beyond this distance
 static var lod_max_distance_squared: float = 250000.0  # 500^2, for fast distance checks
@@ -62,10 +63,11 @@ var bob_rate: float = 1.5  # Personal bob frequency in Hz
 var bob_height: float = 0.2  # Jump height in meters
 var bob_hurry_multiplier: float = 2.0  # Speed multiplier when in a hurry
 
-# Relocation state (after delivery, walk to nearest surface)
+# Relocation state (after delivery, walk/fly to nearest surface)
 var relocation_target: Vector3 = Vector3.ZERO
 var relocation_surface: Node = null  # SpawnSurface to adopt bounds from
 var relocation_speed: float = 2.0  # Faster than normal walk
+var relocation_flying: bool = false  # If true, move in 3D; if false, stay on XZ plane
 
 # Fare cooldown (prevent immediate re-fare after delivery)
 var fare_cooldown: float = 0.0  # Time remaining before can become fare again
@@ -187,6 +189,28 @@ func start_relocating(target_pos: Vector3, surface: Node):
 	relocation_target = target_pos
 	relocation_surface = surface
 	_enter_state(State.RELOCATING)
+
+
+func fly_to_nearest_zone(fly_speed: float = -1.0) -> bool:
+	# Find nearest zone and start flying toward it (3D movement)
+	# Returns true if a zone was found, false otherwise
+	# Use fly_speed to override relocation_speed, or -1 to use default (5.0 for flying)
+	if not people_manager or not people_manager.has_method("get_nearest_zone"):
+		push_warning("Person.fly_to_nearest_zone: No people_manager reference")
+		return false
+
+	var nearest_zone = people_manager.get_nearest_zone(global_position)
+	if not nearest_zone:
+		push_warning("Person.fly_to_nearest_zone: No zones found")
+		return false
+
+	# Set flying mode and speed
+	relocation_flying = true
+	relocation_speed = fly_speed if fly_speed > 0 else 5.0  # Default fly speed
+
+	# Start relocating to zone center
+	start_relocating(nearest_zone.get_center(), nearest_zone)
+	return true
 
 
 func _process(delta: float):
@@ -342,9 +366,12 @@ func _process_arrived(_delta: float):
 
 
 func _process_relocating(delta: float):
-	# Walk toward relocation target
+	# Walk/fly toward relocation target
 	var to_target = relocation_target - global_position
-	to_target.y = 0  # Stay on same height plane
+
+	# If not flying, stay on XZ plane
+	if not relocation_flying:
+		to_target.y = 0
 
 	var dist = to_target.length()
 
@@ -364,6 +391,7 @@ func _process_relocating(delta: float):
 
 		relocation_surface = null
 		relocation_target = Vector3.ZERO
+		relocation_flying = false
 		destination = null
 		target_car = null
 		_enter_state(State.WAITING)
@@ -373,7 +401,7 @@ func _process_relocating(delta: float):
 	var dir = to_target.normalized()
 	global_position += dir * relocation_speed * delta
 
-	# Face movement direction
+	# Face movement direction (horizontal component)
 	if abs(dir.x) > 0.1:
 		facing_right = dir.x > 0
 		scale.x = 1.0 if facing_right else -1.0
@@ -561,6 +589,8 @@ func _reset_for_reuse():
 	# Relocation
 	relocation_target = Vector3.ZERO
 	relocation_surface = null
+	relocation_flying = false
+	relocation_speed = 2.0
 	
 	# LOD - randomize offset to distribute checks across frames
 	lod_timer = 0.0

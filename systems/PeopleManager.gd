@@ -157,6 +157,9 @@ func _ready():
 	_shader = load("res://mats/person_sprite.gdshader")
 	_create_pixel_texture()
 
+	# Set static reference so Person instances can find zones
+	Person.people_manager = self
+
 	# Create pool container (keeps pooled nodes in tree but hidden)
 	_pool_container = Node.new()
 	_pool_container.name = "PersonPool"
@@ -1246,7 +1249,7 @@ func get_enabled_pois() -> Array[PointOfInterest]:
 func get_nearest_surface(pos: Vector3) -> SpawnSurface:
 	var nearest: SpawnSurface = null
 	var nearest_dist: float = INF
-	
+
 	for surface in registered_surfaces:
 		if not is_instance_valid(surface) or not surface.enabled:
 			continue
@@ -1254,7 +1257,23 @@ func get_nearest_surface(pos: Vector3) -> SpawnSurface:
 		if dist < nearest_dist:
 			nearest_dist = dist
 			nearest = surface
-	
+
+	return nearest
+
+
+func get_nearest_zone(pos: Vector3) -> SpawnZone:
+	# Find the nearest SpawnZone to the given position
+	var nearest: SpawnZone = null
+	var nearest_dist: float = INF
+
+	for zone in registered_zones:
+		if not is_instance_valid(zone) or not zone.enabled:
+			continue
+		var dist = pos.distance_to(zone.global_position)
+		if dist < nearest_dist:
+			nearest_dist = dist
+			nearest = zone
+
 	return nearest
 
 

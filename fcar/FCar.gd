@@ -1430,16 +1430,19 @@ func _eject_all_passengers():
 		person.destination = null
 		person.target_car = null
 
-		# Set small wander bounds around eject point
-		var half_radius = delivered_wander_radius / 2.0
-		person.set_bounds(
-			Vector3(eject_pos.x - half_radius, eject_pos.y, eject_pos.z - half_radius),
-			Vector3(eject_pos.x + half_radius, eject_pos.y, eject_pos.z + half_radius)
-		)
-
-		# Make visible and start exiting
+		# Make visible
 		person.visible = true
-		person.start_exiting()
+
+		# Fly to nearest zone (jetpack lore!)
+		# If no zone found, fall back to wandering in place
+		if not person.fly_to_nearest_zone(5.0):
+			# Fallback: set small wander bounds around eject point
+			var half_radius = delivered_wander_radius / 2.0
+			person.set_bounds(
+				Vector3(eject_pos.x - half_radius, eject_pos.y, eject_pos.z - half_radius),
+				Vector3(eject_pos.x + half_radius, eject_pos.y, eject_pos.z + half_radius)
+			)
+			person.start_exiting()
 
 		passenger_ejected.emit(person)
 
