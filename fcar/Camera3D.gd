@@ -18,15 +18,16 @@ extends Camera3D
 # Mouselook settings
 @export var mouse_sensitivity: float = 0.3  # Mouse look sensitivity
 @export var max_mouse_pitch: float = 60.0  # Max degrees to look up/down
-@export var auto_return_speed: float = 3.0  # How fast camera returns to default after mouselook
 
-# Auto-return mode
-@export_category("Auto-return")
-@export var use_velocity_based_reset: bool = true  # If true, reset when moving fast; if false, reset after delay
-@export var auto_return_delay: float = 2.0  # (Time-based) Seconds of no mouse input before auto-return
-@export var velocity_reset_threshold: float = 15.0  # (Velocity-based) Min speed to trigger reset
-@export var velocity_consistency_time: float = 3.0  # (Velocity-based) How long to move consistently before reset
-@export var direction_consistency_threshold: float = 0.9  # (Velocity-based) Dot product for "same direction" (~25 deg)
+# Auto-return settings
+@export_category("Auto Return")
+@export var auto_return_speed: float = 3.0  # How fast camera returns to default
+
+# Change-based auto-return: camera resets when driving changes significantly
+@export_subgroup("Change Detection")
+@export var direction_change_threshold: float = 0.7  # Dot product threshold (~45 deg change triggers reset)
+@export var speed_change_threshold: float = 0.5  # Percentage speed change to trigger reset (0.5 = 50%)
+@export var min_speed_for_tracking: float = 5.0  # Below this speed, don't track changes
 
 # Click vs hold detection
 @export var click_threshold: float = 0.2  # Max seconds to count as a "click" vs "hold"
@@ -50,14 +51,17 @@ var camera_yaw: float = 0.0  # Current camera yaw angle (radians)
 var mouse_yaw_offset: float = 0.0  # Mouse look yaw offset (radians)
 var mouse_pitch_offset: float = 0.0  # Mouse look pitch offset (radians)
 var current_car_pitch: float = 0.0  # Smoothed car pitch for camera follow
-var time_since_mouse_input: float = 0.0  # Timer for auto-return (time-based mode)
 var is_mouselooking: bool = false  # Whether mouselook is active
-var consistent_velocity_time: float = 0.0  # How long car has moved in same direction (velocity-based mode)
-var last_velocity_direction: Vector3 = Vector3.ZERO  # Previous frame's velocity direction
 var right_click_start_time: float = 0.0  # When right-click was pressed
 var right_click_mouse_moved: bool = false  # Whether mouse moved during right-click
 var manual_reset_active: bool = false  # Whether we're smoothly resetting from a right-click
 var current_look_offset: Vector3 = Vector3.ZERO  # Smoothed velocity look-ahead offset
+
+# Change-based auto-return: baseline captured when user sets camera position
+var baseline_direction: Vector3 = Vector3.ZERO  # Direction when camera was positioned
+var baseline_speed: float = 0.0  # Speed when camera was positioned
+var has_baseline: bool = false  # Whether we have a valid baseline to compare against
+var auto_returning: bool = false  # Whether we're currently auto-returning to default
 
 func _ready():
 	# Start with mouse visible - only capture when right-click is held
@@ -76,7 +80,7 @@ func _input(event):
 				# Check if this was a quick click (not a hold)
 				var hold_duration = Time.get_ticks_msec() / 1000.0 - right_click_start_time
 				if hold_duration < click_threshold and not right_click_mouse_moved:
-					# Instant reset camera to default
+					# Quick click = reset camera to default (works in both modes)
 					_reset_camera_to_default()
 
 	# Handle mouse movement for mouselook
@@ -85,7 +89,8 @@ func _input(event):
 		if Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) or Input.is_mouse_button_pressed(MOUSE_BUTTON_MIDDLE):
 			right_click_mouse_moved = true  # Mark that mouse moved during click
 			is_mouselooking = true
-			time_since_mouse_input = 0.0  # Reset timer
+			has_baseline = false  # Invalidate baseline while actively mouselooking
+			auto_returning = false  # Cancel any auto-return in progress
 
 			# Apply mouse movement to offsets
 			mouse_yaw_offset -= event.relative.x * deg_to_rad(mouse_sensitivity)
@@ -98,16 +103,30 @@ func _reset_camera_to_default():
 	# Start smooth reset of mouselook offsets
 	manual_reset_active = true
 	is_mouselooking = false
-	consistent_velocity_time = 0.0
+	has_baseline = false  # Clear baseline on manual reset
+	auto_returning = false  # Cancel any auto-return in progress
 
-	# Snap camera_yaw to car's current heading to avoid stale rotation
+	# FIX: To avoid the "jump" bug, we need to keep effective_yaw constant
+	# while transferring the offset to camera_yaw
 	if target:
 		var target_forward = -target.global_transform.basis.z
 		var target_yaw_forward = Vector3(target_forward.x, 0, target_forward.z).normalized()
 		if target_yaw_forward.length() > 0.01:
-			camera_yaw = atan2(target_yaw_forward.x, target_yaw_forward.z)
+			var target_yaw = atan2(target_yaw_forward.x, target_yaw_forward.z)
 
-	# Normalize yaw offset to take shortest path
+			# Current effective yaw (what the camera is actually showing)
+			var current_effective_yaw = camera_yaw + mouse_yaw_offset
+
+			# Snap camera_yaw to car's heading
+			camera_yaw = target_yaw
+
+			# Adjust mouse_yaw_offset so effective_yaw stays the same
+			# effective_yaw = camera_yaw + mouse_yaw_offset
+			# current_effective_yaw = new_camera_yaw + new_mouse_yaw_offset
+			# new_mouse_yaw_offset = current_effective_yaw - new_camera_yaw
+			mouse_yaw_offset = current_effective_yaw - camera_yaw
+
+	# Normalize yaw offset to take shortest path to 0
 	while mouse_yaw_offset > PI:
 		mouse_yaw_offset -= TAU
 	while mouse_yaw_offset < -PI:
@@ -139,41 +158,50 @@ func _physics_process(delta):
 	# Calculate target yaw angle from car
 	var target_yaw = atan2(target_yaw_forward.x, target_yaw_forward.z)
 
-	# Mouselook auto-return logic
+	# Get current velocity info
+	var velocity = target.linear_velocity if "linear_velocity" in target else Vector3.ZERO
+	var speed = velocity.length()
+	var current_direction = velocity.normalized() if speed > 0.1 else Vector3.ZERO
+
+	# Mouselook state management
 	if is_mouselooking:
 		# Not actively mouselooking if no mouse buttons pressed
 		if not Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) and not Input.is_mouse_button_pressed(MOUSE_BUTTON_MIDDLE):
 			is_mouselooking = false
+			auto_returning = false  # Stop any auto-return when user takes control
+			# Capture baseline when mouselook ends (if camera was moved from default)
+			if not is_at_default_position() and speed > min_speed_for_tracking:
+				baseline_direction = current_direction
+				baseline_speed = speed
+				has_baseline = true
 
-	# Determine if we should auto-return
-	var should_return: bool = false
+	# Determine if we should START auto-returning based on CHANGES in driving
+	if not is_mouselooking and not is_at_default_position() and not auto_returning:
+		if has_baseline and speed > min_speed_for_tracking:
+			# Check for significant direction change
+			var direction_changed = false
+			if baseline_direction.length() > 0.1 and current_direction.length() > 0.1:
+				var dot = current_direction.dot(baseline_direction)
+				direction_changed = dot < direction_change_threshold
 
-	if not is_mouselooking:
-		if use_velocity_based_reset:
-			# Velocity-based: reset when car is moving fast in consistent direction
-			var velocity = target.linear_velocity if "linear_velocity" in target else Vector3.ZERO
-			var speed = velocity.length()
-			var current_direction = velocity.normalized() if speed > 0.1 else Vector3.ZERO
+			# Check for significant speed change
+			var speed_changed = false
+			if baseline_speed > min_speed_for_tracking:
+				var speed_ratio = speed / baseline_speed
+				# Trigger if speed changed by more than threshold (either faster or slower)
+				speed_changed = speed_ratio < (1.0 - speed_change_threshold) or speed_ratio > (1.0 + speed_change_threshold)
 
-			if speed > velocity_reset_threshold:
-				# Check if direction is consistent with previous frame
-				if last_velocity_direction.length() > 0.1 and current_direction.dot(last_velocity_direction) > direction_consistency_threshold:
-					consistent_velocity_time += delta
-				else:
-					consistent_velocity_time = 0.0
-				last_velocity_direction = current_direction
-			else:
-				consistent_velocity_time = 0.0
-				last_velocity_direction = Vector3.ZERO
+			if direction_changed or speed_changed:
+				auto_returning = true
+				has_baseline = false
+		elif not has_baseline and speed > min_speed_for_tracking:
+			# No baseline yet but moving - capture one now
+			baseline_direction = current_direction
+			baseline_speed = speed
+			has_baseline = true
 
-			should_return = consistent_velocity_time >= velocity_consistency_time
-		else:
-			# Time-based: reset after delay (original behavior)
-			time_since_mouse_input += delta
-			should_return = time_since_mouse_input >= auto_return_delay
-
-	# Apply auto-return if conditions are met
-	if should_return:
+	# Apply auto-return animation until we reach default
+	if auto_returning:
 		# Normalize yaw offset to -PI to PI to take the shortest path (fixes the "laps" bug)
 		while mouse_yaw_offset > PI:
 			mouse_yaw_offset -= TAU
@@ -183,6 +211,12 @@ func _physics_process(delta):
 		# Lerp mouse offsets back to 0
 		mouse_yaw_offset = lerp(mouse_yaw_offset, 0.0, auto_return_speed * delta)
 		mouse_pitch_offset = lerp(mouse_pitch_offset, 0.0, auto_return_speed * delta)
+
+		# Stop when we've reached default
+		if is_at_default_position():
+			auto_returning = false
+			mouse_yaw_offset = 0.0
+			mouse_pitch_offset = 0.0
 
 	# Apply manual reset (from right-click) with smooth interpolation
 	if manual_reset_active:
@@ -247,23 +281,19 @@ func _physics_process(delta):
 	# Calculate look-at target with velocity look-ahead
 	var target_look_offset = Vector3.ZERO
 
-	if velocity_look_ahead > 0:
-		var velocity = target.linear_velocity if "linear_velocity" in target else Vector3.ZERO
-		var speed = velocity.length()
+	if velocity_look_ahead > 0 and speed > velocity_look_min_speed:
+		# Scale look-ahead by speed (faster = more look-ahead)
+		var speed_factor = clamp((speed - velocity_look_min_speed) / 50.0, 0.0, 1.0)
 
-		if speed > velocity_look_min_speed:
-			# Scale look-ahead by speed (faster = more look-ahead)
-			var speed_factor = clamp((speed - velocity_look_min_speed) / 50.0, 0.0, 1.0)
+		# Reduce look-ahead when looking backwards (prevents instability)
+		var camera_forward = -global_transform.basis.z
+		var velocity_dir = velocity.normalized()
+		var look_alignment = camera_forward.dot(velocity_dir)  # 1 = looking forward, -1 = looking back
 
-			# Reduce look-ahead when looking backwards (prevents instability)
-			var camera_forward = -global_transform.basis.z
-			var velocity_dir = velocity.normalized()
-			var look_alignment = camera_forward.dot(velocity_dir)  # 1 = looking forward, -1 = looking back
+		# Fade out look-ahead as we look backwards
+		var look_ahead_factor = clamp((look_alignment + 1.0) / 2.0, 0.0, 1.0)  # Map -1..1 to 0..1
 
-			# Fade out look-ahead as we look backwards
-			var look_ahead_factor = clamp((look_alignment + 1.0) / 2.0, 0.0, 1.0)  # Map -1..1 to 0..1
-
-			target_look_offset = velocity_dir * velocity_look_ahead_distance * speed_factor * velocity_look_ahead * look_ahead_factor
+		target_look_offset = velocity_dir * velocity_look_ahead_distance * speed_factor * velocity_look_ahead * look_ahead_factor
 
 	# Smoothly interpolate the look offset
 	current_look_offset = current_look_offset.lerp(target_look_offset, velocity_look_smoothing * delta)
