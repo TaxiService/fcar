@@ -53,17 +53,18 @@ size = Vector3(90, 5, 30)
 
 [sub_resource type="BoxMesh" id="BoxMesh_qge6t"]
 material = ExtResource("4_iyfce")
-size = Vector3(90, 5, 30)
+size = Vector3(90, 5.1, 30)
 
 [node name="FloorSmall5" type="StaticBody3D"]
 script = ExtResource("1_k8u28")
+block_type = 1
 can_spawn_people = true
 
 [node name="Node3D" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 32.5, 0)
 script = ExtResource("2_26prw")
-enabled = false
 radius = 15.0
+max_people = 6
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 30, 0)
@@ -130,6 +131,7 @@ transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 3
 script = ExtResource("5_xoq5h")
 size_flags = 3
 is_plug = false
+can_spawn_zone = true
 rotation_mode = 1
 
 [node name="Conn_Plug_Medium6" type="Marker3D" parent="."]
@@ -137,6 +139,7 @@ transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 3
 script = ExtResource("5_xoq5h")
 size_flags = 3
 is_plug = false
+can_spawn_zone = true
 rotation_mode = 1
 
 [node name="Conn_Plug_Large" type="Marker3D" parent="."]
@@ -152,14 +155,14 @@ size_flags = 4
 rotation_mode = 1
 
 [node name="Conn_Plug_Large5" type="Marker3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 17.5, -15)
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 17.5, -17.5)
 script = ExtResource("5_xoq5h")
 type_flags = 3
 size_flags = 4
 rotation_mode = 1
 
 [node name="Conn_Plug_Large7" type="Marker3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 17.5, 15)
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 17.5, 17.5)
 script = ExtResource("5_xoq5h")
 type_flags = 3
 size_flags = 4
@@ -240,29 +243,33 @@ size_flags = 3
 is_plug = false
 
 [node name="Conn_Socket_Medium5" type="Marker3D" parent="."]
-transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 30, 40, -12.5)
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 30, 40, -13.5)
 script = ExtResource("5_xoq5h")
 type_flags = 4
 size_flags = 1
 is_plug = false
+ignores_collision = true
 
 [node name="Conn_Socket_Medium6" type="Marker3D" parent="."]
-transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, -30, 40, -12.5)
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, -30, 40, -13.5)
 script = ExtResource("5_xoq5h")
 type_flags = 4
 size_flags = 1
 is_plug = false
+ignores_collision = true
 
 [node name="Conn_Socket_Medium7" type="Marker3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 30, 40, 12.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 30, 40, 13.5)
 script = ExtResource("5_xoq5h")
 type_flags = 4
 size_flags = 1
 is_plug = false
+ignores_collision = true
 
 [node name="Conn_Socket_Medium8" type="Marker3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -30, 40, 12.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -30, 40, 13.5)
 script = ExtResource("5_xoq5h")
 type_flags = 4
 size_flags = 1
 is_plug = false
+ignores_collision = true

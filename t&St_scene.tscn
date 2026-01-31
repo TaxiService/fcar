@@ -52,7 +52,6 @@ shadow_enabled = true
 transform = Transform3D(1, 0, 0, 0, 0.9961948, 0.08715568, 0, -0.08715568, 0.9961948, -2.2765515, 2.07618, 7.6534176)
 script = ExtResource("1_ptugb")
 target = NodePath("../FCar")
-use_velocity_based_reset = false
 
 [node name="FCar" parent="." instance=ExtResource("2_7mycd")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -11.767887, 0, -0.079668045)

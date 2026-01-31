@@ -45,6 +45,7 @@ size = Vector3(35, 14.99, 20)
 
 [node name="FloorSmall5" type="StaticBody3D"]
 script = ExtResource("1_o06re")
+can_spawn_people = true
 
 [node name="Node3D" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 32.5, 0)

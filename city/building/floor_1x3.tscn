@@ -72,6 +72,7 @@ transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 30, 
 script = ExtResource("3_ok4mr")
 size_flags = 6
 is_plug = false
+can_spawn_zone = true
 rotation_mode = 1
 
 [node name="Conn_Plug_Large6" type="Marker3D" parent="."]
@@ -79,6 +80,7 @@ transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 2
 script = ExtResource("3_ok4mr")
 size_flags = 7
 is_plug = false
+can_spawn_zone = true
 rotation_mode = 1
 
 [node name="Conn_Plug_Large4" type="Marker3D" parent="."]
@@ -86,6 +88,7 @@ transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, -30,
 script = ExtResource("3_ok4mr")
 size_flags = 6
 is_plug = false
+can_spawn_zone = true
 rotation_mode = 1
 
 [node name="Conn_Plug_Medium" type="Marker3D" parent="."]

@@ -39,6 +39,7 @@ enum SizeFlags {
 @export_category("Behavior")
 @export var is_plug: bool = true      # Can be used as anchor point
 @export var is_socket: bool = true    # Can spawn children
+@export var can_spawn_zone: bool = false  # If true, unused socket can become a SpawnZone for people
 
 # === ROTATION MODE ===
 enum RotationMode {
