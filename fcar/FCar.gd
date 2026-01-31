@@ -363,7 +363,8 @@ func _toggle_control_lock():
 	# Check what's currently pressed
 	var actions_to_check = [
 		"forward", "backward", "strafe_left", "strafe_right",
-		"jump", "crouch", "turn_left", "turn_right", "handbrake"
+		"jump", "crouch", "turn_left", "turn_right", "handbrake",
+		"shin_left", "shin_right", "boost", "pitch_up", "pitch_down"
 	]
 	var keys_to_check = [KEY_SHIFT, KEY_ALT, KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN]
 
@@ -675,9 +676,9 @@ func _read_inputs(delta: float) -> Dictionary:
 	if Input.is_action_just_released("crouch"):
 		if lock_height: target_height = global_transform.origin.y
 
-	if _is_action_pressed_locked("turn_right"):
+	if _is_action_pressed_locked("turn_right") and !_is_action_pressed_locked("L3-alt"):
 		target_yaw = 1.0
-	if _is_action_pressed_locked("turn_left"):
+	if _is_action_pressed_locked("turn_left") and !_is_action_pressed_locked("L3-alt"):
 		target_yaw = -1.0
 
 	# Handle other toggles
@@ -926,9 +927,9 @@ func _update_booster_assist(delta: float):
 
 	# === Left/Right arrows: Roll via differential shin angles ===
 	var roll_input = 0.0
-	if _is_key_pressed_locked(KEY_LEFT):
+	if _is_action_pressed_locked("shin_left") or _is_action_pressed_locked("turn_left") and _is_action_pressed_locked("L3-alt"):
 		roll_input = -1.0
-	elif _is_key_pressed_locked(KEY_RIGHT):
+	elif _is_action_pressed_locked("shin_right") or _is_action_pressed_locked("turn_right") and _is_action_pressed_locked("L3-alt"):
 		roll_input = 1.0
 
 	# Update roll differential (builds up while held, decays when released)
@@ -946,9 +947,9 @@ func _update_booster_assist(delta: float):
 
 	# === Up/Down arrows: Pitch via direct torque ===
 	var target_pitch_input = 0.0
-	if _is_key_pressed_locked(KEY_UP):
+	if _is_action_pressed_locked("pitch_down"):
 		target_pitch_input = -1.0  # Pitch nose down
-	elif _is_key_pressed_locked(KEY_DOWN):
+	elif _is_action_pressed_locked("pitch_up"):
 		target_pitch_input = 1.0  # Pitch nose up
 
 	# Smooth the pitch input to avoid bobbing
@@ -998,7 +999,7 @@ func _update_booster_assist(delta: float):
 
 func _update_booster_thrust(delta: float):
 	# Shift controls thrust
-	var boost_active = _is_key_pressed_locked(KEY_SHIFT)
+	var boost_active = _is_action_pressed_locked("boost")
 
 	if boost_active:
 		booster_system.set_thrust(1.0)
