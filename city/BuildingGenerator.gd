@@ -54,6 +54,10 @@ var _functional_blocks: Array[Dictionary] = []  # Gameplay blocks (spawners, POI
 @export var spawn_zone_radius_large: float = 12.0
 @export var spawn_zone_max_people_per_meter: float = 0.5  # max_people = radius * this
 
+@export_category("Height Limits")
+@export var min_building_height: float = 0.0  # Blocks below this Y won't be placed
+@export var enforce_min_height: bool = true  # Enable minimum height enforcement
+
 @export_category("Performance")
 @export var yield_every_n_blocks: int = 20  # Yield to main loop periodically
 @export var overlap_margin: float = 0.5  # Smaller margin = less aggressive shrinking
@@ -105,6 +109,7 @@ func reset():
 		"overlap_rejects": 0,
 		"no_match_rejects": 0,
 		"direction_rejects": 0,
+		"height_rejects": 0,
 		"rotation_retries": 0,
 		"block_retries": 0,
 		"depth_distribution": {},
@@ -323,6 +328,8 @@ func _process_structural_entry(entry: Dictionary):
 			_stats.overlap_rejects += 1
 		elif result.reason == "direction":
 			_stats.direction_rejects += 1
+		elif result.reason == "below_min_height":
+			_stats.height_rejects += 1
 	
 	if placed_block == null:
 		if is_seed:
@@ -837,6 +844,7 @@ func _run_spawn_zone_pass():
 
 	var zones_created = 0
 	var sockets_checked = 0
+	var skipped_no_flag = 0
 	var skipped_horizontal = 0
 	var skipped_non_structural = 0
 
@@ -852,6 +860,11 @@ func _run_spawn_zone_pass():
 				continue
 
 			sockets_checked += 1
+
+			# Only sockets explicitly marked for spawn zones
+			if not conn.can_spawn_zone:
+				skipped_no_flag += 1
+				continue
 
 			# Get world direction of socket
 			var world_dir = block.get_connection_world_direction(conn)
@@ -897,8 +910,8 @@ func _run_spawn_zone_pass():
 
 	_stats.floor_sockets_available = sockets_checked
 	_stats.spawn_zones_created = zones_created
-	print("  Spawn Zone pass: %d zones from %d sockets (skipped %d horizontal, %d non-structural)" % [
-		zones_created, sockets_checked, skipped_horizontal, skipped_non_structural
+	print("  Spawn Zone pass: %d zones from %d sockets (skipped: %d no flag, %d horizontal, %d non-structural)" % [
+		zones_created, sockets_checked, skipped_no_flag, skipped_horizontal, skipped_non_structural
 	])
 
 
@@ -927,13 +940,17 @@ func get_spawn_zones() -> Array[SpawnZone]:
 
 func _try_place_block(block_info: Dictionary, position: Vector3, target_dir: Vector3,
 					  required_types: int, required_sizes: int, base_heading: float) -> Dictionary:
+	# Early height check - reject if placement position is below minimum
+	if enforce_min_height and position.y < min_building_height:
+		return {"success": false, "reason": "below_min_height"}
+
 	var scene: PackedScene = block_info.scene
 	var instance = scene.instantiate() as BuildingBlock
 	if not instance:
 		return {"success": false, "reason": "instantiate_failed"}
-	
+
 	add_child(instance)
-	
+
 	var anchor = _find_matching_plug(instance, required_types, required_sizes, target_dir)
 	if anchor == null:
 		instance.queue_free()
@@ -944,16 +961,20 @@ func _try_place_block(block_info: Dictionary, position: Vector3, target_dir: Vec
 	for rot_idx in range(rotations.size()):
 		var extra_rotation = rotations[rot_idx]
 		_align_block(instance, anchor, position, target_dir, base_heading, extra_rotation)
-		
+
 		var block_aabb = _get_block_aabb(instance)
-		
+
+		# Check if block extends below minimum height
+		if enforce_min_height and block_aabb.position.y < min_building_height:
+			continue  # Try next rotation, might fit differently
+
 		if anchor.ignores_collision or not _overlaps_existing(block_aabb):
 			_placed_aabbs.append(block_aabb)
 			instance.mark_connection_used(anchor)
 			if rot_idx > 0:
 				_stats.rotation_retries += 1
 			return {"success": true, "block": instance, "anchor": anchor}
-	
+
 	instance.queue_free()
 	return {"success": false, "reason": "overlap"}
 
@@ -1334,10 +1355,11 @@ func print_stats():
 			_stats.get("floor_blocks_found", 0),
 			_stats.get("floor_sockets_available", 0)
 		])
-	print("  Rejects: %d overlap, %d no match, %d direction" % [
+	print("  Rejects: %d overlap, %d no match, %d direction, %d below height" % [
 		_stats.overlap_rejects,
 		_stats.no_match_rejects,
-		_stats.direction_rejects
+		_stats.direction_rejects,
+		_stats.get("height_rejects", 0)
 	])
 	
 	var depths = _stats.depth_distribution.keys()
