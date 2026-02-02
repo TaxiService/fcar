@@ -101,8 +101,8 @@ func set_person_color(color: Color):
 	set_instance_shader_parameter("person_color", Vector3(color.r, color.g, color.b))
 
 
-func set_sprite_index(index: int):
-	set_instance_shader_parameter("sprite_index", float(index))
+func set_sprite_frame(index: int):
+	frame = index
 
 
 func set_pixel_lod_mode(enabled: bool):
@@ -466,27 +466,17 @@ func set_bounds(min_pos: Vector3, max_pos: Vector3):
 	set_home_zone(center, radius)
 
 
-func set_sprite(tex: AtlasTexture, index: int):
-	texture = tex
-	sprite_index = index
-
+func setup_sprite_size():
 	# Scale sprite to be ~1.8m tall max
-	# Sprite is 300x600 pixels, so aspect ratio is 0.5
+	# With hframes=11 on 3300x600, each frame is 300x600 pixels
 	# pixel_size controls world units per pixel
 	# At pixel_size = 0.003, 600 pixels = 1.8m
 	_close_pixel_size = 0.003
 	pixel_size = _close_pixel_size
 
 	# Offset sprite so origin is at bottom center (feet)
-	# Shift up by half the sprite height in pixels
-	offset.y = tex.get_height() / 2.0
-
-
-func refresh_sprite(tex: AtlasTexture):
-	# Called when spritesheet is reloaded
-	texture = tex
-	if material_override and material_override is ShaderMaterial:
-		material_override.set_shader_parameter("texture_albedo", tex)
+	# Shift up by half the frame height in pixels (600 / 2 = 300)
+	offset.y = texture.get_height() / 2.0
 
 
 func _update_lod_visibility():

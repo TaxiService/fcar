@@ -214,6 +214,10 @@ func _create_pooled_person() -> Person:
 	# Add to pool container (in tree but won't render)
 	_pool_container.add_child(person)
 	person.material_override = _shared_material
+	person.texture = load(spritesheet_path)
+	person.hframes = sprite_count
+	person.vframes = 1
+	person.setup_sprite_size()
 	person.visible = false
 	person.set_process(false)
 	person.set_physics_process(false)
@@ -913,16 +917,14 @@ func _do_spawn_person(surface: SpawnSurface) -> Person:
 	person.walk_speed = randf_range(walk_speed_min, walk_speed_max)
 	
 	# Pick sprite and color
-	var sprite_index = randi() % spritesheet.get_frame_count()
-	var sprite_tex = spritesheet.get_frame(sprite_index)
+	var sprite_index = randi() % sprite_count
 	var color = get_spawn_color(surface)
 
-	# Set sprite geometry and instance shader params
-	person.set_sprite(sprite_tex, sprite_index)
-	person.set_sprite_index(sprite_index)
+	# Set per-instance params (material already on node from pool creation)
+	person.set_sprite_frame(sprite_index)
 	person.set_person_color(color)
 	person.set_pixel_lod_mode(false)
-	
+
 	# Position and bounds
 	var bounds = surface.get_bounds_world()
 	person.set_bounds(bounds.min, bounds.max)
@@ -989,13 +991,11 @@ func _do_spawn_person_zone(zone: SpawnZone) -> Person:
 	person.walk_speed = randf_range(walk_speed_min, walk_speed_max)
 
 	# Pick sprite and color
-	var sprite_index = randi() % spritesheet.get_frame_count()
-	var sprite_tex = spritesheet.get_frame(sprite_index)
+	var sprite_index = randi() % sprite_count
 	var color = get_spawn_color(zone)
 
-	# Set sprite geometry and instance shader params
-	person.set_sprite(sprite_tex, sprite_index)
-	person.set_sprite_index(sprite_index)
+	# Set per-instance params (material already on node from pool creation)
+	person.set_sprite_frame(sprite_index)
 	person.set_person_color(color)
 	person.set_pixel_lod_mode(false)
 
@@ -1143,12 +1143,10 @@ func spawn_person_at(position: Vector3, bounds_min: Vector3 = Vector3.ZERO, boun
 	person.walk_speed = randf_range(walk_speed_min, walk_speed_max)
 	
 	# Pick random sprite
-	var sprite_index = randi() % spritesheet.get_frame_count()
-	var sprite_tex = spritesheet.get_frame(sprite_index)
+	var sprite_index = randi() % sprite_count
 
-	# Set sprite geometry and instance shader params (black tint for manual spawns)
-	person.set_sprite(sprite_tex, sprite_index)
-	person.set_sprite_index(sprite_index)
+	# Set per-instance params (black tint for manual spawns)
+	person.set_sprite_frame(sprite_index)
 	person.set_person_color(Color.BLACK)
 	person.set_pixel_lod_mode(false)
 	
@@ -1259,14 +1257,12 @@ func _load_spritesheet():
 
 func reload_sprites():
 	if spritesheet and spritesheet.reload():
+		var full_tex = load(spritesheet_path)
 		if _shared_material:
-			var full_tex = load(spritesheet_path)
 			_shared_material.set_shader_parameter("texture_albedo", full_tex)
 		for person in all_people:
 			if is_instance_valid(person):
-				var tex = spritesheet.get_frame(person.sprite_index)
-				if tex:
-					person.refresh_sprite(tex)
+				person.texture = full_tex
 
 
 # === COLORS ===
@@ -1277,7 +1273,6 @@ func _create_shared_material():
 	_shared_material = ShaderMaterial.new()
 	_shared_material.shader = shader
 	_shared_material.set_shader_parameter("texture_albedo", full_tex)
-	_shared_material.set_shader_parameter("sprite_columns", sprite_count)
 
 
 func get_spawn_color(spawner: Node) -> Color:
