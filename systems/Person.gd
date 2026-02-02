@@ -76,10 +76,7 @@ const FARE_COOLDOWN_TIME: float = 30.0  # Seconds after delivery before eligible
 # LOD/Culling instance state
 var lod_timer: float = 0.0  # Stagger LOD checks
 var lod_check_offset: float = 0.0  # Random offset to distribute checks
-var _close_material: ShaderMaterial = null  # Full-detail material
-var _pixel_material: ShaderMaterial = null  # Distant pixel material
-var _using_pixel_lod: bool = false  # Currently using pixel material
-var _close_texture: Texture2D = null  # Full sprite texture
+var _using_pixel_lod: bool = false  # Currently in pixel LOD mode
 var _close_pixel_size: float = 0.003  # Normal pixel size
 
 
@@ -100,34 +97,20 @@ func _ready():
 	_enter_state(State.WAITING)
 
 
-func set_shared_material(mat: ShaderMaterial):
-	# Use shared material from PeopleManager (for color sets)
-	_close_material = mat
-	material_override = mat
-	_using_pixel_lod = false
+func set_person_color(color: Color):
+	set_instance_shader_parameter("person_color", Vector3(color.r, color.g, color.b))
 
 
-func set_pixel_material(mat: ShaderMaterial):
-	# Set the distant pixel LOD material
-	_pixel_material = mat
+func set_sprite_index(index: int):
+	set_instance_shader_parameter("sprite_index", float(index))
 
 
-func _switch_to_pixel_lod():
-	if _using_pixel_lod:
+func set_pixel_lod_mode(enabled: bool):
+	if enabled == _using_pixel_lod:
 		return
-	if _pixel_material:
-		material_override = _pixel_material
-		pixel_size = 0.02  # Larger pixels = smaller on screen but visible
-		_using_pixel_lod = true
-
-
-func _switch_to_close_lod():
-	if not _using_pixel_lod:
-		return
-	if _close_material:
-		material_override = _close_material
-		pixel_size = _close_pixel_size
-		_using_pixel_lod = false
+	_using_pixel_lod = enabled
+	set_instance_shader_parameter("pixel_lod", 1.0 if enabled else 0.0)
+	pixel_size = 0.02 if enabled else _close_pixel_size
 
 
 func wants_ride() -> bool:
@@ -486,7 +469,6 @@ func set_bounds(min_pos: Vector3, max_pos: Vector3):
 func set_sprite(tex: AtlasTexture, index: int):
 	texture = tex
 	sprite_index = index
-	_close_texture = tex
 
 	# Scale sprite to be ~1.8m tall max
 	# Sprite is 300x600 pixels, so aspect ratio is 0.5
@@ -514,14 +496,14 @@ func _update_lod_visibility():
 		# No camera set, always visible and processing
 		visible = true
 		set_process(true)
-		_switch_to_close_lod()
+		set_pixel_lod_mode(false)
 		return
 
 	# Always show people who are boarding or exiting (actively interacting with player)
 	if current_state in NEAR_PLAYER_STATES:
 		visible = true
 		set_process(true)
-		_switch_to_close_lod()
+		set_pixel_lod_mode(false)
 		return
 
 	var camera_pos = lod_camera.global_position
@@ -552,9 +534,9 @@ func _update_lod_visibility():
 
 	# Switch to pixel LOD if beyond threshold
 	if horiz_dist_sq > lod_pixel_distance_squared:
-		_switch_to_pixel_lod()
+		set_pixel_lod_mode(true)
 	else:
-		_switch_to_close_lod()
+		set_pixel_lod_mode(false)
 	
 func _reset_for_reuse():
 	# Called when person is acquired from pool and reused
@@ -596,8 +578,6 @@ func _reset_for_reuse():
 	lod_timer = 0.0
 	lod_check_offset = randf() * lod_update_interval
 	_using_pixel_lod = false
-	_close_material = null
-	_pixel_material = null
 
 	# Visual
 	visible = true

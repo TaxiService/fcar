@@ -2,7 +2,7 @@
 # Performance improvements:
 # 1. Object pool - pre-instantiate people, reuse instead of create/destroy
 # 2. Batched spawning - spawn 1-2 per frame instead of all at once
-# 3. Material caching - share materials by color to enable GPU batching
+# 3. Single shared material - instance shader parameters for per-person color/sprite
 # 4. Smart processing - disable _process on distant/hidden people
 class_name PeopleManager
 extends Node
@@ -99,10 +99,6 @@ signal spawn_complete(count: int)
 @export var bob_hurry_multiplier: float = 2.0
 @export var bob_height: float = 0.2
 
-# Color sets
-@export_category("Color Sets")
-@export_dir var color_sets_folder: String = "res://color_sets"
-
 # Smart processing
 @export_category("Performance")
 @export var process_distance: float = 300.0  # Only process people within this range
@@ -127,18 +123,27 @@ var _pool_ready: bool = false
 # Spawn queue (for batched spawning)
 var _spawn_queue: Array[Dictionary] = []  # [{surface, wants_dest, wants_group, group_size}]
 
-# Material cache (shared materials for GPU batching)
-var _material_cache: Dictionary = {}  # color_hash -> ShaderMaterial
-var _shader: Shader
+# Shared material (one ShaderMaterial, instance params for per-person variation)
+var _shared_material: ShaderMaterial
 
-# Pixel LOD materials (small set for maximum batching)
-var _pixel_material_cache: Dictionary = {}  # quantized_color_key -> ShaderMaterial
-var _pixel_texture: ImageTexture = null  # 1x1 white texture for pixel sprites
-const PIXEL_LOD_COLOR_LEVELS: int = 4  # Quantize to 4 levels per channel = 64 colors max
+# Hardcoded color palettes (additive tints for person sprites)
+const COLOR_PALETTES = [
+	# Dark teals
+	[Color(0.0, 0.15, 0.18), Color(0.0, 0.20, 0.22), Color(0.02, 0.17, 0.20), Color(0.0, 0.12, 0.16)],
+	# Warm grays
+	[Color(0.18, 0.14, 0.10), Color(0.15, 0.12, 0.09), Color(0.20, 0.16, 0.12), Color(0.13, 0.10, 0.08)],
+	# Muted reds
+	[Color(0.22, 0.06, 0.04), Color(0.25, 0.08, 0.05), Color(0.18, 0.04, 0.03), Color(0.20, 0.07, 0.06)],
+	# Deep purples
+	[Color(0.12, 0.04, 0.20), Color(0.15, 0.06, 0.22), Color(0.10, 0.03, 0.17), Color(0.13, 0.05, 0.19)],
+	# Steel blues
+	[Color(0.06, 0.10, 0.20), Color(0.08, 0.12, 0.22), Color(0.05, 0.08, 0.17), Color(0.07, 0.11, 0.19)],
+	# Olive drab
+	[Color(0.14, 0.15, 0.05), Color(0.12, 0.13, 0.04), Color(0.16, 0.17, 0.06), Color(0.10, 0.12, 0.03)],
+]
 
-
-# Color sets
-var color_sets: Array[PackedColorArray] = []
+# Color palette cache (zone/surface instance_id -> palette index)
+var _zone_palette_cache: Dictionary = {}
 
 # Process management
 var _process_check_timer: float = 0.0
@@ -154,9 +159,7 @@ var _time_without_nearby_fare: float = 0.0  # Emergency fare tracking
 func _ready():
 	CityGrid.people_manager = self
 	_load_spritesheet()
-	_load_color_sets()
-	_shader = load("res://mats/person_sprite.gdshader")
-	_create_pixel_texture()
+	_create_shared_material()
 
 	# Set static reference so Person instances can find zones
 	Person.people_manager = self
@@ -210,10 +213,11 @@ func _create_pooled_person() -> Person:
 	
 	# Add to pool container (in tree but won't render)
 	_pool_container.add_child(person)
+	person.material_override = _shared_material
 	person.visible = false
 	person.set_process(false)
 	person.set_physics_process(false)
-	
+
 	return person
 
 
@@ -908,28 +912,16 @@ func _do_spawn_person(surface: SpawnSurface) -> Person:
 	person.bob_rate = bob_rate_base + randf_range(-bob_rate_variance, bob_rate_variance)
 	person.walk_speed = randf_range(walk_speed_min, walk_speed_max)
 	
-	# Material (cached by color)
-	# Resolve color set index (handles -1 = random, cached per surface)
-	var resolved_set_index = _resolve_color_set_index(surface)
-	
-	# Pick sprite first (needed for material cache key)
+	# Pick sprite and color
 	var sprite_index = randi() % spritesheet.get_frame_count()
 	var sprite_tex = spritesheet.get_frame(sprite_index)
-	
-	# Get color for this surface
-	var color = get_color_from_set(surface.color_set_index, spawn_counter)
-	spawn_counter += 1
-	
-	# Get cached material (shared with others using same color+sprite)
-	var mat = _get_cached_material(color, sprite_tex)
-	person.set_shared_material(mat)
+	var color = get_spawn_color(surface)
 
-	# Also set pixel LOD material (quantized color for better batching)
-	var pixel_mat = _get_pixel_material(color)
-	person.set_pixel_material(pixel_mat)
-	
-	# Set sprite (texture already in material, but Sprite3D needs it too)
+	# Set sprite geometry and instance shader params
 	person.set_sprite(sprite_tex, sprite_index)
+	person.set_sprite_index(sprite_index)
+	person.set_person_color(color)
+	person.set_pixel_lod_mode(false)
 	
 	# Position and bounds
 	var bounds = surface.get_bounds_world()
@@ -996,17 +988,16 @@ func _do_spawn_person_zone(zone: SpawnZone) -> Person:
 	person.bob_rate = bob_rate_base + randf_range(-bob_rate_variance, bob_rate_variance)
 	person.walk_speed = randf_range(walk_speed_min, walk_speed_max)
 
-	# Material (cached by color)
-	var resolved_set_index = _resolve_color_set_index_zone(zone)
+	# Pick sprite and color
 	var sprite_index = randi() % spritesheet.get_frame_count()
 	var sprite_tex = spritesheet.get_frame(sprite_index)
-	var color = get_color_from_set(zone.color_set_index, spawn_counter)
-	spawn_counter += 1
+	var color = get_spawn_color(zone)
 
-	var mat = _get_cached_material(color, sprite_tex)
-	person.set_shared_material(mat)
-	person.set_pixel_material(_get_pixel_material(color))
+	# Set sprite geometry and instance shader params
 	person.set_sprite(sprite_tex, sprite_index)
+	person.set_sprite_index(sprite_index)
+	person.set_person_color(color)
+	person.set_pixel_lod_mode(false)
 
 	# Position and home zone
 	person.set_home_zone(zone.get_center(), zone.get_radius())
@@ -1057,27 +1048,6 @@ func _do_spawn_group_zone(zone: SpawnZone, group_size: int):
 		if is_hurry:
 			person.in_a_hurry = true
 			person.hurry_timer = hurry_time
-
-
-func _get_cached_material(color: Color, sprite_tex: AtlasTexture) -> ShaderMaterial:
-	# Create cache key from color and texture
-	var color_key = "%02x%02x%02x" % [int(color.r * 255), int(color.g * 255), int(color.b * 255)]
-	var tex_id = sprite_tex.get_instance_id()
-	var cache_key = "%s_%d" % [color_key, tex_id]
-	
-	# Return cached material if exists
-	if _material_cache.has(cache_key):
-		return _material_cache[cache_key]
-	
-	# Create new material
-	var mat = ShaderMaterial.new()
-	mat.shader = _shader
-	mat.set_shader_parameter("color_add", Vector3(color.r, color.g, color.b))
-	mat.set_shader_parameter("texture_albedo", sprite_tex)
-	
-	# Cache and return
-	_material_cache[cache_key] = mat
-	return mat
 
 
 func _update_process_states():
@@ -1175,13 +1145,12 @@ func spawn_person_at(position: Vector3, bounds_min: Vector3 = Vector3.ZERO, boun
 	# Pick random sprite
 	var sprite_index = randi() % spritesheet.get_frame_count()
 	var sprite_tex = spritesheet.get_frame(sprite_index)
-	
-	# Use black tint for manually spawned (or pass color as parameter)
-	var color = Color.BLACK
-	var mat = _get_cached_material(color, sprite_tex)
-	person.set_shared_material(mat)
-	person.set_pixel_material(_get_pixel_material(color))
+
+	# Set sprite geometry and instance shader params (black tint for manual spawns)
 	person.set_sprite(sprite_tex, sprite_index)
+	person.set_sprite_index(sprite_index)
+	person.set_person_color(Color.BLACK)
+	person.set_pixel_lod_mode(false)
 	
 	if bounds_min != Vector3.ZERO or bounds_max != Vector3.ZERO:
 		person.set_bounds(bounds_min, bounds_max)
@@ -1200,7 +1169,7 @@ func remove_all_people():
 	for person in all_people.duplicate():  # Duplicate to avoid modifying while iterating
 		_return_to_pool(person)
 	all_people.clear()
-	_surface_color_cache.clear()  # Reset random color assignments
+	_zone_palette_cache.clear()
 
 
 func get_people_count() -> int:
@@ -1216,7 +1185,7 @@ func register_surface(surface: SpawnSurface):
 func unregister_surface(surface: SpawnSurface):
 	registered_surfaces.erase(surface)
 	if is_instance_valid(surface):
-		_surface_color_cache.erase(surface.get_instance_id())
+		_zone_palette_cache.erase(surface.get_instance_id())
 
 
 func register_zone(zone: SpawnZone):
@@ -1227,7 +1196,7 @@ func register_zone(zone: SpawnZone):
 func unregister_zone(zone: SpawnZone):
 	registered_zones.erase(zone)
 	if is_instance_valid(zone):
-		_surface_color_cache.erase(zone.get_instance_id())
+		_zone_palette_cache.erase(zone.get_instance_id())
 
 
 func register_poi(poi: PointOfInterest):
@@ -1278,139 +1247,6 @@ func get_nearest_zone(pos: Vector3) -> SpawnZone:
 	return nearest
 
 
-# === COLOR SETS ===
-
-func _load_color_sets():
-	color_sets.clear()
-	
-	var dir = DirAccess.open(color_sets_folder)
-	if not dir:
-		color_sets.append(PackedColorArray([Color.BLACK]))
-		return
-	
-	var files: Array[String] = []
-	dir.list_dir_begin()
-	var file_name = dir.get_next()
-	while file_name != "":
-		if not dir.current_is_dir() and file_name.ends_with(".txt"):
-			files.append(file_name)
-		file_name = dir.get_next()
-	dir.list_dir_end()
-	
-	files.sort()
-	
-	for fname in files:
-		var colors = _parse_color_file(color_sets_folder + "/" + fname)
-		if colors.size() > 0:
-			color_sets.append(colors)
-	
-	if color_sets.is_empty():
-		color_sets.append(PackedColorArray([Color.BLACK]))
-	
-	print("PeopleManager: Loaded %d color sets" % color_sets.size())
-
-
-func _parse_color_file(path: String) -> PackedColorArray:
-	var colors = PackedColorArray()
-	var file = FileAccess.open(path, FileAccess.READ)
-	if not file:
-		return colors
-	
-	while not file.eof_reached():
-		var line = file.get_line().strip_edges()
-		if line.is_empty() or line.begins_with("#"):
-			continue
-		var color = _parse_color_line(line)
-		if color != null:
-			colors.append(color)
-	
-	return colors
-
-
-func _parse_color_line(line: String) -> Variant:
-	if line.begins_with("#"):
-		line = line.substr(1)
-	
-	if line.length() == 6 and line.is_valid_hex_number():
-		var hex = line.hex_to_int()
-		return Color(
-			((hex >> 16) & 0xFF) / 255.0,
-			((hex >> 8) & 0xFF) / 255.0,
-			(hex & 0xFF) / 255.0
-		)
-	
-	var parts = line.split(",")
-	if parts.size() >= 3:
-		var r = parts[0].strip_edges().to_float()
-		var g = parts[1].strip_edges().to_float()
-		var b = parts[2].strip_edges().to_float()
-		if r > 1.0 or g > 1.0 or b > 1.0:
-			r /= 255.0
-			g /= 255.0
-			b /= 255.0
-		return Color(r, g, b)
-	
-	return null
-
-
-func _get_color_set(index: int) -> PackedColorArray:
-	if color_sets.is_empty():
-		return PackedColorArray([Color.BLACK])
-	
-	# -1 means pick a random color set (caller should use _resolve_color_set_index for surfaces)
-	if index < 0:
-		index = randi() % color_sets.size()
-	
-	if index >= color_sets.size():
-		return color_sets[0]
-	
-	return color_sets[index]
-
-
-# Cache for resolved random color set indices (surface instance_id -> resolved index)
-var _surface_color_cache: Dictionary = {}
-
-func _resolve_color_set_index(surface: SpawnSurface) -> int:
-	# Returns the color set index for this surface
-	# If surface.color_set_index is -1, picks a random set and caches it
-	var set_index = surface.color_set_index
-
-	if set_index >= 0:
-		return set_index
-
-	# Random mode: check cache first
-	var surface_id = surface.get_instance_id()
-	if _surface_color_cache.has(surface_id):
-		return _surface_color_cache[surface_id]
-
-	# Pick random and cache
-	var random_index = randi() % max(color_sets.size(), 1)
-	_surface_color_cache[surface_id] = random_index
-	return random_index
-
-
-func _resolve_color_set_index_zone(zone: SpawnZone) -> int:
-	var set_index = zone.color_set_index
-
-	if set_index >= 0:
-		return set_index
-
-	var zone_id = zone.get_instance_id()
-	if _surface_color_cache.has(zone_id):
-		return _surface_color_cache[zone_id]
-
-	var random_index = randi() % max(color_sets.size(), 1)
-	_surface_color_cache[zone_id] = random_index
-	return random_index
-
-
-func get_color_from_set(set_index: int, person_index: int) -> Color:
-	var colors = _get_color_set(set_index)
-	if colors.size() == 0:
-		return Color.BLACK
-	return colors[person_index % colors.size()]
-
-
 # === SPRITESHEET ===
 
 func _load_spritesheet():
@@ -1422,8 +1258,10 @@ func _load_spritesheet():
 
 
 func reload_sprites():
-	_material_cache.clear()
 	if spritesheet and spritesheet.reload():
+		if _shared_material:
+			var full_tex = load(spritesheet_path)
+			_shared_material.set_shader_parameter("texture_albedo", full_tex)
 		for person in all_people:
 			if is_instance_valid(person):
 				var tex = spritesheet.get_frame(person.sprite_index)
@@ -1431,41 +1269,25 @@ func reload_sprites():
 					person.refresh_sprite(tex)
 
 
-# === PIXEL LOD ===
+# === COLORS ===
 
-func _create_pixel_texture():
-	# Create a 1x1 white texture for pixel LOD sprites
-	var img = Image.create(1, 1, false, Image.FORMAT_RGBA8)
-	img.set_pixel(0, 0, Color.WHITE)
-	_pixel_texture = ImageTexture.create_from_image(img)
-
-
-func _quantize_color(color: Color) -> Color:
-	# Quantize color to reduce unique materials for better batching
-	# With 4 levels per channel: 0, 0.33, 0.66, 1.0
-	var step = 1.0 / (PIXEL_LOD_COLOR_LEVELS - 1)
-	var r = round(color.r / step) * step
-	var g = round(color.g / step) * step
-	var b = round(color.b / step) * step
-	return Color(r, g, b)
+func _create_shared_material():
+	var shader = load("res://mats/person_sprite_v2.gdshader")
+	var full_tex = load(spritesheet_path)
+	_shared_material = ShaderMaterial.new()
+	_shared_material.shader = shader
+	_shared_material.set_shader_parameter("texture_albedo", full_tex)
+	_shared_material.set_shader_parameter("sprite_columns", sprite_count)
 
 
-func _get_pixel_material(color: Color) -> ShaderMaterial:
-	# Get or create a pixel LOD material for this (quantized) color
-	var quantized = _quantize_color(color)
-	var key = "%02x%02x%02x" % [int(quantized.r * 255), int(quantized.g * 255), int(quantized.b * 255)]
-
-	if _pixel_material_cache.has(key):
-		return _pixel_material_cache[key]
-
-	# Create new pixel material
-	var mat = ShaderMaterial.new()
-	mat.shader = _shader
-	mat.set_shader_parameter("color_add", Vector3(quantized.r, quantized.g, quantized.b))
-	mat.set_shader_parameter("texture_albedo", _pixel_texture)
-
-	_pixel_material_cache[key] = mat
-	return mat
+func get_spawn_color(spawner: Node) -> Color:
+	var spawner_id = spawner.get_instance_id()
+	if not _zone_palette_cache.has(spawner_id):
+		_zone_palette_cache[spawner_id] = randi() % COLOR_PALETTES.size()
+	var palette = COLOR_PALETTES[_zone_palette_cache[spawner_id]]
+	var color = palette[spawn_counter % palette.size()]
+	spawn_counter += 1
+	return color
 
 
 # === DEBUG ===
@@ -1474,7 +1296,7 @@ func print_status():
 	print("PeopleManager Status:")
 	print("  Pool: %d available, %d active" % [_pool.size(), all_people.size()])
 	print("  Spawn queue: %d pending" % _spawn_queue.size())
-	print("  Materials cached: %d (close) + %d (pixel)" % [_material_cache.size(), _pixel_material_cache.size()])
+	print("  Shared material: %s" % ("set" if _shared_material else "null"))
 	print("  Spawners: %d surfaces + %d zones" % [registered_surfaces.size(), registered_zones.size()])
 
 	# Fare stats
