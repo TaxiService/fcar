@@ -25,8 +25,31 @@ var _decoration_blocks: Array[Dictionary] = []  # Has CAP plugs (caps, antennas,
 var _functional_blocks: Array[Dictionary] = []  # Gameplay blocks (spawners, POIs, etc.)
 
 # Generation settings
-@export var blocks_folder: String = "res://city/building/"
-@export var functional_folder: String = "res://city/building/functional/"
+# Block scene manifests (explicit lists for export/PCK compatibility)
+const BLOCK_SCENE_PATHS: Array = [
+	"res://city/building/antenna1.tscn",
+	"res://city/building/antenna2.tscn",
+	"res://city/building/HVAC1.tscn",
+	"res://city/building/pillar_big15.tscn",
+	"res://city/building/pillar_big15b.tscn",
+	"res://city/building/pillar_big10.tscn",
+	"res://city/building/pillar_big30.tscn",
+	"res://city/building/pillar_big30b.tscn",
+	"res://city/building/screen1.tscn",
+	"res://city/building/volume_med.tscn",
+	"res://city/building/pillar_med15.tscn",
+	"res://city/building/pillar_med10.tscn",
+	"res://city/building/floor_1x1.tscn",
+	"res://city/building/floor_1x2b.tscn",
+	"res://city/building/floor_1x2.tscn",
+	"res://city/building/floor_1x3-30.tscn",
+	"res://city/building/floor_1x3.tscn",
+	"res://city/building/volume_wide.tscn",
+]
+
+const FUNCTIONAL_SCENE_PATHS: Array = [
+	"res://city/building/functional/spawner1x1.tscn",
+]
 
 @export_category("Pass 1: Structure")
 @export var max_growth_depth: int = 5
@@ -1173,57 +1196,41 @@ func _load_block_library():
 	_structural_blocks.clear()
 	_decoration_blocks.clear()
 	_functional_blocks.clear()
-	
-	# Load main blocks folder
-	_load_blocks_from_folder(blocks_folder, false)
-	
-	# Load functional blocks folder (if exists)
-	if DirAccess.dir_exists_absolute(functional_folder):
-		_load_blocks_from_folder(functional_folder, true)
-	else:
-		print("  Functional folder not found: %s (skipping)" % functional_folder)
-	
+
+	# Load from preloaded manifests (DirAccess can't enumerate inside .pck archives)
+	_load_blocks_from_list(BLOCK_SCENE_PATHS, false)
+	_load_blocks_from_list(FUNCTIONAL_SCENE_PATHS, true)
+
 	print("BuildingGenerator: Loaded %d blocks (%d structural, %d decoration, %d functional)" % [
 		block_library.size(), _structural_blocks.size(), _decoration_blocks.size(), _functional_blocks.size()
 	])
 	_print_block_summary()
 
 
-func _load_blocks_from_folder(folder_path: String, is_functional_folder: bool):
-	var dir = DirAccess.open(folder_path)
-	if not dir:
-		push_error("BuildingGenerator: Cannot open folder: %s" % folder_path)
-		return
-	
-	var folder_name = folder_path.get_file()
-	if folder_name.is_empty():
-		folder_name = folder_path.trim_suffix("/").get_file()
-	
-	dir.list_dir_begin()
-	var file_name = dir.get_next()
-	while file_name != "":
-		if file_name.ends_with(".tscn"):
-			var path = folder_path + file_name
-			var scene = load(path) as PackedScene
-			if scene:
-				block_library.append(scene)
-				var instance = scene.instantiate()
-				if instance is BuildingBlock:
-					var data = _analyze_block(instance, scene, path, is_functional_folder)
-					block_data.append(data)
-					
-					# Categorize - blocks can be in multiple categories
-					# Structural blocks: have SEED/STRUCTURAL/JUNCTION plugs (main building pieces)
-					# Functional blocks: have can_spawn_people OR are in functional folder
-					# Decoration blocks: have CAP plugs or are CAP type
-					if data.is_structural:
-						_structural_blocks.append(data)
-					if data.is_decoration:
-						_decoration_blocks.append(data)
-					if is_functional_folder or data.is_functional:
-						_functional_blocks.append(data)
-				instance.queue_free()
-		file_name = dir.get_next()
+func _load_blocks_from_list(scene_paths: Array, is_functional_folder: bool):
+	for path in scene_paths:
+		var scene = load(path) as PackedScene
+		if not scene:
+			push_warning("BuildingGenerator: Failed to load scene: %s" % path)
+			continue
+
+		block_library.append(scene)
+		var instance = scene.instantiate()
+		if instance is BuildingBlock:
+			var data = _analyze_block(instance, scene, path, is_functional_folder)
+			block_data.append(data)
+
+			# Categorize - blocks can be in multiple categories
+			# Structural blocks: have SEED/STRUCTURAL/JUNCTION plugs (main building pieces)
+			# Functional blocks: have can_spawn_people OR are in functional folder
+			# Decoration blocks: have CAP plugs or are CAP type
+			if data.is_structural:
+				_structural_blocks.append(data)
+			if data.is_decoration:
+				_decoration_blocks.append(data)
+			if is_functional_folder or data.is_functional:
+				_functional_blocks.append(data)
+		instance.queue_free()
 
 
 func _analyze_block(instance: BuildingBlock, scene: PackedScene, path: String, force_functional: bool = false) -> Dictionary:
