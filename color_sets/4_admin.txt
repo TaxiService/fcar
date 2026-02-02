@@ -1,0 +1,10 @@
+# Administrative tints, like deep purples, violets and pinks
+
+E285FF
+801B4E
+A337A1
+A85748
+800000
+7F2ABD
+7F6880
+BD4F94

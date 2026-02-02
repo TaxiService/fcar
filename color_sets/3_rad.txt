@@ -1,0 +1,10 @@
+# Rad tints, like radiation/radical greens
+
+418021
+B0FF47
+008A00
+6BB068
+5CFF8F
+A2FF1F
+D4FF73
+419C69
