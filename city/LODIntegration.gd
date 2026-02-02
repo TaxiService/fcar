@@ -11,7 +11,7 @@ extends Node
 @export var loading_screen_path: NodePath
 
 # Settings
-@export var auto_find_nodes: bool = true
+@export var auto_find_nodes: bool = false
 @export var generate_impostors_on_start: bool = true
 @export var show_loading_screen: bool = true
 
@@ -80,15 +80,23 @@ func _find_nodes():
 func _setup_from_paths():
 	if city_generator_path:
 		city_generator = get_node_or_null(city_generator_path)
+	if not city_generator:
+		city_generator = CityGrid.city_generator
 	if impostor_generator_path:
 		impostor_generator = get_node_or_null(impostor_generator_path)
 	if lod_manager_path:
 		lod_manager = get_node_or_null(lod_manager_path)
 	if loading_screen_path:
 		loading_screen = get_node_or_null(loading_screen_path)
-	
+
+	# Resolve building_generator from CityGenerator or CityGrid
+	if city_generator:
+		building_generator = city_generator.get_node_or_null("Buildings/BuildingGenerator")
+	if not building_generator:
+		building_generator = CityGrid.building_generator
+
 	_setup_connections()
-	
+
 	if generate_impostors_on_start:
 		call_deferred("_start_impostor_generation")
 

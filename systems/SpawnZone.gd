@@ -77,65 +77,11 @@ func _update_editor_visual():
 func _register_with_manager():
 	if registered:
 		return
-	var manager = _find_people_manager()
-	if manager:
-		manager.register_zone(self)
+	if CityGrid.people_manager:
+		CityGrid.people_manager.register_zone(self)
 		registered = true
 	else:
-		# Defer and retry - PeopleManager might not be ready yet
-		call_deferred("_retry_registration")
-
-
-var _registration_attempts: int = 0
-
-func _retry_registration():
-	_registration_attempts += 1
-	if _registration_attempts > 10:
-		push_warning("SpawnZone at %s: Failed to find PeopleManager after 10 attempts" % global_position)
-		return
-
-	# Actually wait for next frame before retrying
-	await get_tree().process_frame
-	_register_with_manager()
-
-
-func _find_people_manager() -> Node:
-	# Try common scene paths first
-	var common_paths = [
-		"/root/PeopleManager",
-		"/root/CityTest/PeopleManager",
-		"/root/city_test/PeopleManager",
-		"/root/Main/PeopleManager",
-	]
-	for path in common_paths:
-		if has_node(path):
-			return get_node(path)
-
-	# Walk up parent chain looking for PeopleManager as sibling
-	var node = get_parent()
-	while node:
-		if node.has_method("register_zone"):
-			return node
-		for child in node.get_children():
-			if child.has_method("register_zone"):
-				return child
-		node = node.get_parent()
-
-	# Last resort: full tree search
-	var found = _find_in_tree(get_tree().root)
-	if not found:
-		push_warning("SpawnZone: Could not find PeopleManager in tree. Scene root: %s" % get_tree().root.name)
-	return found
-
-
-func _find_in_tree(node: Node) -> Node:
-	if node.has_method("register_zone"):
-		return node
-	for child in node.get_children():
-		var found = _find_in_tree(child)
-		if found:
-			return found
-	return null
+		push_warning("SpawnZone at %s: CityGrid.people_manager not set" % global_position)
 
 
 func get_center() -> Vector3:

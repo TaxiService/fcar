@@ -99,41 +99,11 @@ func _update_editor_visual():
 func _register_with_manager():
 	if registered:
 		return
-
-	# Deferred registration to ensure PeopleManager is ready
-	var manager = _find_people_manager()
-	if manager and manager.has_method("register_poi"):
-		manager.register_poi(self)
+	if CityGrid.people_manager:
+		CityGrid.people_manager.register_poi(self)
 		registered = true
-
-
-func _find_people_manager() -> Node:
-	# Look for PeopleManager in the scene
-	if has_node("/root/PeopleManager"):
-		return get_node("/root/PeopleManager")
-
-	# Search up the tree
-	var node = get_parent()
-	while node:
-		if node.has_method("register_poi"):
-			return node
-		for child in node.get_children():
-			if child.has_method("register_poi"):
-				return child
-		node = node.get_parent()
-
-	# Search from root
-	return _find_in_tree(get_tree().root)
-
-
-func _find_in_tree(node: Node) -> Node:
-	if node.has_method("register_poi"):
-		return node
-	for child in node.get_children():
-		var found = _find_in_tree(child)
-		if found:
-			return found
-	return null
+	else:
+		push_warning("PointOfInterest '%s' at %s: CityGrid.people_manager not set" % [poi_name, global_position])
 
 
 func is_within_radius(pos: Vector3) -> bool:

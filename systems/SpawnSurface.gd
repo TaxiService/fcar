@@ -77,43 +77,13 @@ func _update_editor_visual():
 
 
 func _register_with_manager():
-	# Deferred to ensure PeopleManager is ready
-	if not registered:
-		var manager = _find_people_manager()
-		if manager:
-			manager.register_surface(self)
-			registered = true
-
-
-func _find_people_manager() -> Node:
-	# Look for PeopleManager in the scene
-	# First check if it's an autoload
-	if has_node("/root/PeopleManager"):
-		return get_node("/root/PeopleManager")
-
-	# Otherwise search up the tree
-	var node = get_parent()
-	while node:
-		if node.has_method("register_surface"):
-			return node
-		# Check children of this node
-		for child in node.get_children():
-			if child.has_method("register_surface"):
-				return child
-		node = node.get_parent()
-
-	# Search from root
-	return _find_in_tree(get_tree().root)
-
-
-func _find_in_tree(node: Node) -> Node:
-	if node.has_method("register_surface"):
-		return node
-	for child in node.get_children():
-		var found = _find_in_tree(child)
-		if found:
-			return found
-	return null
+	if registered:
+		return
+	if CityGrid.people_manager:
+		CityGrid.people_manager.register_surface(self)
+		registered = true
+	else:
+		push_warning("SpawnSurface at %s: CityGrid.people_manager not set" % global_position)
 
 
 func get_bounds_world() -> Dictionary:

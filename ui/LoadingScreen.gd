@@ -35,25 +35,14 @@ func _ready():
 		_city_generator = get_node_or_null(city_generator_path)
 	
 	if not _city_generator:
-		# Try to find it automatically
-		_city_generator = _find_city_generator(get_tree().root)
-	
+		_city_generator = CityGrid.city_generator
+
 	if _city_generator:
 		_connect_signals()
 		show_loading()
 	else:
 		push_warning("LoadingScreen: Could not find CityGenerator")
 		hide_loading()
-
-
-func _find_city_generator(node: Node) -> Node:
-	if node is CityGenerator:
-		return node
-	for child in node.get_children():
-		var result = _find_city_generator(child)
-		if result:
-			return result
-	return null
 
 
 func _connect_signals():

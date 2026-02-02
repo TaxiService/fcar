@@ -33,9 +33,10 @@ var _stats = {
 
 
 func _ready():
+	CityGrid.visibility_manager = self
 	# Try to find building container
 	call_deferred("_find_building_container")
-	
+
 	if apply_on_ready:
 		call_deferred("apply_to_all_blocks")
 
@@ -52,15 +53,10 @@ func _process(delta: float):
 
 func _find_building_container():
 	"""Find the Buildings container in the scene."""
-	# Look for CityGenerator's buildings container
-	var city_gen = get_parent().get_node_or_null("CityGenerator")
+	var city_gen = CityGrid.city_generator
 	if city_gen:
 		_building_container = city_gen.get_node_or_null("Buildings")
-	
-	if not _building_container:
-		# Try to find any node named "Buildings"
-		_building_container = get_tree().root.find_child("Buildings", true, false)
-	
+
 	if _building_container:
 		print("VisibilityManager: Found building container: %s" % _building_container.name)
 	else:

@@ -31,6 +31,12 @@ var section_floor: float:
 var section_ceiling: float:
 	get: return (active_section + 1) * section_height
 
+# Registry — scene nodes register themselves here so siblings can skip tree searches
+var people_manager: PeopleManager = null
+var city_generator: CityGenerator = null
+var building_generator: BuildingGenerator = null
+var visibility_manager: VisibilityManager = null
+
 
 func _ready():
 	print("CityGrid initialized:")

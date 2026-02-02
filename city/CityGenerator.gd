@@ -138,6 +138,7 @@ var buildings_container: Node3D
 @export_flags("Small", "Medium", "Large") var edge_top_sizes: int = SF.MEDIUM
 @export_flags("Small", "Medium", "Large") var edge_bottom_sizes: int = SF.SMALL
 
+@export var building_generator_path: NodePath
 var building_generator: BuildingGenerator
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _current_seed: int = 0
@@ -150,7 +151,9 @@ var connector_data: Array[Dictionary] = []
 @export var fcar_spawn_height: float = 610.0  # Spawn car at this height
 
 func _ready():
+	CityGrid.city_generator = self
 	_create_containers()
+	CityGrid.building_generator = building_generator
 	if show_ground_grid:
 		_create_ground_grid()
 	
@@ -197,10 +200,11 @@ func _create_containers():
 	buildings_container.name = "Buildings"
 	add_child(buildings_container)
 
-	# Create building generator
-	building_generator = BuildingGenerator.new()
-	building_generator.name = "BuildingGenerator"
-	buildings_container.add_child(building_generator)
+	# Resolve BuildingGenerator from NodePath and reparent into buildings container
+	if building_generator_path:
+		building_generator = get_node(building_generator_path) as BuildingGenerator
+	if building_generator:
+		building_generator.reparent(buildings_container)
 
 func _initialize_rng():
 	if use_random_seed:
@@ -829,8 +833,7 @@ func _generate_buildings():
 
 
 func _register_spawn_zones():
-	# Find PeopleManager as sibling
-	var people_manager = get_parent().get_node_or_null("PeopleManager")
+	var people_manager = CityGrid.people_manager
 	if not people_manager:
 		push_warning("CityGenerator: PeopleManager not found, spawn zones won't register")
 		return
@@ -924,7 +927,7 @@ func _generate_buildings_sync():
 	building_generator.process_queue_sync()
 
 	# Manual registration for sync path
-	var people_manager = get_parent().get_node_or_null("PeopleManager")
+	var people_manager = CityGrid.people_manager
 	if people_manager:
 		building_generator.register_spawn_zones_with(people_manager)
 

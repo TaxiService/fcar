@@ -152,6 +152,7 @@ var _fare_timer: float = 0.0
 var _time_without_nearby_fare: float = 0.0  # Emergency fare tracking
 
 func _ready():
+	CityGrid.people_manager = self
 	_load_spritesheet()
 	_load_color_sets()
 	_shader = load("res://mats/person_sprite.gdshader")
