@@ -14,15 +14,20 @@ extends CanvasLayer
 
 var _city_generator: Node = null
 
-@onready var panel: PanelContainer = $Panel
-@onready var progress_bar: ProgressBar = $Panel/VBox/ProgressBar
-@onready var phase_label: Label = $Panel/VBox/PhaseLabel
-@onready var message_label: Label = $Panel/VBox/MessageLabel
+var panel: PanelContainer
+var progress_bar: ProgressBar
+var phase_label: Label
+var message_label: Label
 
 
 func _ready():
-	# Build UI if not already set up
-	if not has_node("Panel"):
+	# Build UI if not already set up, otherwise grab existing nodes
+	if has_node("Panel"):
+		panel = $Panel
+		progress_bar = $Panel/VBox/ProgressBar
+		phase_label = $Panel/VBox/PhaseLabel
+		message_label = $Panel/VBox/MessageLabel
+	else:
 		_build_ui()
 	
 	# Find and connect to CityGenerator
