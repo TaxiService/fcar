@@ -89,6 +89,7 @@ angular_damp = 1.0
 script = ExtResource("1_uqo8e")
 hover_thrust = 3.0
 heightlock_thrust = 5.0
+max_thrust = 20.0
 roll_differential = 0.5
 yaw_acceleration = 1.8
 booster_default_thigh_angle = -119.75
@@ -102,7 +103,6 @@ debug_thrusters = true
 transform = Transform3D(1, 0, 0, 0, 0.9961948, 0.08715568, 0, -0.08715568, 0.9961948, 0, 0.67882013, 2.9329896)
 script = ExtResource("2_rue2e")
 target = NodePath("..")
-use_velocity_based_reset = false
 
 [node name="UIController" type="Node" parent="."]
 script = ExtResource("2_ko0cq")
