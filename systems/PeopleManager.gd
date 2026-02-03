@@ -112,7 +112,6 @@ var registered_zones: Array[SpawnZone] = []  # New system
 var registered_pois: Array[PointOfInterest] = []
 var all_people: Array[Person] = []  # Active people
 var spawn_timer: float = 0.0
-var spawn_counter: int = 0
 var next_group_id: int = 1
 
 # Object pool
@@ -125,25 +124,6 @@ var _spawn_queue: Array[Dictionary] = []  # [{surface, wants_dest, wants_group, 
 
 # Shared material (one ShaderMaterial, instance params for per-person variation)
 var _shared_material: ShaderMaterial
-
-# Hardcoded color palettes (additive tints for person sprites)
-const COLOR_PALETTES = [
-	# Dark teals
-	[Color(0.0, 0.15, 0.18), Color(0.0, 0.20, 0.22), Color(0.02, 0.17, 0.20), Color(0.0, 0.12, 0.16)],
-	# Warm grays
-	[Color(0.18, 0.14, 0.10), Color(0.15, 0.12, 0.09), Color(0.20, 0.16, 0.12), Color(0.13, 0.10, 0.08)],
-	# Muted reds
-	[Color(0.22, 0.06, 0.04), Color(0.25, 0.08, 0.05), Color(0.18, 0.04, 0.03), Color(0.20, 0.07, 0.06)],
-	# Deep purples
-	[Color(0.12, 0.04, 0.20), Color(0.15, 0.06, 0.22), Color(0.10, 0.03, 0.17), Color(0.13, 0.05, 0.19)],
-	# Steel blues
-	[Color(0.06, 0.10, 0.20), Color(0.08, 0.12, 0.22), Color(0.05, 0.08, 0.17), Color(0.07, 0.11, 0.19)],
-	# Olive drab
-	[Color(0.14, 0.15, 0.05), Color(0.12, 0.13, 0.04), Color(0.16, 0.17, 0.06), Color(0.10, 0.12, 0.03)],
-]
-
-# Color palette cache (zone/surface instance_id -> palette index)
-var _zone_palette_cache: Dictionary = {}
 
 # Process management
 var _process_check_timer: float = 0.0
@@ -918,17 +898,17 @@ func _do_spawn_person(surface: SpawnSurface) -> Person:
 	
 	# Pick sprite and color
 	var sprite_index = randi() % sprite_count
-	var color = get_spawn_color(surface)
-
 	# Set per-instance params (material already on node from pool creation)
 	person.set_sprite_frame(sprite_index)
-	person.set_person_color(color)
 	person.set_pixel_lod_mode(false)
 
 	# Position and bounds
 	var bounds = surface.get_bounds_world()
 	person.set_bounds(bounds.min, bounds.max)
 	person.global_position = surface.get_random_spawn_position()
+
+	# Color based on final spawn position
+	person.set_person_color(generate_person_color(person.global_position))
 	
 	# Track
 	surface.add_person(person)
@@ -992,16 +972,16 @@ func _do_spawn_person_zone(zone: SpawnZone) -> Person:
 
 	# Pick sprite and color
 	var sprite_index = randi() % sprite_count
-	var color = get_spawn_color(zone)
-
 	# Set per-instance params (material already on node from pool creation)
 	person.set_sprite_frame(sprite_index)
-	person.set_person_color(color)
 	person.set_pixel_lod_mode(false)
 
 	# Position and home zone
 	person.set_home_zone(zone.get_center(), zone.get_radius())
 	person.global_position = zone.get_random_spawn_position()
+
+	# Color based on final spawn position
+	person.set_person_color(generate_person_color(person.global_position))
 
 	# Track
 	zone.add_person(person)
@@ -1145,15 +1125,15 @@ func spawn_person_at(position: Vector3, bounds_min: Vector3 = Vector3.ZERO, boun
 	# Pick random sprite
 	var sprite_index = randi() % sprite_count
 
-	# Set per-instance params (black tint for manual spawns)
+	# Set per-instance params
 	person.set_sprite_frame(sprite_index)
-	person.set_person_color(Color.BLACK)
 	person.set_pixel_lod_mode(false)
-	
+
 	if bounds_min != Vector3.ZERO or bounds_max != Vector3.ZERO:
 		person.set_bounds(bounds_min, bounds_max)
-	
+
 	person.global_position = position
+	person.set_person_color(generate_person_color(position))
 	all_people.append(person)
 	
 	return person
@@ -1167,7 +1147,6 @@ func remove_all_people():
 	for person in all_people.duplicate():  # Duplicate to avoid modifying while iterating
 		_return_to_pool(person)
 	all_people.clear()
-	_zone_palette_cache.clear()
 
 
 func get_people_count() -> int:
@@ -1182,8 +1161,6 @@ func register_surface(surface: SpawnSurface):
 
 func unregister_surface(surface: SpawnSurface):
 	registered_surfaces.erase(surface)
-	if is_instance_valid(surface):
-		_zone_palette_cache.erase(surface.get_instance_id())
 
 
 func register_zone(zone: SpawnZone):
@@ -1193,8 +1170,6 @@ func register_zone(zone: SpawnZone):
 
 func unregister_zone(zone: SpawnZone):
 	registered_zones.erase(zone)
-	if is_instance_valid(zone):
-		_zone_palette_cache.erase(zone.get_instance_id())
 
 
 func register_poi(poi: PointOfInterest):
@@ -1275,14 +1250,41 @@ func _create_shared_material():
 	_shared_material.set_shader_parameter("texture_albedo", full_tex)
 
 
-func get_spawn_color(spawner: Node) -> Color:
-	var spawner_id = spawner.get_instance_id()
-	if not _zone_palette_cache.has(spawner_id):
-		_zone_palette_cache[spawner_id] = randi() % COLOR_PALETTES.size()
-	var palette = COLOR_PALETTES[_zone_palette_cache[spawner_id]]
-	var color = palette[spawn_counter % palette.size()]
-	spawn_counter += 1
-	return color
+func generate_person_color(position: Vector3) -> Color:
+	# --- 30% from angle-based hue ---
+	var angle = atan2(position.z, position.x)
+	var hue = fmod((angle + PI) / TAU, 1.0)  # 0-1 based on position around city center
+	var angle_color = Color.from_hsv(hue, 0.6, 0.4)  # moderate saturation and value
+
+	# --- 70% from height-influenced RGB ---
+	# Get city height range from CityGrid autoload
+	var max_height = 2000.0  # fallback
+	if CityGrid:
+		max_height = CityGrid.pillar_height
+
+	# Height factor: 1.0 at bottom, 0.0 at top
+	var height_factor = clamp(1.0 - (position.y / max_height), 0.0, 1.0)
+
+	# Green: base from height (0.0-0.5), plus random (0.0-0.5)
+	# Bottom of city: 0.5 base + 0-0.5 random = 0.5-1.0 total (greener)
+	# Top of city: 0.0 base + 0-0.5 random = 0.0-0.5 total (less green)
+	var green = (height_factor * 0.5) + randf() * 0.5
+
+	# Red and Blue: fully random
+	var red = randf()
+	var blue = randf()
+
+	var rgb_color = Color(red, green, blue)
+
+	# --- Blend 30% angle + 70% RGB ---
+	var final_color = angle_color * 0.3 + rgb_color * 0.4
+
+	# Clamp to avoid overly bright additive results
+	final_color.r = clamp(final_color.r, 0.0, 0.6)
+	final_color.g = clamp(final_color.g, 0.0, 0.6)
+	final_color.b = clamp(final_color.b, 0.0, 0.6)
+
+	return final_color
 
 
 # === DEBUG ===
