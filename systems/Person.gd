@@ -17,8 +17,8 @@ static var lod_max_distance_squared: float = 250000.0  # 500^2, for fast distanc
 static var lod_max_height_above: float = 200.0  # Hide if this much above player
 static var lod_update_interval: float = 0.5  # Check every N seconds (stagger checks)
 static var lod_enabled: bool = true
-static var lod_pixel_distance: float = 150.0  # Switch to pixel sprite beyond this
-static var lod_pixel_distance_squared: float = 22500.0  # 150^2
+static var lod_pixel_distance: float = 350.0  # Switch to pixel sprite beyond this
+static var lod_pixel_distance_squared: float = 122500.0  # 350^2
 
 # Configuration (set by PeopleManager)
 var walk_speed_min: float = 0.8
@@ -110,7 +110,7 @@ func set_pixel_lod_mode(enabled: bool):
 		return
 	_using_pixel_lod = enabled
 	set_instance_shader_parameter("pixel_lod", 1.0 if enabled else 0.0)
-	pixel_size = 0.02 if enabled else _close_pixel_size
+	pixel_size = 0.005 if enabled else _close_pixel_size
 
 
 func wants_ride() -> bool:
@@ -567,7 +567,8 @@ func _reset_for_reuse():
 	# LOD - randomize offset to distribute checks across frames
 	lod_timer = 0.0
 	lod_check_offset = randf() * lod_update_interval
-	_using_pixel_lod = false
+	_using_pixel_lod = true  # Force set_pixel_lod_mode to apply
+	set_pixel_lod_mode(false)
 
 	# Visual
 	visible = true
