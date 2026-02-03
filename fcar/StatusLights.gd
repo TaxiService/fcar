@@ -17,14 +17,14 @@ var height_grid_spacing: float = 2.5
 # Dynamic scaling: at high vertical speeds, display "zooms out" to show larger scale
 # This naturally reduces flash rate without losing responsiveness
 const SCALE_SPEED_THRESHOLD: float = 5.0  # Start scaling above this vertical speed (m/s)
-const SCALE_DOUBLING_SPEED: float = 7.0  # Speed increment to double the scale
+const SCALE_DOUBLING_SPEED: float = 10.0  # Speed increment to double the scale
 const MAX_SCALE_FACTOR: float = 16.0  # Maximum scale multiplier
 
 # Photosensitive mode: hard rate limit instead of dynamic scaling (for accessibility)
-var photosensitive_mode: bool = false
+var photosensitive_mode: bool = true
 var display_light_index: int = 2  # For photosensitive mode
 var time_since_change: float = 1.0
-const MIN_CHANGE_INTERVAL: float = 0.15
+const MIN_CHANGE_INTERVAL: float = 0.08
 
 
 func initialize(statuslights_node: Node3D) -> bool:
