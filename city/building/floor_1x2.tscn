@@ -38,14 +38,14 @@ skeleton = NodePath("../MeshInstance3D")
 mesh = SubResource("BoxMesh_nrjh1")
 
 [node name="Conn_Plug_Large" type="Marker3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 15, -2.5, 0)
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 15, -2.5, 0)
 script = ExtResource("4_wffqm")
 size_flags = 4
 is_socket = false
 rotation_mode = 1
 
 [node name="Conn_Plug_Large2" type="Marker3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, -15, -2.5, 0)
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -15, -2.5, 0)
 script = ExtResource("4_wffqm")
 size_flags = 4
 is_socket = false
