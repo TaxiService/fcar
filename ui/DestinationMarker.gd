@@ -95,14 +95,14 @@ func _update_marker():
 		return
 
 	# Find the first passenger with a valid destination
-	var dest: Node = null
+	var target_person: Person = null
 	var passengers = fcar.passengers if "passengers" in fcar else []
 	for person in passengers:
-		if is_instance_valid(person) and is_instance_valid(person.destination):
-			dest = person.destination
+		if is_instance_valid(person) and person.destination != null:
+			target_person = person
 			break
 
-	if not dest:
+	if not target_person:
 		_hide_all()
 		return
 
@@ -112,11 +112,12 @@ func _update_marker():
 		_hide_all()
 		return
 
-	var dest_pos = dest.global_position + Vector3(0, 2, 0)  # Slightly above destination
+	var stable_pos = target_person.get_destination_position()
+	var dest_pos = stable_pos + Vector3(0, 2, 0)  # Slightly above destination
 	var screen_size = get_viewport().get_visible_rect().size
 
 	# Calculate distances
-	var car_to_dest_distance = fcar.global_position.distance_to(dest.global_position)
+	var car_to_dest_distance = fcar.global_position.distance_to(stable_pos)
 	var camera_distance = camera.global_position.distance_to(dest_pos)
 
 	# Calculate scale based on camera distance
@@ -149,7 +150,7 @@ func _update_marker():
 	distance_label.visible = true
 
 	# Update vertical distance text
-	var vert_info = MarkerUtils.format_vertical_distance(fcar.global_position.y, dest.global_position.y)
+	var vert_info = MarkerUtils.format_vertical_distance(fcar.global_position.y, stable_pos.y)
 	vertical_label.text = vert_info.text
 	vertical_label.add_theme_color_override("font_color", vert_info.color)
 	vertical_label.visible = true

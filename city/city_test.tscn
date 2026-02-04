@@ -84,6 +84,7 @@ fare_chance_per_person = 0.199
 fare_guarantee_radius = 300.0
 fare_guarantee_timeout = 15.0
 fare_guarantee_min = 3
+verbose_logging = true
 
 [node name="VisibilityManager" type="Node" parent="."]
 script = ExtResource("5_yage8")

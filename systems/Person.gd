@@ -47,6 +47,7 @@ var sprite_index: int = 0
 
 # Quest/destination system
 var destination: Node = null  # Another Person or POI
+var destination_position: Vector3 = Vector3.ZERO  # Stable snapshot of destination position
 var in_a_hurry: bool = false
 var hurry_timer: float = 0.0
 var group_id: int = -1  # -1 = solo, else grouped with same id
@@ -120,9 +121,13 @@ func wants_ride() -> bool:
 
 func get_trip_distance() -> float:
 	# Returns distance to destination in meters (0 if no destination)
-	if destination == null or not is_instance_valid(destination):
+	if destination == null:
 		return 0.0
-	return global_position.distance_to(destination.global_position)
+	return global_position.distance_to(destination_position)
+
+
+func get_destination_position() -> Vector3:
+	return destination_position
 
 
 func get_trip_tier() -> String:
@@ -150,6 +155,10 @@ func can_become_fare() -> bool:
 
 func set_destination(dest: Node):
 	destination = dest
+	if dest != null:
+		destination_position = dest.global_position
+	else:
+		destination_position = Vector3.ZERO
 	if dest != null and current_state in IDLE_STATES:
 		base_y = global_position.y
 		_enter_state(State.HAILING)
@@ -549,6 +558,7 @@ func _reset_for_reuse():
 	
 	# Quest/destination
 	destination = null
+	destination_position = Vector3.ZERO
 	in_a_hurry = false
 	hurry_timer = 0.0
 	group_id = -1

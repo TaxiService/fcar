@@ -36,6 +36,7 @@ signal spawn_complete(count: int)
 @export var despawn_distance: float = 550.0  # Remove people beyond this (should be >= LOD hide distance)
 @export var despawn_check_interval: float = 3.0  # Check every N seconds
 @export var max_total_people: int = 2000  # Hard cap on total people
+@export var max_despawns_per_frame: int = 10  # Rate limit despawning to prevent stuttering
 
 # Spawning configuration
 @export_category("Spawning")
@@ -382,13 +383,6 @@ func _queue_spawns_on_surfaces():
 		})
 
 
-func _is_active_destination(person: Person) -> bool:
-	for other in all_people:
-		if is_instance_valid(other) and other.destination == person:
-			return true
-	return false
-
-
 func _update_zone_loading():
 	# Zone-based load/unload system - instant fill like chunk loading
 	# When zone enters range: fill it completely
@@ -483,9 +477,6 @@ func _update_zone_loading():
 			if person.current_state in [Person.State.BOARDING, Person.State.RIDING,
 										Person.State.EXITING, Person.State.HAILING]:
 				continue
-			# Don't despawn people who are someone's fare destination
-			if _is_active_destination(person):
-				continue
 
 			zone.remove_person(person)
 			_return_to_pool(person)
@@ -576,12 +567,10 @@ func _generate_dynamic_fares():
 			continue
 
 		# Convert to fare
-		person.destination = destination
+		person.set_destination(destination)
 		person.in_a_hurry = randf() < in_a_hurry_chance
 		if person.in_a_hurry:
 			person.hurry_timer = hurry_time
-		person.base_y = person.global_position.y
-		person.current_state = Person.State.HAILING
 
 		fares_created += 1
 
@@ -681,16 +670,14 @@ func _force_spawn_nearby_fares(camera_pos: Vector3, radius_sq: float, count_need
 			continue
 
 		# Force conversion
-		person.destination = destination
+		person.set_destination(destination)
 		person.in_a_hurry = randf() < in_a_hurry_chance
 		if person.in_a_hurry:
 			person.hurry_timer = hurry_time
-		person.base_y = person.global_position.y
-		person.current_state = Person.State.HAILING
 		fares_created += 1
 		print("FARE GUARANTEE: Converted person to fare (dest: %s, dist: %.0fm)" % [
 			destination.name if destination else "null",
-			person.global_position.distance_to(destination.global_position) if destination else 0
+			person.get_trip_distance()
 		])
 
 	if dest_failures > 0:
@@ -723,12 +710,10 @@ func _force_spawn_nearby_fares(camera_pos: Vector3, radius_sq: float, count_need
 			if person:
 				var destination = _find_fare_destination(person)
 				if destination:
-					person.destination = destination
+					person.set_destination(destination)
 					person.in_a_hurry = randf() < in_a_hurry_chance
 					if person.in_a_hurry:
 						person.hurry_timer = hurry_time
-					person.base_y = person.global_position.y
-					person.current_state = Person.State.HAILING
 					fares_created += 1
 				else:
 					print("FARE GUARANTEE: Spawned person but no destination found")
@@ -855,7 +840,9 @@ func _despawn_distant_people():
 			# Return to pool (removes from all_people internally)
 			_return_to_pool(person)
 			despawned += 1
-	
+			if despawned >= max_despawns_per_frame:
+				break
+
 	if despawned > 0 and verbose_logging:
 		print("PeopleManager: Despawned %d distant people, %d remaining" % [despawned, all_people.size()])
 
@@ -1338,8 +1325,8 @@ func print_status():
 				if dist_sq <= fare_radius_sq:
 					fares_nearby += 1
 				# Categorize by trip distance
-				if person.destination and is_instance_valid(person.destination):
-					var trip_dist = person.global_position.distance_to(person.destination.global_position)
+				if person.destination != null:
+					var trip_dist = person.get_trip_distance()
 					if trip_dist < fare_dist_medium_min:
 						short_fares += 1
 					elif trip_dist < fare_dist_long_min:
@@ -1433,12 +1420,10 @@ func debug_generate_fares(center: Vector3, radius: float = 400.0, count: int = 5
 		if destination == null:
 			continue
 
-		person.destination = destination
+		person.set_destination(destination)
 		person.in_a_hurry = randf() < in_a_hurry_chance
 		if person.in_a_hurry:
 			person.hurry_timer = hurry_time
-		person.base_y = person.global_position.y
-		person.current_state = Person.State.HAILING
 
 		fares_created += 1
 

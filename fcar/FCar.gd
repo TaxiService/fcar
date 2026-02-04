@@ -1198,17 +1198,16 @@ func _check_destination_arrivals():
 	var to_deliver: Array[Person] = []
 
 	for person in passengers:
-		if not is_instance_valid(person) or not is_instance_valid(person.destination):
+		if not is_instance_valid(person) or person.destination == null:
 			continue
 
-		var dest = person.destination
-		var dest_pos = dest.global_position
+		var dest_pos = person.get_destination_position()
 		var dist = global_position.distance_to(dest_pos)
 
 		# Use POI's arrival_radius if destination is a POI, otherwise use delivery_range
 		var arrival_dist = delivery_range
-		if dest is PointOfInterest:
-			arrival_dist = dest.arrival_radius
+		if person.destination is PointOfInterest:
+			arrival_dist = person.destination.arrival_radius
 
 		if dist <= arrival_dist:
 			to_deliver.append(person)
@@ -1229,7 +1228,7 @@ func _deliver_passenger(person: Person):
 
 	# Position person at delivery location
 	var drop_pos = global_position
-	drop_pos.y = destination.global_position.y  # Match destination height
+	drop_pos.y = person.get_destination_position().y  # Match destination height
 	person.global_position = drop_pos
 
 	# Set new bounds centered on drop-off point so they wander nearby
