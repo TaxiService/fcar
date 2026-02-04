@@ -52,6 +52,7 @@ signal spawn_complete(count: int)
 @export var zone_check_interval: float = 0.1  # How often to check zones (10x per second)
 @export var zone_fill_percent: float = 1.0  # Fill zones to 100% of max_people
 @export var zones_to_process_per_frame: int = 20  # Max zones to load/unload per frame (aggressive)
+@export var max_spawns_per_frame: int = 5  # Rate limit spawning to prevent stuttering
 
 # Dynamic fare system - continuously generates ride requests
 @export_category("Fares")
@@ -132,6 +133,7 @@ var _has_player_position: bool = false
 var _camera: Camera3D = null
 var _despawn_timer: float = 0.0
 var _zone_load_timer: float = 0.0
+var _spawns_this_frame: int = 0
 var _loaded_zones: Dictionary = {}  # zone instance_id -> true (tracks which zones are populated)
 var _fare_timer: float = 0.0
 var _time_without_nearby_fare: float = 0.0  # Emergency fare tracking
@@ -165,6 +167,8 @@ func _warm_pool():
 		# Yield every 10 to keep UI responsive during loading
 		if i % 10 == 0 and i > 0:
 			await get_tree().process_frame
+	
+	print("POOL: Created %d people, shared_material is %s" % [_pool.size(), "SET" if _shared_material else "NULL"])
 	
 	var elapsed = Time.get_ticks_msec() - start_time
 	print("PeopleManager: Pool ready (%d people in %dms)" % [_pool.size(), elapsed])
@@ -378,15 +382,24 @@ func _queue_spawns_on_surfaces():
 		})
 
 
+func _is_active_destination(person: Person) -> bool:
+	for other in all_people:
+		if is_instance_valid(other) and other.destination == person:
+			return true
+	return false
+
+
 func _update_zone_loading():
 	# Zone-based load/unload system - instant fill like chunk loading
 	# When zone enters range: fill it completely
 	# When zone leaves range: clear it completely
 
 	if not Person.lod_camera:
+		print("ZONE LOADING: Person.lod_camera is NULL - skipping!")
 		return
 
 	var camera_pos = Person.lod_camera.global_position
+	_spawns_this_frame = 0
 	var load_dist_sq = zone_load_distance * zone_load_distance
 	var unload_dist_sq = zone_unload_distance * zone_unload_distance
 
@@ -442,11 +455,16 @@ func _update_zone_loading():
 			if person:
 				spawned_in_zone += 1
 				total_spawned += 1
+				_spawns_this_frame += 1
+				if _spawns_this_frame >= max_spawns_per_frame:
+					return
 			else:
 				break
 
 		# Mark zone as loaded
 		_loaded_zones[zone.get_instance_id()] = true
+		if verbose_logging:
+			print("ZONE LOADED: %s at %s - %d/%d people" % [zone.name, zone.global_position, zone.get_people_count(), target_people])
 		zones_loaded += 1
 
 	# UNLOAD: Clear zones that left range (instant clear)
@@ -464,6 +482,9 @@ func _update_zone_loading():
 			# Don't despawn people interacting with player
 			if person.current_state in [Person.State.BOARDING, Person.State.RIDING,
 										Person.State.EXITING, Person.State.HAILING]:
+				continue
+			# Don't despawn people who are someone's fare destination
+			if _is_active_destination(person):
 				continue
 
 			zone.remove_person(person)
@@ -960,8 +981,10 @@ func _do_spawn_group(surface: SpawnSurface, group_size: int):
 
 func _do_spawn_person_zone(zone: SpawnZone) -> Person:
 	if not spritesheet or spritesheet.get_frame_count() == 0:
+		print("SPAWN FAILED: No spritesheet!")
 		return null
 	if not is_instance_valid(zone):
+		print("SPAWN FAILED: Invalid zone!")
 		return null
 
 	var person = _acquire_from_pool()
@@ -987,6 +1010,7 @@ func _do_spawn_person_zone(zone: SpawnZone) -> Person:
 	zone.add_person(person)
 	all_people.append(person)
 
+	#print("SPAWNED: Person at %s in zone %s" % [person.global_position, zone.global_position])
 	return person
 
 

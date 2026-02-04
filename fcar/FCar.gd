@@ -1460,12 +1460,15 @@ func _eject_all_passengers():
 # LOD/Culling system for people visibility
 func _setup_lod_camera():
 	# Find and set the camera for person LOD/culling
-	var camera = get_viewport().get_camera_3d()
+	var camera = get_node_or_null("FCam")
+	if not camera:
+		camera = find_child("FCam", true, false)  # recursive search fallback
 	if camera:
 		Person.lod_camera = camera
-		print("FCar: LOD camera set for people culling")
+		Person.lod_player_y = global_position.y
+		print("FCar: LOD camera set to %s" % camera.name)
 	else:
-		push_warning("FCar: Could not find camera for LOD system")
+		push_error("FCar: Could not find camera child for LOD system!")
 
 
 func _update_lod_player_position():
