@@ -81,7 +81,7 @@ func _build_ui():
 	# Instructions
 	var hint_label = Label.new()
 	hint_label.name = "Hint"
-	hint_label.text = "T: cycle   R: select"
+	hint_label.text = "R: confirm   T: cycle"
 	hint_label.add_theme_font_size_override("font_size", 12)
 	hint_label.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5))
 	hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
