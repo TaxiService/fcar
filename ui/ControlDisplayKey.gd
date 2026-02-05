@@ -38,6 +38,8 @@ func _init():
 
 func _ready():
 	_build_ui()
+	if not is_lockable:
+		_apply_circular_style()
 
 
 func _build_ui():
