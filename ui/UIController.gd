@@ -7,6 +7,8 @@ extends Node
 @export var car_node_path: NodePath  # Path to FCar node
 @export var auto_open_debug: bool = true  # Open debug window on start
 @export var auto_open_score: bool = true  # Open score window on start
+@export var auto_open_ctrls: bool = true  # Open controls window on start
+
 
 var window_manager: WindowManager
 var car_ref: Node
@@ -42,6 +44,8 @@ func _ready():
 		open_debug_window()
 	if auto_open_score:
 		open_score_window()
+	if auto_open_ctrls:
+		open_control_window()
 
 
 func _find_car() -> Node:
@@ -116,7 +120,7 @@ func open_score_window() -> UIWindow:
 	score_window = window_manager.create_window_with_content(
 		content.window_title,
 		content,
-		Vector2(20, 300),  # Below the debug window
+		Vector2(250, 180),
 		Vector2(180, 140)
 	)
 	score_window.min_size = Vector2(150, 120)
@@ -140,7 +144,7 @@ func open_control_window() -> UIWindow:
 	control_window = window_manager.create_window_with_content(
 		content.window_title,
 		content,
-		Vector2(20, 380),
+		Vector2(250, 20),
 		Vector2(400, 150)
 	)
 	control_window.min_size = Vector2(350, 130)
