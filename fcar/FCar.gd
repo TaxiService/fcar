@@ -363,7 +363,7 @@ func _toggle_control_lock():
 	# Check what's currently pressed
 	var actions_to_check = [
 		"forward", "backward", "strafe_left", "strafe_right",
-		"jump", "crouch", "turn_left", "turn_right", "handbrake",
+		"jump", "crouch", "turn_left", "turn_right",
 		"shin_left", "shin_right", "boost", "pitch_up", "pitch_down"
 	]
 	var keys_to_check = [KEY_SHIFT, KEY_ALT, KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN]

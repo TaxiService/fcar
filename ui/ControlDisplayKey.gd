@@ -8,12 +8,13 @@ extends Control
 @export var action_name: String = ""
 @export var is_raw_key: bool = false
 @export var raw_key_code: int = 0
+@export var is_lockable: bool = true
 
 # Colors
-const COLOR_BG_IDLE = Color(0.08, 0.18, 0.15)
+const COLOR_BG_IDLE = Color(0.25, 0.28, 0.21)
 const COLOR_BG_LOCKED = Color(0.4, 0.2, 0.0)
-const COLOR_BG_PRESSED = Color(0.3, 0.9, 0.5)
-const COLOR_TEXT_IDLE = Color(0.5, 0.5, 0.55)
+const COLOR_BG_PRESSED = Color(0.2, 0.6, 0.3)
+const COLOR_TEXT_IDLE = Color(0.9, 0.9, 0.9)
 const COLOR_TEXT_LOCKED = Color(1, 0.6, 0.2)
 const COLOR_TEXT_PRESSED = Color(0.2, 0.0, 0.2)
 const COLOR_BORDER_LOCKED = Color(1.0, 0.6, 0.2)
@@ -24,6 +25,11 @@ var label: Label
 var style_box: StyleBoxFlat
 
 var _current_locked: bool = false
+
+# State caching for performance
+var _cached_pressed: bool = false
+var _cached_locked: bool = false
+var _cached_lock_mode: bool = false
 
 
 func _init():
@@ -63,50 +69,76 @@ func _build_ui():
 	add_child(label)
 
 
-func set_key(lbl: String, action: String = "", raw_key: bool = false, key_code: int = 0):
+func set_key(lbl: String, action: String = "", raw_key: bool = false, key_code: int = 0, lockable: bool = true):
 	key_label = lbl
 	action_name = action
 	is_raw_key = raw_key
 	raw_key_code = key_code
+	is_lockable = lockable
 	if label:
 		label.text = " %s " % key_label
+	if style_box and not is_lockable:
+		_apply_circular_style()
 
 
 func update_state(physical_pressed: bool, is_locked: bool, lock_mode_active: bool):
 	if not style_box or not label:
 		return
-	
+
+	# State caching - skip if nothing changed
+	if physical_pressed == _cached_pressed and is_locked == _cached_locked and lock_mode_active == _cached_lock_mode:
+		return
+
+	_cached_pressed = physical_pressed
+	_cached_locked = is_locked
+	_cached_lock_mode = lock_mode_active
+
+	_apply_visuals(physical_pressed, is_locked, lock_mode_active)
+
+
+func _apply_visuals(physical_pressed: bool, is_locked: bool, lock_mode_active: bool):
 	_current_locked = is_locked
 	var is_active = physical_pressed or is_locked
-	
+
 	# Background color
 	style_box.bg_color = COLOR_BG_PRESSED if physical_pressed else COLOR_BG_IDLE
-	
+
 	# Text color and label
 	label.add_theme_color_override("font_color", COLOR_TEXT_PRESSED if is_active else COLOR_TEXT_IDLE)
-	
-	# Label text: ">X<" when locked, " X " otherwise
-	if is_locked and !physical_pressed:
+
+	# Label text: ">X<" when locked, " X " otherwise (only for lockable buttons)
+	if is_lockable and is_locked and !physical_pressed:
 		label.text = ">%s<" % key_label
 	else:
 		label.text = " %s " % key_label
-	
-	# Border
+
+	# Border - non-lockable buttons never show lock hints
 	var border_width = 0
 	var border_color = Color.TRANSPARENT
-	
-	if is_locked:
-		border_width = 3
-		border_color = COLOR_BORDER_LOCKED
-		if !physical_pressed: 
-			style_box.bg_color = COLOR_BG_LOCKED
-			label.add_theme_color_override("font_color", COLOR_TEXT_LOCKED)
-	elif lock_mode_active and action_name != "toggle_control_lock":
-		border_width = 2
-		border_color = COLOR_BORDER_LOCK_MODE
-	
+
+	if is_lockable:
+		if is_locked:
+			border_width = 3
+			border_color = COLOR_BORDER_LOCKED
+			if !physical_pressed:
+				style_box.bg_color = COLOR_BG_LOCKED
+				label.add_theme_color_override("font_color", COLOR_TEXT_LOCKED)
+		elif lock_mode_active and action_name != "toggle_control_lock":
+			border_width = 2
+			border_color = COLOR_BORDER_LOCK_MODE
+
 	style_box.border_width_left = border_width
 	style_box.border_width_right = border_width
 	style_box.border_width_top = border_width
 	style_box.border_width_bottom = border_width
 	style_box.border_color = border_color
+
+
+func _apply_circular_style():
+	if not style_box:
+		return
+	var radius = int(min(size.x, size.y) / 2.0)
+	style_box.corner_radius_top_left = radius
+	style_box.corner_radius_top_right = radius
+	style_box.corner_radius_bottom_left = radius
+	style_box.corner_radius_bottom_right = radius
