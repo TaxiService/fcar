@@ -46,7 +46,7 @@ func _build_ui():
 	_add_key("A", "strafe_left", Vector2(left_x, row1_y))
 	_add_key("S", "backward", Vector2(left_x + KEY_SIZE.x + KEY_GAP, row1_y))
 	_add_key("D", "strafe_right", Vector2(left_x + (KEY_SIZE.x + KEY_GAP) * 2, row1_y))
-	_add_key("F", "toggle_control_lock", Vector2(left_x_staggered + (KEY_SIZE.x + KEY_GAP) * 3.5, row1_y))
+	_add_key("F", "toggle_control_lock", Vector2(left_x_staggered + (KEY_SIZE.x + KEY_GAP) * 3.5, row1_y), false, 0, false)
 	
 	# Row 2: Shift Z X C space
 	var row2_y = row1_y + KEY_SIZE.y + KEY_GAP
