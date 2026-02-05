@@ -15,6 +15,7 @@ var shift_manager: Node
 # Window references (for toggling)
 var debug_window: UIWindow = null
 var score_window: UIWindow = null
+var control_window: UIWindow = null
 
 
 func _ready():
@@ -123,6 +124,30 @@ func open_score_window() -> UIWindow:
 	return score_window
 
 
+func open_control_window() -> UIWindow:
+	if not window_manager:
+		return null
+
+	# Already open?
+	if is_instance_valid(control_window):
+		window_manager.bring_window_to_front(control_window)
+		return control_window
+
+	var content = ControlDisplayWindow.new()
+	if car_ref:
+		content.set_car(car_ref)
+
+	control_window = window_manager.create_window_with_content(
+		content.window_title,
+		content,
+		Vector2(20, 380),
+		Vector2(400, 150)
+	)
+	control_window.min_size = Vector2(350, 130)
+	control_window.closed.connect(func(): control_window = null)
+	return control_window
+
+
 func open_custom_window(title: String, content: Control, pos: Vector2 = Vector2(100, 100), win_size: Vector2 = Vector2(300, 200)) -> UIWindow:
 	if not window_manager:
 		return null
@@ -141,6 +166,9 @@ func _unhandled_input(event: InputEvent):
 				get_viewport().set_input_as_handled()
 			KEY_F2:
 				toggle_score_window()
+				get_viewport().set_input_as_handled()
+			KEY_F4:
+				toggle_control_window()
 				get_viewport().set_input_as_handled()
 
 
@@ -166,3 +194,15 @@ func toggle_score_window():
 		window.queue_free()
 	else:
 		open_score_window()
+
+
+func toggle_control_window():
+	if not window_manager:
+		return
+
+	if is_instance_valid(control_window):
+		var window = control_window
+		window.closed.emit()  # This sets control_window = null via our handler
+		window.queue_free()
+	else:
+		open_control_window()
