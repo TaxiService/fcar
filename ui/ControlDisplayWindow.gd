@@ -30,10 +30,12 @@ func _build_ui():
 	var left_y = 10
 	var left_x_staggered = 0
 	
-	# Row 0: Q W E
-	_add_key("Q", "turn_left", Vector2(left_x_staggered, left_y))
+	# Row 0: Q W E R T
+	_add_key("Q", "turn_left", Vector2(left_x, left_y))
 	_add_key("W", "forward", Vector2(left_x + KEY_SIZE.x + KEY_GAP, left_y))
-	_add_key("E", "turn_right", Vector2(left_x_staggered + (KEY_SIZE.x + KEY_GAP) * 3, left_y))
+	_add_key("E", "turn_right", Vector2(left_x + (KEY_SIZE.x + KEY_GAP) * 2, left_y))
+	_add_key("R", "confirm", Vector2(left_x + (KEY_SIZE.x + KEY_GAP) * 3.5, left_y))
+	_add_key("T", "cancel", Vector2(left_x + (KEY_SIZE.x + KEY_GAP) * 4.5, left_y))
 	
 	# Row 1: A S D F
 	var row1_y = left_y + KEY_SIZE.y + KEY_GAP
@@ -42,7 +44,7 @@ func _build_ui():
 	_add_key("D", "strafe_right", Vector2(left_x + (KEY_SIZE.x + KEY_GAP) * 2, row1_y))
 	_add_key("F", "toggle_control_lock", Vector2(left_x_staggered + (KEY_SIZE.x + KEY_GAP) * 3.5, row1_y))
 	
-	# Row 2: Shift Z X C
+	# Row 2: Shift Z X C space
 	var row2_y = row1_y + KEY_SIZE.y + KEY_GAP
 	_add_key("⇧", "boost", Vector2(left_x_staggered, row2_y))
 	_add_key("Z", "height_brake", Vector2(left_x_staggered + KEY_SIZE.x + KEY_GAP, row2_y))
@@ -51,19 +53,19 @@ func _build_ui():
 
 	
 	# Center cluster: Space and C
-	var center_x = left_x + (KEY_SIZE.x + KEY_GAP) * 3 + CLUSTER_GAP
+	var center_x = left_x_staggered + (KEY_SIZE.x + KEY_GAP) * 4
 	var center_y = row2_y
 	
 	# Space bar (wider)
 	var space_key = _add_key("␣", "jump", Vector2(center_x, center_y))
-	space_key.custom_minimum_size = Vector2(70, KEY_SIZE.y)
-	space_key.size = Vector2(70, KEY_SIZE.y)
+	space_key.custom_minimum_size = Vector2(80, KEY_SIZE.y)
+	space_key.size = Vector2(80, KEY_SIZE.y)
 	
 	# C below space
 	#_add_key("C", "crouch", Vector2(center_x + 15, center_y + KEY_SIZE.y + KEY_GAP))
 	
 	# Right cluster: Arrow keys
-	var right_x = center_x + 80 + CLUSTER_GAP
+	var right_x = center_x + CLUSTER_GAP
 	var right_y = left_y
 	
 	# Row 0: Up arrow (centered)
