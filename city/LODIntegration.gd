@@ -89,6 +89,13 @@ func _setup_from_paths():
 	if loading_screen_path:
 		loading_screen = get_node_or_null(loading_screen_path)
 
+	# Create loading screen if not found and show_loading_screen is enabled
+	if not loading_screen and show_loading_screen:
+		loading_screen = ImpostorLoadingScreen.new()
+		loading_screen.name = "ImpostorLoadingScreen"
+		get_tree().root.add_child(loading_screen)
+		print("LODIntegration: Created ImpostorLoadingScreen")
+
 	# Resolve building_generator from CityGenerator or CityGrid
 	if city_generator:
 		building_generator = city_generator.get_node_or_null("Buildings/BuildingGenerator")
