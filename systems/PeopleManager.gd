@@ -1057,7 +1057,7 @@ func _update_process_states():
 			continue
 		
 		# Always process certain states
-		if person.current_state in [Person.State.BOARDING, Person.State.RIDING, Person.State.EXITING]:
+		if person.current_state in [Person.State.BOARDING, Person.State.RIDING, Person.State.EXITING, Person.State.PUSHED]:
 			person.set_process(true)
 			continue
 		

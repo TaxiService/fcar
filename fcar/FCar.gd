@@ -82,7 +82,7 @@ var masked_keys: Dictionary = {}  # KEY_* constant -> true if still held from lo
 
 @export_category("handbrake")
 @export var handbrake_disables_stabilizer: bool = true
-@export var handbrake_disables_boosters: bool = false
+@export var handbrake_disables_boosters: bool = true
 
 @export_category("auto-hover safety")
 @export var auto_hover_enabled: bool = true
@@ -122,6 +122,9 @@ var masked_keys: Dictionary = {}  # KEY_* constant -> true if still held from lo
 @export var delivered_wander_radius: float = 8.0  # How far delivered people can wander from drop-off
 @export var explicit_boarding_consent: bool = true  # If true, player must target and confirm groups
 
+@export_category("people collision")
+@export var collision_person_radius: float = 0.3
+
 @export_category("debug")
 @export var debug_thrusters: bool = false
 @export var debug_boosters: bool = false
@@ -147,6 +150,11 @@ var debug_visualizer: DebugVisualizer
 var status_lights: StatusLights
 var direction_lights: DirectionLights
 
+# People collision (read from PeopleCollision child node)
+var _collision_shape_node: CollisionShape3D = null
+var _collision_capsule_radius: float = 0.6
+var _collision_capsule_half_height: float = 0.45
+
 # ===== PASSENGER SYSTEM =====
 var passengers: Array[Person] = []
 var people_manager: Node = null  # Reference to PeopleManager for finding hailing persons
@@ -167,6 +175,7 @@ signal passenger_boarded(person: Person)
 signal passenger_delivered(person: Person, destination: Node)
 signal passenger_ejected(person: Person)
 signal ready_state_changed(is_ready: bool)
+signal person_broken(position: Vector3, person_color: Color, velocity: Vector3)
 
 
 func _ready():
@@ -217,6 +226,9 @@ func _init_subsystems():
 
 	# Find PeopleManager for passenger system
 	_find_people_manager()
+
+	# Initialize people collision from PeopleCollision child node
+	_init_people_collision()
 
 	# Create destination marker
 	_create_destination_marker()
@@ -553,6 +565,9 @@ func _physics_process(delta):
 			_update_booster_thrust(delta)
 		else:
 			booster_system.set_thrust(0.0)
+
+	# Update people collision detection
+	_update_people_collisions()
 
 	# Update passenger system
 	_update_passengers()
@@ -1016,6 +1031,137 @@ func _update_booster_thrust(delta: float):
 			print("  L dir: ", dirs.left.direction)
 		if dirs.has("right"):
 			print("  R dir: ", dirs.right.direction)
+
+
+# ===== PEOPLE COLLISION SYSTEM =====
+
+func _init_people_collision():
+	var area = get_node_or_null("PeopleCollision")
+	if not area:
+		push_warning("FCar: PeopleCollision Area3D not found")
+		return
+	for child in area.get_children():
+		if child is CollisionShape3D and child.shape is CapsuleShape3D:
+			_collision_shape_node = child
+			var capsule = child.shape as CapsuleShape3D
+			_collision_capsule_radius = capsule.radius
+			_collision_capsule_half_height = (capsule.height / 2.0) - capsule.radius
+			print("FCar: People collision shape (radius=%.2f, half_height=%.2f)" % [
+				_collision_capsule_radius, _collision_capsule_half_height])
+			return
+	push_warning("FCar: No CapsuleShape3D found in PeopleCollision")
+
+
+func _update_people_collisions():
+	if not people_manager or not _collision_shape_node:
+		return
+
+	var car_pos = global_position
+	var car_vel = linear_velocity
+
+	# Compute capsule endpoints from the shape node's global transform
+	var shape_xform = _collision_shape_node.global_transform
+	var capsule_a = shape_xform * Vector3(0, _collision_capsule_half_height, 0)
+	var capsule_b = shape_xform * Vector3(0, -_collision_capsule_half_height, 0)
+	var hit_radius_sq = (_collision_capsule_radius + collision_person_radius) ** 2
+
+	for person in people_manager.all_people:
+		if not is_instance_valid(person):
+			continue
+
+		# Skip certain states
+		if person.current_state in [Person.State.BOARDING, Person.State.RIDING, Person.State.EXITING, Person.State.PUSHED]:
+			continue
+
+		# Skip immune people
+		if person.collision_immune:
+			continue
+
+		var person_pos = person.global_position
+
+		# Squared distance early-out (10m)
+		var dx = person_pos.x - car_pos.x
+		var dy = person_pos.y - car_pos.y
+		var dz = person_pos.z - car_pos.z
+		if dx * dx + dy * dy + dz * dz > 100.0:
+			continue
+
+		# Raise collision point to waist height (~0.5m above feet)
+		var collision_point = person_pos + Vector3(0, 0.5, 0)
+
+		# Capsule-vs-point distance check
+		if _point_to_segment_distance_sq(collision_point, capsule_a, capsule_b) > hit_radius_sq:
+			continue
+
+		# HIT! Calculate impact parameters
+		var hit_dir = person_pos - car_pos
+		hit_dir.y = 0
+		if hit_dir.length_squared() < 0.001:
+			hit_dir = Vector3.FORWARD
+		else:
+			hit_dir = hit_dir.normalized()
+
+		# Horizontal impact speed (project velocity onto hit direction)
+		var impact_speed = max(Vector3(car_vel.x, 0, car_vel.z).dot(hit_dir), 0.0)
+		# Downward component
+		var downward_velocity = max(-car_vel.y, 0.0)
+
+		if impact_speed < 11.1:
+			# Below ~40 km/h: always push
+			_push_person(person, hit_dir, impact_speed, car_pos)
+		else:
+			# Roll for constitution save (40-80 km/h range)
+			var speed_kmh = impact_speed * 3.6
+			var roll = randi_range(1, 20)
+			var dc = 5.0 + (speed_kmh - 40.0) * 0.325
+			dc = clamp(dc, 5.0, 18.0)
+			dc += clamp(downward_velocity, 0.0, 5.0)
+			dc -= person.tint_color.r * 5.0
+			dc = clamp(dc, 2.0, 19.0)
+
+			if roll >= int(dc):
+				_push_person(person, hit_dir, impact_speed, car_pos)
+			else:
+				_break_person(person, person_pos, speed_kmh, roll, int(dc))
+
+
+func _push_person(person: Person, hit_dir: Vector3, impact_speed: float, car_pos: Vector3):
+	# Perpendicular dodge direction (sideways from hit)
+	var perp = hit_dir.cross(Vector3.UP).normalized()
+	if randf() < 0.5:
+		perp = -perp
+
+	# Dodge distance: at least 3m, more at higher speeds
+	var dodge_distance = max(3.0, impact_speed * 0.3)
+
+	# Set up dodge motion
+	person.dodge_start_pos = person.global_position
+	person.dodge_end_pos = person.dodge_start_pos + perp * dodge_distance
+	person.dodge_duration = 0.35
+	person.dodge_progress = 0.0
+	person.push_source_position = car_pos
+	person.base_y = person.global_position.y
+	person.collision_immune = true
+	person.collision_immune_timer = 1.0
+	person._enter_state(Person.State.PUSHED)
+
+
+func _break_person(person: Person, pos: Vector3, speed_kmh: float, roll: int, dc: int):
+	var color = person.tint_color
+	person.collision_immune = true
+	print("PERSON BROKEN at %s (speed: %.1f km/h, roll: %d, DC: %d)" % [pos, speed_kmh, roll, dc])
+	people_manager.remove_person(person)
+	person_broken.emit(pos, color, linear_velocity)
+
+
+func _point_to_segment_distance_sq(point: Vector3, seg_a: Vector3, seg_b: Vector3) -> float:
+	var ab = seg_b - seg_a
+	var ap = point - seg_a
+	var ab_len_sq = ab.dot(ab)
+	if ab_len_sq < 0.0001:
+		return point.distance_squared_to(seg_a)
+	var t = clamp(ap.dot(ab) / ab_len_sq, 0.0, 1.0)
+	return point.distance_squared_to(seg_a + ab * t)
 
 
 # ===== PASSENGER SYSTEM =====

@@ -2,7 +2,7 @@ class_name Person
 extends Sprite3D
 
 # Movement states
-enum State { WALKING, STOPPING, WAITING, HAILING, BOARDING, RIDING, EXITING, ARRIVED, RELOCATING }
+enum State { WALKING, STOPPING, WAITING, HAILING, BOARDING, RIDING, EXITING, ARRIVED, RELOCATING, PUSHED }
 
 # Pre-allocated state sets for fast membership checks (avoids array allocation each frame)
 const IDLE_STATES = [State.WALKING, State.STOPPING, State.WAITING]
@@ -74,6 +74,16 @@ var relocation_flying: bool = false  # If true, move in 3D; if false, stay on XZ
 var fare_cooldown: float = 0.0  # Time remaining before can become fare again
 const FARE_COOLDOWN_TIME: float = 30.0  # Seconds after delivery before eligible
 
+# Collision response
+var collision_immune: bool = false
+var collision_immune_timer: float = 0.0
+var push_source_position: Vector3 = Vector3.ZERO
+var dodge_start_pos: Vector3 = Vector3.ZERO
+var dodge_end_pos: Vector3 = Vector3.ZERO
+var dodge_duration: float = 0.35
+var dodge_progress: float = 0.0
+var tint_color: Color = Color.BLACK
+
 # LOD/Culling instance state
 var lod_timer: float = 0.0  # Stagger LOD checks
 var lod_check_offset: float = 0.0  # Random offset to distribute checks
@@ -99,6 +109,7 @@ func _ready():
 
 
 func set_person_color(color: Color):
+	tint_color = color
 	set_instance_shader_parameter("person_color", Vector3(color.r, color.g, color.b))
 
 
@@ -210,6 +221,12 @@ func _process(delta: float):
 	if fare_cooldown > 0.0:
 		fare_cooldown -= delta
 
+	# Decrement collision immunity timer
+	if collision_immune_timer > 0.0:
+		collision_immune_timer -= delta
+		if collision_immune_timer <= 0.0:
+			collision_immune = false
+
 	# Fast path: RIDING passengers skip everything except position update
 	if current_state == State.RIDING:
 		visible = false
@@ -257,6 +274,8 @@ func _process(delta: float):
 			_process_arrived(delta)
 		State.RELOCATING:
 			_process_relocating(delta)
+		State.PUSHED:
+			_process_pushed(delta)
 
 
 func _process_walking(delta: float):
@@ -399,6 +418,31 @@ func _process_relocating(delta: float):
 		scale.x = 1.0 if facing_right else -1.0
 
 
+func _process_pushed(delta: float):
+	# Advance dodge progress
+	dodge_progress += delta / dodge_duration
+
+	if dodge_progress >= 1.0:
+		# Dodge complete - snap to end and walk away scared
+		global_position.x = dodge_end_pos.x
+		global_position.z = dodge_end_pos.z
+		global_position.y = base_y
+		_enter_state(State.WALKING)
+		var away_dir = global_position - push_source_position
+		away_dir.y = 0
+		if away_dir.length() > 0.01:
+			walk_direction = away_dir.normalized()
+		state_duration = 3.0
+		_update_facing_direction()
+		return
+
+	# Cubic ease-out
+	var eased_t = 1.0 - pow(1.0 - dodge_progress, 3.0)
+	global_position.x = lerp(dodge_start_pos.x, dodge_end_pos.x, eased_t)
+	global_position.z = lerp(dodge_start_pos.z, dodge_end_pos.z, eased_t)
+	global_position.y = base_y
+
+
 func _enter_state(new_state: State):
 	set_process(true)
 	current_state = new_state
@@ -449,6 +493,15 @@ func _enter_state(new_state: State):
 		State.RELOCATING:
 			walk_direction = Vector3.ZERO
 			visible = true
+
+		State.PUSHED:
+			walk_direction = Vector3.ZERO
+			visible = true
+			# Face dodge direction
+			var dodge_dir = dodge_end_pos - dodge_start_pos
+			if abs(dodge_dir.x) > 0.1:
+				facing_right = dodge_dir.x > 0
+				scale.x = 1.0 if facing_right else -1.0
 
 
 func _update_facing_direction():
@@ -573,7 +626,16 @@ func _reset_for_reuse():
 	relocation_surface = null
 	relocation_flying = false
 	relocation_speed = 2.0
-	
+
+	# Collision response
+	collision_immune = false
+	collision_immune_timer = 0.0
+	push_source_position = Vector3.ZERO
+	dodge_start_pos = Vector3.ZERO
+	dodge_end_pos = Vector3.ZERO
+	dodge_duration = 0.35
+	dodge_progress = 0.0
+
 	# LOD - randomize offset to distribute checks across frames
 	lod_timer = 0.0
 	lod_check_offset = randf() * lod_update_interval
