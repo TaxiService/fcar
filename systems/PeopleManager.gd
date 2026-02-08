@@ -127,6 +127,14 @@ var _spawn_queue: Array[Dictionary] = []  # [{surface, wants_dest, wants_group, 
 # Shared material (one ShaderMaterial, instance params for per-person variation)
 var _shared_material: ShaderMaterial
 
+# Parts system (broken person parts)
+var all_parts: Array[PersonPart] = []
+var _parts_material_cores: ShaderMaterial
+var _parts_material_body: ShaderMaterial
+var _parts_cores_texture: Texture2D
+var _parts_body_texture: Texture2D
+var _fcar_node: Node = null
+
 # Process management
 var _process_check_timer: float = 0.0
 var _player_position: Vector3 = Vector3.ZERO
@@ -143,6 +151,7 @@ func _ready():
 	CityGrid.people_manager = self
 	_load_spritesheet()
 	_create_shared_material()
+	_load_parts_spritesheets()
 
 	# Set static reference so Person instances can find zones
 	Person.people_manager = self
@@ -151,10 +160,13 @@ func _ready():
 	_pool_container = Node.new()
 	_pool_container.name = "PersonPool"
 	add_child(_pool_container)
-	
+
 	if warm_pool_on_start:
 		# Defer pool creation to avoid blocking scene load
 		call_deferred("_warm_pool")
+
+	# Connect to FCar's person_broken signal (deferred so FCar is ready)
+	call_deferred("_connect_fcar_signal")
 
 
 func _warm_pool():
@@ -295,6 +307,10 @@ func _process(delta: float):
 		_despawn_timer = 0.0
 		_despawn_distant_people()
 		_enforce_population_cap()
+
+	# Update broken person parts (physics, despawn)
+	_update_parts(delta)
+
 	# Debug print (every 300 frames)
 	if verbose_logging and Engine.get_frames_drawn() % 300 == 0:
 		print("=== PeopleManager Heartbeat ===")
@@ -1298,11 +1314,153 @@ func generate_person_color(position: Vector3) -> Color:
 	return final_color
 
 
+# === PARTS SYSTEM ===
+
+func _load_parts_spritesheets():
+	var shader = load("res://mats/person_sprite_v2.gdshader")
+
+	_parts_cores_texture = load("res://files/cores.png")
+	if _parts_cores_texture:
+		_parts_material_cores = ShaderMaterial.new()
+		_parts_material_cores.shader = shader
+		_parts_material_cores.set_shader_parameter("texture_albedo", _parts_cores_texture)
+		print("PeopleManager: Loaded cores spritesheet")
+	else:
+		push_warning("PeopleManager: Failed to load cores.png")
+
+	_parts_body_texture = load("res://files/parts.png")
+	if _parts_body_texture:
+		_parts_material_body = ShaderMaterial.new()
+		_parts_material_body.shader = shader
+		_parts_material_body.set_shader_parameter("texture_albedo", _parts_body_texture)
+		print("PeopleManager: Loaded parts spritesheet")
+	else:
+		push_warning("PeopleManager: Failed to load parts.png")
+
+
+func _connect_fcar_signal():
+	_fcar_node = _find_node_by_script_name(get_tree().root, "FCar")
+	if _fcar_node and _fcar_node.has_signal("person_broken"):
+		_fcar_node.person_broken.connect(spawn_parts)
+		print("PeopleManager: Connected to FCar.person_broken signal")
+	else:
+		push_warning("PeopleManager: FCar not found or missing person_broken signal")
+
+
+func _find_node_by_script_name(node: Node, script_name: String) -> Node:
+	if node.get_script() and node.get_script().get_global_name() == script_name:
+		return node
+	for child in node.get_children():
+		var found = _find_node_by_script_name(child, script_name)
+		if found:
+			return found
+	return null
+
+
+func spawn_parts(position: Vector3, person_color: Color, impact_velocity: Vector3):
+	var part_count = randi_range(2, 3)
+	var person_id = PersonPart.allocate_person_id()
+
+	# Split color channels across parts
+	var colors: Array[Color] = []
+	if part_count == 3:
+		colors = [
+			Color(person_color.r, 0, 0),
+			Color(0, person_color.g, 0),
+			Color(0, 0, person_color.b),
+		]
+	else:
+		var option = randi_range(0, 2)
+		match option:
+			0: colors = [Color(person_color.r, person_color.g, 0), Color(0, 0, person_color.b)]
+			1: colors = [Color(person_color.r, 0, person_color.b), Color(0, person_color.g, 0)]
+			2: colors = [Color(0, person_color.g, person_color.b), Color(person_color.r, 0, 0)]
+
+	for i in range(part_count):
+		var part = PersonPart.new()
+		part.source_person_id = person_id
+
+		if i == 0:
+			# First part is always CORE
+			part.part_type = PersonPart.PartType.CORE
+			part.material_override = _parts_material_cores
+			part.texture = _parts_cores_texture
+		else:
+			part.part_type = PersonPart.PartType.BODY
+			part.material_override = _parts_material_body
+			part.texture = _parts_body_texture
+
+		part.hframes = 9
+		part.vframes = 1
+		part.frame = randi_range(0, 8)
+
+		part.set_part_color(colors[i])
+		part.global_position = position
+		part.base_y = position.y
+		part.collision_immune_timer = 1.0
+
+		# Scatter velocity: random outward + upward pop + fraction of car velocity
+		var angle = randf() * TAU
+		var horiz_speed = randf_range(2.0, 5.0)
+		var scatter = Vector3(cos(angle) * horiz_speed, randf_range(1.0, 3.0), sin(angle) * horiz_speed)
+		part.velocity = scatter + impact_velocity * 0.3
+
+		add_child(part)
+		all_parts.append(part)
+
+	print("PARTS SPAWNED: %d parts (person_id=%d) at %s" % [part_count, person_id, position])
+
+
+func _update_parts(delta: float):
+	if all_parts.is_empty():
+		return
+
+	var cam = Person.lod_camera
+	var despawn_dist_sq = despawn_distance * despawn_distance
+	var has_camera = cam != null
+	var cam_pos = cam.global_position if has_camera else Vector3.ZERO
+
+	# Track which person IDs still have parts
+	var remaining_ids: Dictionary = {}
+	var to_remove: Array[PersonPart] = []
+
+	for part in all_parts:
+		if not is_instance_valid(part):
+			to_remove.append(part)
+			continue
+
+		# Despawn if too far from camera
+		if has_camera:
+			var dx = part.global_position.x - cam_pos.x
+			var dz = part.global_position.z - cam_pos.z
+			if dx * dx + dz * dz > despawn_dist_sq:
+				to_remove.append(part)
+				continue
+
+		remaining_ids[part.source_person_id] = true
+
+	# Remove despawned parts
+	for part in to_remove:
+		all_parts.erase(part)
+		if is_instance_valid(part):
+			var pid = part.source_person_id
+			part.queue_free()
+			# Check if all parts from this person are now gone
+			var still_exists = false
+			for other in all_parts:
+				if is_instance_valid(other) and other.source_person_id == pid:
+					still_exists = true
+					break
+			if not still_exists:
+				print("PARTS LOST: All parts from person_id=%d despawned" % pid)
+
+
 # === DEBUG ===
 
 func print_status():
 	print("PeopleManager Status:")
 	print("  Pool: %d available, %d active" % [_pool.size(), all_people.size()])
+	print("  Parts: %d active" % all_parts.size())
 	print("  Spawn queue: %d pending" % _spawn_queue.size())
 	print("  Shared material: %s" % ("set" if _shared_material else "null"))
 	print("  Spawners: %d surfaces + %d zones" % [registered_surfaces.size(), registered_zones.size()])

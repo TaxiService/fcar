@@ -122,6 +122,11 @@ func _update_display():
 	text += "Nodes: %d\n" % node_count
 	if orphan_count > 0:
 		text += "Orphans: %d (!)\n" % orphan_count
+	var pm = _get_people_manager()
+	if pm:
+		var parts = pm.get("all_parts")
+		if parts:
+			text += "Parts: %d\n" % parts.size()
 	
 	# === RENDERING (GPU indicators) ===
 	var draw_calls = Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)

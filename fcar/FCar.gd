@@ -569,6 +569,9 @@ func _physics_process(delta):
 	# Update people collision detection
 	_update_people_collisions()
 
+	# Update parts collision detection
+	_update_parts_collisions()
+
 	# Update passenger system
 	_update_passengers()
 
@@ -1162,6 +1165,66 @@ func _point_to_segment_distance_sq(point: Vector3, seg_a: Vector3, seg_b: Vector
 		return point.distance_squared_to(seg_a)
 	var t = clamp(ap.dot(ab) / ab_len_sq, 0.0, 1.0)
 	return point.distance_squared_to(seg_a + ab * t)
+
+
+func _update_parts_collisions():
+	if not people_manager or not _collision_shape_node:
+		return
+
+	var parts_array = people_manager.get("all_parts")
+	if parts_array == null or parts_array.is_empty():
+		return
+
+	var car_pos = global_position
+	var car_vel = linear_velocity
+
+	var shape_xform = _collision_shape_node.global_transform
+	var capsule_a = shape_xform * Vector3(0, _collision_capsule_half_height, 0)
+	var capsule_b = shape_xform * Vector3(0, -_collision_capsule_half_height, 0)
+	var hit_radius_sq = (_collision_capsule_radius + collision_person_radius) ** 2
+
+	for part in parts_array:
+		if not is_instance_valid(part):
+			continue
+		if part.collision_immune_timer > 0.0:
+			continue
+
+		var part_pos = part.global_position
+
+		# Early-out distance check (10m)
+		var dx = part_pos.x - car_pos.x
+		var dy = part_pos.y - car_pos.y
+		var dz = part_pos.z - car_pos.z
+		if dx * dx + dy * dy + dz * dz > 100.0:
+			continue
+
+		# Collision point at center of part sprite (~0.4m above ground)
+		var collision_point = part_pos + Vector3(0, 0.4, 0)
+
+		if _point_to_segment_distance_sq(collision_point, capsule_a, capsule_b) > hit_radius_sq:
+			continue
+
+		# HIT
+		if part.is_core and part.at_rest:
+			print("CORE SQUISHED at %s" % part_pos)
+		else:
+			# Re-scatter body part (or non-resting core)
+			var hit_dir = part_pos - car_pos
+			hit_dir.y = 0
+			if hit_dir.length_squared() < 0.001:
+				hit_dir = Vector3.FORWARD
+			else:
+				hit_dir = hit_dir.normalized()
+
+			var scatter_angle = randf() * TAU
+			var scatter_speed = randf_range(2.0, 5.0)
+			part.velocity = Vector3(
+				cos(scatter_angle) * scatter_speed,
+				randf_range(1.0, 3.0),
+				sin(scatter_angle) * scatter_speed
+			) + car_vel * 0.3
+			part.at_rest = false
+			part.collision_immune_timer = 1.0
 
 
 # ===== PASSENGER SYSTEM =====

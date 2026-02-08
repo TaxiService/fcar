@@ -1,7 +1,9 @@
-[gd_scene load_steps=16 format=3 uid="uid://dek4efddws8mr"]
+[gd_scene load_steps=18 format=3 uid="uid://dek4efddws8mr"]
 
 [ext_resource type="Texture2D" uid="uid://b8dhd5iqbef0" path="res://icon.svg" id="1_et1pl"]
 [ext_resource type="PackedScene" uid="uid://cycok6yqmtjes" path="res://fcar/f_car.tscn" id="2_7mycd"]
+[ext_resource type="PackedScene" uid="uid://5wk70s313e55" path="res://city/building/floor_1x1.tscn" id="2_lw7om"]
+[ext_resource type="PackedScene" uid="uid://bciqxf8rr648o" path="res://city/building/floor_1x3.tscn" id="3_s6x3s"]
 [ext_resource type="PackedScene" uid="uid://c1ov2avlb3xs2" path="res://city/building/antenna1.tscn" id="4_272bh"]
 [ext_resource type="Script" uid="uid://dvu3f10fe6r2" path="res://systems/PeopleManager.gd" id="6_people"]
 [ext_resource type="Script" uid="uid://bb5smj3tq58ck" path="res://systems/PointOfInterest.gd" id="7_5vw27"]
@@ -50,6 +52,12 @@ shadow_enabled = true
 [node name="FCar" parent="." instance=ExtResource("2_7mycd")]
 
 [node name="city" type="Node" parent="."]
+
+[node name="FloorSmall7" parent="city" instance=ExtResource("2_lw7om")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -111.93162)
+
+[node name="FloorSmall8" parent="city" instance=ExtResource("3_s6x3s")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -122.42876, 0, 103.381)
 
 [node name="Floor" type="StaticBody3D" parent="city"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1, 0)
