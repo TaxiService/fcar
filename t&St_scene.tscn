@@ -1,7 +1,6 @@
-[gd_scene load_steps=17 format=3 uid="uid://dek4efddws8mr"]
+[gd_scene load_steps=16 format=3 uid="uid://dek4efddws8mr"]
 
 [ext_resource type="Texture2D" uid="uid://b8dhd5iqbef0" path="res://icon.svg" id="1_et1pl"]
-[ext_resource type="Script" uid="uid://313aqakyo1m1" path="res://fcar/Camera3D.gd" id="1_ptugb"]
 [ext_resource type="PackedScene" uid="uid://cycok6yqmtjes" path="res://fcar/f_car.tscn" id="2_7mycd"]
 [ext_resource type="PackedScene" uid="uid://c1ov2avlb3xs2" path="res://city/building/antenna1.tscn" id="4_272bh"]
 [ext_resource type="Script" uid="uid://dvu3f10fe6r2" path="res://systems/PeopleManager.gd" id="6_people"]
@@ -48,13 +47,7 @@ size = Vector3(50, 2000, 50)
 transform = Transform3D(0.707107, 0.5, -0.5, 0, 0.707107, 0.707107, 0.707107, -0.5, 0.5, 0, 5, 0)
 shadow_enabled = true
 
-[node name="FCam" type="Camera3D" parent="." node_paths=PackedStringArray("target")]
-transform = Transform3D(1, 0, 0, 0, 0.9961948, 0.08715568, 0, -0.08715568, 0.9961948, -2.2765515, 2.07618, 7.6534176)
-script = ExtResource("1_ptugb")
-target = NodePath("../FCar")
-
 [node name="FCar" parent="." instance=ExtResource("2_7mycd")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -11.767887, 0, -0.079668045)
 
 [node name="city" type="Node" parent="."]
 
