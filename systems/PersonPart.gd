@@ -9,6 +9,7 @@ var is_core: bool:
 var source_person_id: int = 0
 var tint_color: Color = Color.BLACK
 var point_value: int = 0
+var in_cargo: bool = false
 var collision_immune_timer: float = 0.0
 var at_rest: bool = false
 var velocity: Vector3 = Vector3.ZERO
@@ -43,6 +44,11 @@ func set_part_color(color: Color):
 
 
 func _process(delta: float):
+	# In cargo: hidden, no physics, no LOD — position set by FCar
+	if in_cargo:
+		visible = false
+		return
+
 	# Collision immunity countdown
 	if collision_immune_timer > 0.0:
 		collision_immune_timer -= delta

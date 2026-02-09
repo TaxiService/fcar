@@ -1166,6 +1166,10 @@ func remove_person(person: Person):
 	_return_to_pool(person)
 
 
+func has_undelivered_parts() -> bool:
+	return all_parts.size() > 0
+
+
 func remove_all_people():
 	for person in all_people.duplicate():  # Duplicate to avoid modifying while iterating
 		_return_to_pool(person)

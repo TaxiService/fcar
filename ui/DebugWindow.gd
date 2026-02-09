@@ -15,6 +15,7 @@ var speed_label: Label
 var altitude_label: Label
 var vertical_vel_label: Label
 var booster_angles_label: Label
+var mode_label: Label
 var passengers_label: Label
 var parts_ground_label: Label
 var ready_label: Label
@@ -76,6 +77,11 @@ func _build_ui():
 	# Another separator
 	var sep2 = HSeparator.new()
 	vbox.add_child(sep2)
+
+	# Mode indicator
+	mode_label = Label.new()
+	mode_label.text = "Mode: ---"
+	vbox.add_child(mode_label)
 
 	# Ready for fares
 	ready_label = Label.new()
@@ -162,6 +168,18 @@ func _process(delta: float):
 		var hlock = car_ref.lock_height
 		heightlock_label.text = "Heightlock: %s" % ("enabled" if hlock else "disabled")
 		heightlock_label.add_theme_color_override("font_color", Color(0.3, 1.0, 0.3) if hlock else Color(0.6, 0.6, 0.6, 1.0))
+
+	# Update mode indicator
+	if "hospital_mode" in car_ref:
+		if car_ref.hospital_mode:
+			var radius_text = ""
+			if "part_pickup_radius" in car_ref:
+				radius_text = "  (radius: %.0fm)" % car_ref.part_pickup_radius
+			mode_label.text = "Mode: HOSPITAL%s" % radius_text
+			mode_label.add_theme_color_override("font_color", Color(1.0, 0.4, 0.4))
+		else:
+			mode_label.text = "Mode: FARE"
+			mode_label.add_theme_color_override("font_color", Color(0.85, 0.85, 0.85))
 
 	# Update ready status
 	if "is_ready_for_fares" in car_ref:
