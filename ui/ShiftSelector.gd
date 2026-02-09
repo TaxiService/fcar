@@ -5,30 +5,39 @@ extends CanvasLayer
 # R (confirm) = select current option
 # T (cancel) = cycle to next option
 
-enum ShiftType { CANCEL, SINGLE, HALF, FULL }
+enum ShiftType { CANCEL, SINGLE, HALF, FULL, HOSPITAL }
 
-const SHIFT_OPTIONS = [
+const FARE_OPTIONS = [
 	{ "type": ShiftType.CANCEL, "label": "Cancel", "fares": 0 },
 	{ "type": ShiftType.SINGLE, "label": "Single Fare", "fares": 1 },
 	{ "type": ShiftType.HALF, "label": "Half Shift (5)", "fares": 5 },
 	{ "type": ShiftType.FULL, "label": "Full Shift (10)", "fares": 10 },
 ]
 
-var current_selection: int = 0  # Default to Cancel
+var _active_options: Array = []  # Built dynamically in show_selector()
+var current_selection: int = 0
 var is_open: bool = false
+
+# External references
+var people_manager: Node = null  # Set by FCar to check for parts
 
 # UI elements
 var panel: Panel
 var title_label: Label
+var option_container: VBoxContainer
 var option_labels: Array[Label] = []
+var hint_label: Label
+var _bg: ColorRect
 
 # Colors
 const COLOR_NORMAL = Color(0.6, 0.6, 0.6)
 const COLOR_SELECTED = Color(1.0, 0.9, 0.3)
+const COLOR_HOSPITAL = Color(1.0, 0.4, 0.4)
 const COLOR_TITLE = Color(0.8, 0.8, 0.8)
 
 # Signals
 signal shift_selected(fare_count: int)
+signal hospital_run_selected
 signal cancelled
 
 
@@ -40,12 +49,12 @@ func _ready():
 
 func _build_ui():
 	# Semi-transparent background
-	var bg = ColorRect.new()
-	bg.name = "Background"
-	bg.color = Color(0, 0, 0, 0.5)
-	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	bg.mouse_filter = Control.MOUSE_FILTER_STOP  # Block clicks
-	add_child(bg)
+	_bg = ColorRect.new()
+	_bg.name = "Background"
+	_bg.color = Color(0, 0, 0, 0.5)
+	_bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_bg.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(_bg)
 
 	# Center panel
 	panel = Panel.new()
@@ -68,18 +77,13 @@ func _build_ui():
 	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	panel.add_child(title_label)
 
-	# Option labels
-	for i in range(SHIFT_OPTIONS.size()):
-		var label = Label.new()
-		label.text = SHIFT_OPTIONS[i].label
-		label.add_theme_font_size_override("font_size", 16)
-		label.add_theme_color_override("font_color", COLOR_NORMAL)
-		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		option_labels.append(label)
-		panel.add_child(label)
+	# Container for dynamic option labels
+	option_container = VBoxContainer.new()
+	option_container.name = "Options"
+	panel.add_child(option_container)
 
 	# Instructions
-	var hint_label = Label.new()
+	hint_label = Label.new()
 	hint_label.name = "Hint"
 	hint_label.text = "R: confirm   T: cycle"
 	hint_label.add_theme_font_size_override("font_size", 12)
@@ -87,8 +91,23 @@ func _build_ui():
 	hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	panel.add_child(hint_label)
 
-	# Position elements (will be updated in _update_layout)
-	call_deferred("_update_layout")
+
+func _build_option_labels():
+	# Clear existing labels
+	for label in option_labels:
+		if is_instance_valid(label):
+			label.queue_free()
+	option_labels.clear()
+
+	# Create labels for active options
+	for i in range(_active_options.size()):
+		var label = Label.new()
+		label.text = _active_options[i].label
+		label.add_theme_font_size_override("font_size", 16)
+		label.add_theme_color_override("font_color", COLOR_NORMAL)
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		option_labels.append(label)
+		option_container.add_child(label)
 
 
 func _update_layout():
@@ -97,8 +116,10 @@ func _update_layout():
 
 	var viewport_size = get_viewport().get_visible_rect().size
 
-	# Center the panel
-	panel.size = Vector2(240, 180)
+	# Calculate panel height based on option count
+	var option_count = _active_options.size()
+	var panel_height = 55 + (option_count * 26) + 30  # title + options + hint
+	panel.size = Vector2(240, panel_height)
 	panel.position = (viewport_size - panel.size) / 2
 
 	# Layout elements within panel
@@ -107,20 +128,35 @@ func _update_layout():
 	title_label.size = Vector2(panel.size.x, 25)
 	y_offset += 35
 
-	for i in range(option_labels.size()):
-		option_labels[i].position = Vector2(0, y_offset)
-		option_labels[i].size = Vector2(panel.size.x, 22)
-		y_offset += 26
+	option_container.position = Vector2(0, y_offset)
+	option_container.size = Vector2(panel.size.x, option_count * 26)
 
 	# Hint at bottom
-	var hint = panel.get_node_or_null("Hint")
-	if hint:
-		hint.position = Vector2(0, panel.size.y - 25)
-		hint.size = Vector2(panel.size.x, 20)
+	hint_label.position = Vector2(0, panel_height - 25)
+	hint_label.size = Vector2(panel.size.x, 20)
 
 
 func show_selector():
-	current_selection = 0  # Reset to Cancel
+	# Build active options dynamically
+	_active_options = []
+
+	# Add Hospital Run if parts exist
+	if people_manager and people_manager.has_undelivered_parts():
+		var part_count = people_manager.all_parts.size()
+		_active_options.append({
+			"type": ShiftType.HOSPITAL,
+			"label": "Hospital Run (%d parts)" % part_count,
+			"fares": 0
+		})
+
+	# Add standard fare options
+	for opt in FARE_OPTIONS:
+		_active_options.append(opt)
+
+	# Rebuild UI labels
+	_build_option_labels()
+
+	current_selection = 0
 	is_open = true
 	visible = true
 	_update_selection_display()
@@ -134,15 +170,17 @@ func hide_selector():
 
 func cycle_selection():
 	# Move to next option (wraps around)
-	current_selection = (current_selection + 1) % SHIFT_OPTIONS.size()
+	current_selection = (current_selection + 1) % _active_options.size()
 	_update_selection_display()
 
 
 func confirm_selection():
-	var selected = SHIFT_OPTIONS[current_selection]
+	var selected = _active_options[current_selection]
 
 	if selected.type == ShiftType.CANCEL:
 		cancelled.emit()
+	elif selected.type == ShiftType.HOSPITAL:
+		hospital_run_selected.emit()
 	else:
 		shift_selected.emit(selected.fares)
 
@@ -151,9 +189,13 @@ func confirm_selection():
 
 func _update_selection_display():
 	for i in range(option_labels.size()):
+		if i >= _active_options.size():
+			break
+		var is_hospital = _active_options[i].type == ShiftType.HOSPITAL
 		if i == current_selection:
-			option_labels[i].add_theme_color_override("font_color", COLOR_SELECTED)
-			option_labels[i].text = "> " + SHIFT_OPTIONS[i].label + " <"
+			var color = COLOR_HOSPITAL if is_hospital else COLOR_SELECTED
+			option_labels[i].add_theme_color_override("font_color", color)
+			option_labels[i].text = "> " + _active_options[i].label + " <"
 		else:
 			option_labels[i].add_theme_color_override("font_color", COLOR_NORMAL)
-			option_labels[i].text = SHIFT_OPTIONS[i].label
+			option_labels[i].text = _active_options[i].label

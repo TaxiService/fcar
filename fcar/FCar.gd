@@ -258,7 +258,9 @@ func _create_shift_manager():
 func _create_shift_selector():
 	shift_selector = ShiftSelector.new()
 	shift_selector.name = "ShiftSelector"
+	shift_selector.people_manager = people_manager
 	shift_selector.shift_selected.connect(_on_shift_selected)
+	shift_selector.hospital_run_selected.connect(_on_hospital_run_selected)
 	shift_selector.cancelled.connect(_on_shift_selector_cancelled)
 	get_tree().root.add_child.call_deferred(shift_selector)
 
@@ -277,6 +279,15 @@ func _on_shift_selected(fare_count: int):
 func _on_shift_selector_cancelled():
 	# User cancelled, do nothing
 	print("Shift selection cancelled")
+
+
+func _on_hospital_run_selected():
+	var part_count = 0
+	if people_manager:
+		part_count = people_manager.all_parts.size()
+	hospital_mode = true
+	hospital_mode_changed.emit(true)
+	print("Hospital Run started. Parts to collect: %d" % part_count)
 
 
 func _create_destination_marker():
@@ -1633,13 +1644,8 @@ func _handle_confirm():
 			print("Ready for fares: YES")
 			ready_state_changed.emit(true)
 		else:
-			# No active shift - check for hospital mode first (temporary toggle)
-			if people_manager and people_manager.has_undelivered_parts():
-				hospital_mode = true
-				hospital_mode_changed.emit(true)
-				print("Hospital delivery mode: ON")
-			elif shift_selector:
-				# No parts to collect - open shift selector
+			# No active shift - open selector (includes Hospital Run if parts exist)
+			if shift_selector:
 				shift_selector.show_selector()
 		return
 
