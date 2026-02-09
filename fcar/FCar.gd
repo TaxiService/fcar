@@ -157,6 +157,7 @@ var _collision_capsule_half_height: float = 0.45
 
 # ===== PASSENGER SYSTEM =====
 var passengers: Array[Person] = []
+var cargo_parts: Array[PersonPart] = []
 var people_manager: Node = null  # Reference to PeopleManager for finding hailing persons
 var destination_marker: DestinationMarker = null  # HUD for passenger destination
 var hailing_markers: HailingMarkers = null  # Markers for nearby hailing groups
@@ -176,6 +177,8 @@ signal passenger_delivered(person: Person, destination: Node)
 signal passenger_ejected(person: Person)
 signal ready_state_changed(is_ready: bool)
 signal person_broken(position: Vector3, person_color: Color, velocity: Vector3)
+signal parts_collected(parts: Array[PersonPart])
+signal hospital_mode_changed(active: bool)
 
 
 func _ready():
@@ -1156,6 +1159,10 @@ func _push_person(person: Person, hit_dir: Vector3, impact_speed: float, car_pos
 func _break_person(person: Person, pos: Vector3, speed_kmh: float, roll: int, dc: int):
 	var color = person.tint_color
 	person.collision_immune = true
+	# Deduct points
+	if shift_manager:
+		shift_manager.deduct_score(400)
+		print("PENALTY: -400 points (person broken). Score: %d" % shift_manager.get_score())
 	print("PERSON BROKEN at %s (speed: %.1f km/h, roll: %d, DC: %d, signal_listeners: %d)" % [
 		pos, speed_kmh, roll, dc, person_broken.get_connections().size()])
 	people_manager.remove_person(person)
@@ -1240,6 +1247,7 @@ func _update_passengers():
 
 	# Clean up invalid passenger references
 	passengers = passengers.filter(func(p): return is_instance_valid(p))
+	cargo_parts = cargo_parts.filter(func(p): return is_instance_valid(p))
 
 	# Process eject ritual
 	_update_eject_ritual(get_physics_process_delta_time())
@@ -1272,7 +1280,7 @@ func _check_boarding_arrivals():
 		var dist = global_position.distance_to(person.global_position)
 		if dist <= board_range:
 			# They made it! Add to passengers
-			if passengers.size() < cargo_capacity and person not in passengers:
+			if get_total_cargo() < cargo_capacity and person not in passengers:
 				_complete_boarding(person)
 
 
@@ -1337,7 +1345,7 @@ func _detect_and_board_hailing_persons():
 
 	# Count how many slots we have available
 	var current_boarding = _count_boarding_persons()
-	var available_slots = cargo_capacity - passengers.size() - current_boarding
+	var available_slots = cargo_capacity - get_total_cargo() - current_boarding
 
 	if available_slots <= 0:
 		return  # No room for more
@@ -1472,8 +1480,12 @@ func get_passenger_count() -> int:
 	return passengers.size()
 
 
+func get_total_cargo() -> int:
+	return passengers.size() + cargo_parts.size()
+
+
 func has_capacity() -> bool:
-	return get_passenger_count() < cargo_capacity
+	return get_total_cargo() < cargo_capacity
 
 
 func _handle_confirm():
@@ -1528,7 +1540,7 @@ func _handle_confirm():
 		group_members = _find_group_members(representative.group_id)
 
 	# Check capacity - can we fit the whole group?
-	var available_slots = cargo_capacity - passengers.size() - _count_boarding_persons()
+	var available_slots = cargo_capacity - get_total_cargo() - _count_boarding_persons()
 	if group_members.size() > available_slots:
 		print("No room! Group of ", group_members.size(), " won't fit in ", available_slots, " available slots")
 		return
@@ -1661,6 +1673,23 @@ func _eject_all_passengers():
 		passenger_ejected.emit(person)
 
 	passengers.clear()
+
+	# Eject cargo parts
+	if not cargo_parts.is_empty():
+		print("Ejected %d parts" % cargo_parts.size())
+		for part in cargo_parts:
+			if not is_instance_valid(part):
+				continue
+			part.visible = true
+			part.global_position = eject_pos
+			var angle = randf() * TAU
+			var speed = randf_range(2.0, 4.0)
+			part.velocity = Vector3(cos(angle) * speed, randf_range(1.0, 2.0), sin(angle) * speed)
+			part.at_rest = false
+			part.base_y = eject_pos.y
+			part.collision_immune_timer = 1.0
+			people_manager.all_parts.append(part)
+		cargo_parts.clear()
 
 	# Also cancel any boarding persons
 	for person in people_manager.all_people:

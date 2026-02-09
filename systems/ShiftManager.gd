@@ -266,6 +266,11 @@ func get_score() -> int:
 	return total_score
 
 
+func deduct_score(amount: int):
+	total_score -= amount
+	score_updated.emit(total_score, fare_count)
+
+
 func get_fare_count() -> int:
 	return fare_count
 

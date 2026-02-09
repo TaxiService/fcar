@@ -8,6 +8,7 @@ var is_core: bool:
 	get: return part_type == PartType.CORE
 var source_person_id: int = 0
 var tint_color: Color = Color.BLACK
+var point_value: int = 0
 var collision_immune_timer: float = 0.0
 var at_rest: bool = false
 var velocity: Vector3 = Vector3.ZERO

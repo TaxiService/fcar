@@ -16,6 +16,7 @@ var altitude_label: Label
 var vertical_vel_label: Label
 var booster_angles_label: Label
 var passengers_label: Label
+var parts_ground_label: Label
 var ready_label: Label
 var stability_label: Label
 var heightlock_label: Label
@@ -81,10 +82,15 @@ func _build_ui():
 	ready_label.text = "Ready: ---"
 	vbox.add_child(ready_label)
 
-	# Passengers
+	# Cargo (passengers + parts)
 	passengers_label = Label.new()
-	passengers_label.text = "Passengers: ---"
+	passengers_label.text = "Cargo: ---"
 	vbox.add_child(passengers_label)
+
+	# Parts on ground
+	parts_ground_label = Label.new()
+	parts_ground_label.text = "Parts on ground: ---"
+	vbox.add_child(parts_ground_label)
 
 	# Apply style to all labels
 	for child in vbox.get_children():
@@ -163,11 +169,23 @@ func _process(delta: float):
 		ready_label.text = "Ready: %s" % ("YES" if ready else "NO")
 		ready_label.add_theme_color_override("font_color", Color(0.3, 1.0, 0.3) if ready else Color(0.6, 0.6, 0.6))
 
-	# Update passengers
+	# Update cargo (passengers + parts)
 	if "passengers" in car_ref:
-		var count = car_ref.passengers.size()
+		var p_count = car_ref.passengers.size()
 		var capacity = car_ref.cargo_capacity if "cargo_capacity" in car_ref else 2
-		passengers_label.text = "Passengers: %d/%d" % [count, capacity]
+
+		# Count cores and body parts in cargo
+		var cores = 0
+		var bodies = 0
+		if "cargo_parts" in car_ref:
+			for part in car_ref.cargo_parts:
+				if is_instance_valid(part):
+					if part.is_core:
+						cores += 1
+					else:
+						bodies += 1
+
+		passengers_label.text = "Cargo: %dP + %dC + %dB / %d" % [p_count, cores, bodies, capacity]
 
 		# Check for hurried passengers
 		var hurried_count = 0
@@ -180,3 +198,9 @@ func _process(delta: float):
 			passengers_label.add_theme_color_override("font_color", Color(1.0, 0.8, 0.2))
 		else:
 			passengers_label.add_theme_color_override("font_color", Color(0.85, 0.85, 0.85))
+
+	# Update parts on ground
+	if "people_manager" in car_ref and car_ref.people_manager and "all_parts" in car_ref.people_manager:
+		parts_ground_label.text = "Parts on ground: %d" % car_ref.people_manager.all_parts.size()
+	else:
+		parts_ground_label.text = "Parts on ground: ---"

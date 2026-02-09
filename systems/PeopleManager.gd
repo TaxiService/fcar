@@ -1373,6 +1373,11 @@ func spawn_parts(position: Vector3, person_color: Color, impact_velocity: Vector
 		part.frame = randi_range(0, 8)
 
 		part.set_part_color(colors[i])
+		# Assign point values based on part type and count
+		if i == 0:
+			part.point_value = 200  # CORE always worth 200
+		else:
+			part.point_value = 100 if part_count == 3 else 200  # BODY: 100 for 3-part, 200 for 2-part
 		part.global_position = position
 		part.base_y = position.y
 		part.collision_immune_timer = 1.0
