@@ -296,6 +296,10 @@ func _find_people_manager():
 	people_manager = _find_node_by_class(root, "PeopleManager")
 	if people_manager:
 		print("FCar: Found PeopleManager")
+		# Connect person_broken signal so PeopleManager can spawn parts
+		if people_manager.has_method("spawn_parts"):
+			person_broken.connect(people_manager.spawn_parts)
+			print("FCar: Connected person_broken -> PeopleManager.spawn_parts")
 	else:
 		push_warning("FCar: PeopleManager not found - passenger system disabled")
 
@@ -1152,7 +1156,8 @@ func _push_person(person: Person, hit_dir: Vector3, impact_speed: float, car_pos
 func _break_person(person: Person, pos: Vector3, speed_kmh: float, roll: int, dc: int):
 	var color = person.tint_color
 	person.collision_immune = true
-	print("PERSON BROKEN at %s (speed: %.1f km/h, roll: %d, DC: %d)" % [pos, speed_kmh, roll, dc])
+	print("PERSON BROKEN at %s (speed: %.1f km/h, roll: %d, DC: %d, signal_listeners: %d)" % [
+		pos, speed_kmh, roll, dc, person_broken.get_connections().size()])
 	people_manager.remove_person(person)
 	person_broken.emit(pos, color, linear_velocity)
 

@@ -133,7 +133,6 @@ var _parts_material_cores: ShaderMaterial
 var _parts_material_body: ShaderMaterial
 var _parts_cores_texture: Texture2D
 var _parts_body_texture: Texture2D
-var _fcar_node: Node = null
 
 # Process management
 var _process_check_timer: float = 0.0
@@ -164,9 +163,6 @@ func _ready():
 	if warm_pool_on_start:
 		# Defer pool creation to avoid blocking scene load
 		call_deferred("_warm_pool")
-
-	# Connect to FCar's person_broken signal (deferred so FCar is ready)
-	call_deferred("_connect_fcar_signal")
 
 
 func _warm_pool():
@@ -1337,24 +1333,6 @@ func _load_parts_spritesheets():
 	else:
 		push_warning("PeopleManager: Failed to load parts.png")
 
-
-func _connect_fcar_signal():
-	_fcar_node = _find_node_by_script_name(get_tree().root, "FCar")
-	if _fcar_node and _fcar_node.has_signal("person_broken"):
-		_fcar_node.person_broken.connect(spawn_parts)
-		print("PeopleManager: Connected to FCar.person_broken signal")
-	else:
-		push_warning("PeopleManager: FCar not found or missing person_broken signal")
-
-
-func _find_node_by_script_name(node: Node, script_name: String) -> Node:
-	if node.get_script() and node.get_script().get_global_name() == script_name:
-		return node
-	for child in node.get_children():
-		var found = _find_node_by_script_name(child, script_name)
-		if found:
-			return found
-	return null
 
 
 func spawn_parts(position: Vector3, person_color: Color, impact_velocity: Vector3):
