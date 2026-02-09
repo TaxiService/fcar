@@ -1,0 +1,53 @@
+[gd_scene load_steps=9 format=3 uid="uid://qgb0pt5v1ask"]
+
+[ext_resource type="Script" uid="uid://cmafag82uyxu7" path="res://city/BuildingBlock.gd" id="1_wi01x"]
+[ext_resource type="Material" uid="uid://bqb6xr3pfb6vl" path="res://mats/holo.tres" id="3_1g6dr"]
+[ext_resource type="Material" uid="uid://c84qehqsj2tk1" path="res://mats/floor_small.tres" id="4_5w0i3"]
+[ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://city/ConnectionPoint.gd" id="5_vcny3"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_i5q1c"]
+size = Vector3(15, 7, 15)
+
+[sub_resource type="BoxMesh" id="BoxMesh_wi01x"]
+material = ExtResource("3_1g6dr")
+size = Vector3(15, 7, 15)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_orayl"]
+size = Vector3(1, 1, 2)
+
+[sub_resource type="BoxMesh" id="BoxMesh_l0srl"]
+material = ExtResource("4_5w0i3")
+size = Vector3(1, 2, 1)
+
+[node name="FloorSmall6" type="StaticBody3D"]
+script = ExtResource("1_wi01x")
+block_type = 1
+can_spawn_people = true
+
+[node name="DeliveryArea" type="Area3D" parent="."]
+collision_layer = 0
+collision_mask = 0
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="DeliveryArea"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 5, 0)
+shape = SubResource("BoxShape3D_i5q1c")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 5, 0)
+mesh = SubResource("BoxMesh_wi01x")
+skeleton = NodePath("")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, -10, 3.530138, -10)
+shape = SubResource("BoxShape3D_orayl")
+
+[node name="MeshInstance3D2" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10, 3.5, -10)
+mesh = SubResource("BoxMesh_l0srl")
+
+[node name="Conn_Plug_Large" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 2.5, 0)
+script = ExtResource("5_vcny3")
+size_flags = 4
+is_socket = false
+rotation_mode = 1
