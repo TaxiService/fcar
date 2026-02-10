@@ -10,6 +10,8 @@ var source_person_id: int = 0
 var tint_color: Color = Color.BLACK
 var point_value: int = 0
 var in_cargo: bool = false
+var collecting: bool = false  # Flying toward car for pickup
+var collect_target: Node3D = null  # The car to fly toward
 var collision_immune_timer: float = 0.0
 var at_rest: bool = false
 var velocity: Vector3 = Vector3.ZERO
@@ -43,10 +45,32 @@ func set_part_color(color: Color):
 	set_instance_shader_parameter("pixel_lod", 0.0)
 
 
+func start_collecting(target: Node3D):
+	collecting = true
+	collect_target = target
+	at_rest = false
+	collision_immune_timer = 99.0  # Immune while collecting
+
+
 func _process(delta: float):
 	# In cargo: hidden, no physics, no LOD — position set by FCar
 	if in_cargo:
 		visible = false
+		return
+
+	# Collecting: fly toward car
+	if collecting:
+		if not is_instance_valid(collect_target):
+			collecting = false
+			collect_target = null
+			return
+		var dir = (collect_target.global_position - global_position)
+		var dist = dir.length()
+		if dist < 1.0:
+			# Arrived — FCar will finalize collection
+			return
+		global_position += dir.normalized() * 15.0 * delta
+		visible = true
 		return
 
 	# Collision immunity countdown

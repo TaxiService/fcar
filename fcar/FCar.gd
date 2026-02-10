@@ -121,7 +121,7 @@ var masked_keys: Dictionary = {}  # KEY_* constant -> true if still held from lo
 @export var delivery_range: float = 5.0  # Distance to destination for delivery
 @export var delivered_wander_radius: float = 8.0  # How far delivered people can wander from drop-off
 @export var explicit_boarding_consent: bool = true  # If true, player must target and confirm groups
-@export var part_pickup_radius: float = 4.0  # Auto-collect radius for parts in hospital mode
+@export var part_pickup_radius: float = 15.0  # Targeting radius for parts in hospital mode
 
 @export_category("people collision")
 @export var collision_person_radius: float = 0.3
@@ -174,6 +174,10 @@ var eject_click_count: int = 0
 var eject_window_timer: float = 0.0
 const EJECT_CLICKS_REQUIRED: int = 3
 const EJECT_WINDOW: float = 1.0  # Must get all clicks within this time
+
+# Hospital pickup cooldown (prevents eject → immediate re-collect)
+var pickup_cooldown_timer: float = 0.0
+var collecting_parts: Array[PersonPart] = []  # Parts flying toward car
 
 signal passenger_boarded(person: Person)
 signal passenger_delivered(person: Person, destination: Node)
@@ -614,9 +618,11 @@ func _physics_process(delta):
 	# Update parts collision detection
 	_update_parts_collisions()
 
-	# Hospital mode: auto-collect parts
+	# Hospital mode: update collecting parts and cooldown
 	if hospital_mode:
-		_update_hospital_pickup()
+		_update_collecting_parts()
+		if pickup_cooldown_timer > 0.0:
+			pickup_cooldown_timer -= delta
 
 	# Update passenger system
 	_update_passengers()
@@ -1280,93 +1286,57 @@ func _update_parts_collisions():
 
 # ===== HOSPITAL MODE =====
 
-func _update_hospital_pickup():
-	if not people_manager:
+func _confirm_hospital_pickup():
+	# R pressed in hospital mode — pick up the single targeted part
+	if pickup_cooldown_timer > 0.0:
 		return
-
-	# Car full - skip
+	if not people_manager or not part_markers:
+		return
 	if get_total_cargo() >= cargo_capacity:
+		print("Cargo full!")
 		return
 
-	var car_pos = global_position
-	var pickup_radius_sq = part_pickup_radius * part_pickup_radius
+	var targeted = part_markers.get_targeted_part()
+	if not targeted or not is_instance_valid(targeted):
+		return
 
-	# Collect IDs of cores already in cargo
-	var cargo_core_ids: Dictionary = {}
-	for part in cargo_parts:
-		if is_instance_valid(part) and part.is_core:
-			cargo_core_ids[part.source_person_id] = true
+	targeted.start_collecting(self)
+	people_manager.all_parts.erase(targeted)
+	collecting_parts.append(targeted)
+	var type_str = "CORE" if targeted.is_core else "BODY"
+	print("Collecting %s part #%d" % [type_str, targeted.source_person_id])
 
-	# Find eligible parts
-	var eligible: Array[PersonPart] = []
-	for part in people_manager.all_parts:
+
+func _update_collecting_parts():
+	# Finalize parts that have reached the car
+	var arrived: Array[PersonPart] = []
+	var still_flying: Array[PersonPart] = []
+
+	for part in collecting_parts:
 		if not is_instance_valid(part):
 			continue
-		if not part.at_rest:
-			continue
-		if part.collision_immune_timer > 0.0:
-			continue
-		var dx = part.global_position.x - car_pos.x
-		var dy = part.global_position.y - car_pos.y
-		var dz = part.global_position.z - car_pos.z
-		if dx * dx + dy * dy + dz * dz > pickup_radius_sq:
-			continue
-		eligible.append(part)
+		var dist = global_position.distance_to(part.global_position)
+		if dist < 1.0:
+			# Arrived — add to cargo
+			part.collecting = false
+			part.collect_target = null
+			part.in_cargo = true
+			part.visible = false
+			cargo_parts.append(part)
+			arrived.append(part)
+			var type_str = "CORE" if part.is_core else "BODY"
+			print("Collected %s part #%d. Cargo: %d/%d" % [type_str, part.source_person_id, get_total_cargo(), cargo_capacity])
+		else:
+			still_flying.append(part)
 
-	if eligible.is_empty():
-		return
+	collecting_parts = still_flying
 
-	# Sort by priority:
-	# 1. CORE parts (nearest first)
-	# 2. BODY parts matching a core already in cargo (nearest first)
-	# 3. BODY parts matching a core in this pickup batch (nearest first)
-	# 4. Any remaining (nearest first)
-	var new_core_ids: Dictionary = {}
-
-	eligible.sort_custom(func(a: PersonPart, b: PersonPart) -> bool:
-		var a_priority = _get_part_pickup_priority(a, cargo_core_ids, new_core_ids)
-		var b_priority = _get_part_pickup_priority(b, cargo_core_ids, new_core_ids)
-		if a_priority != b_priority:
-			return a_priority < b_priority
-		# Same priority - nearest first
-		return car_pos.distance_squared_to(a.global_position) < car_pos.distance_squared_to(b.global_position)
-	)
-
-	# Pick up parts until full
-	var collected: Array[PersonPart] = []
-	for part in eligible:
-		if get_total_cargo() >= cargo_capacity:
-			break
-
-		# Track newly collected cores for body matching
-		if part.is_core:
-			new_core_ids[part.source_person_id] = true
-
-		part.in_cargo = true
-		part.visible = false
-		people_manager.all_parts.erase(part)
-		cargo_parts.append(part)
-		collected.append(part)
-
-		var type_str = "CORE" if part.is_core else "BODY"
-		print("Auto-collected %s part #%d. Cargo: %d/%d" % [type_str, part.source_person_id, get_total_cargo(), cargo_capacity])
-
-	if not collected.is_empty():
-		parts_collected.emit(collected)
-
-
-func _get_part_pickup_priority(part: PersonPart, cargo_core_ids: Dictionary, new_core_ids: Dictionary) -> int:
-	if part.is_core:
-		return 0  # Cores first
-	# Body part - check if matching core is already in cargo or just picked up
-	if cargo_core_ids.has(part.source_person_id):
-		return 1
-	if new_core_ids.has(part.source_person_id):
-		return 2
-	return 3  # Unmatched body parts last
+	if not arrived.is_empty():
+		parts_collected.emit(arrived)
 
 
 func _exit_hospital_mode():
+	_cancel_collecting_parts()
 	hospital_mode = false
 	hospital_mode_changed.emit(false)
 	if part_markers:
@@ -1378,10 +1348,25 @@ func _exit_hospital_mode():
 			shift_selector.show_selector(true)
 
 
+func _cancel_collecting_parts():
+	# Return any in-flight collecting parts back to the world
+	for part in collecting_parts:
+		if is_instance_valid(part):
+			part.collecting = false
+			part.collect_target = null
+			part.collision_immune_timer = 0.5
+			part.at_rest = true
+			if people_manager:
+				people_manager.all_parts.append(part)
+	collecting_parts.clear()
+
+
 func _check_hospital_auto_exit():
 	if not hospital_mode:
 		return
 	if not cargo_parts.is_empty():
+		return
+	if not collecting_parts.is_empty():
 		return
 	if people_manager and people_manager.has_undelivered_parts():
 		return
@@ -1394,9 +1379,10 @@ func _update_passengers():
 	if not people_manager:
 		return
 
-	# Clean up invalid passenger references
+	# Clean up invalid references
 	passengers = passengers.filter(func(p): return is_instance_valid(p))
 	cargo_parts = cargo_parts.filter(func(p): return is_instance_valid(p))
+	collecting_parts = collecting_parts.filter(func(p): return is_instance_valid(p))
 
 	# Cargo parts follow the car
 	for part in cargo_parts:
@@ -1642,7 +1628,7 @@ func get_passenger_count() -> int:
 
 
 func get_total_cargo() -> int:
-	return passengers.size() + cargo_parts.size()
+	return passengers.size() + cargo_parts.size() + collecting_parts.size()
 
 
 func has_capacity() -> bool:
@@ -1662,8 +1648,9 @@ func _handle_confirm():
 		# Have passengers - R does nothing (use T to eject)
 		return
 
-	# Hospital mode: R does nothing (use T to exit)
+	# Hospital mode: R confirms part pickup
 	if hospital_mode:
+		_confirm_hospital_pickup()
 		return
 
 	if not is_ready_for_fares:
@@ -1733,11 +1720,17 @@ func _handle_cancel():
 
 		if eject_click_count >= EJECT_CLICKS_REQUIRED:
 			_eject_all_passengers()
+			pickup_cooldown_timer = 1.0  # Prevent immediate re-collect
 			eject_click_count = 0
 		return
 
-	# Hospital mode with no cargo - exit hospital mode
+	# Hospital mode with no cargo
 	if hospital_mode:
+		# If parts are being collected, cancel them first
+		if not collecting_parts.is_empty():
+			_cancel_collecting_parts()
+			return
+		# No collecting parts - exit hospital mode
 		_exit_hospital_mode()
 		return
 
