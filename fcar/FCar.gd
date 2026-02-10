@@ -163,7 +163,7 @@ var hospital_mode: bool = false
 var people_manager: Node = null  # Reference to PeopleManager for finding hailing persons
 var destination_marker: DestinationMarker = null  # HUD for passenger destination
 var hailing_markers: HailingMarkers = null  # Markers for nearby hailing groups
-var part_markers: PartMarkers = null  # 3D markers above ground parts in hospital mode
+var part_markers: PartMarkers = null  # HUD markers above ground parts in hospital mode
 var shift_manager: ShiftManager = null  # Scoring and shift tracking
 var shift_selector: ShiftSelector = null  # Popup for choosing shift type
 var is_ready_for_fares: bool = false  # Must be true for passengers to approach
@@ -322,9 +322,10 @@ func _create_hailing_markers():
 
 func _create_part_markers():
 	part_markers = PartMarkers.new()
-	part_markers.name = "PartMarkers"
+	part_markers.name = "PartMarkersHUD"
+	part_markers.fcar = self
 	part_markers.people_manager = people_manager
-	add_child(part_markers)
+	get_tree().root.add_child.call_deferred(part_markers)
 
 
 func _find_people_manager():
