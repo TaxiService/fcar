@@ -163,6 +163,7 @@ var hospital_mode: bool = false
 var people_manager: Node = null  # Reference to PeopleManager for finding hailing persons
 var destination_marker: DestinationMarker = null  # HUD for passenger destination
 var hailing_markers: HailingMarkers = null  # Markers for nearby hailing groups
+var part_markers: PartMarkers = null  # 3D markers above ground parts in hospital mode
 var shift_manager: ShiftManager = null  # Scoring and shift tracking
 var shift_selector: ShiftSelector = null  # Popup for choosing shift type
 var is_ready_for_fares: bool = false  # Must be true for passengers to approach
@@ -241,6 +242,9 @@ func _init_subsystems():
 	# Create hailing markers (shows nearby potential fares)
 	_create_hailing_markers()
 
+	# Create part markers (3D markers above ground parts in hospital mode)
+	_create_part_markers()
+
 	# Create shift manager (scoring system)
 	_create_shift_manager()
 
@@ -261,6 +265,7 @@ func _create_shift_selector():
 	shift_selector.people_manager = people_manager
 	shift_selector.shift_selected.connect(_on_shift_selected)
 	shift_selector.hospital_run_selected.connect(_on_hospital_run_selected)
+	shift_selector.shift_resumed.connect(_on_shift_resumed)
 	shift_selector.cancelled.connect(_on_shift_selector_cancelled)
 	get_tree().root.add_child.call_deferred(shift_selector)
 
@@ -287,7 +292,16 @@ func _on_hospital_run_selected():
 		part_count = people_manager.all_parts.size()
 	hospital_mode = true
 	hospital_mode_changed.emit(true)
+	if part_markers:
+		part_markers.set_active(true)
 	print("Hospital Run started. Parts to collect: %d" % part_count)
+
+
+func _on_shift_resumed():
+	is_ready_for_fares = true
+	confirmed_boarding_group.clear()
+	print("Shift resumed - Ready for fares: YES")
+	ready_state_changed.emit(true)
 
 
 func _create_destination_marker():
@@ -304,6 +318,13 @@ func _create_hailing_markers():
 	hailing_markers.fcar = self
 	hailing_markers.people_manager = people_manager
 	get_tree().root.add_child.call_deferred(hailing_markers)
+
+
+func _create_part_markers():
+	part_markers = PartMarkers.new()
+	part_markers.name = "PartMarkers"
+	part_markers.people_manager = people_manager
+	add_child(part_markers)
 
 
 func _find_people_manager():
@@ -1344,6 +1365,18 @@ func _get_part_pickup_priority(part: PersonPart, cargo_core_ids: Dictionary, new
 	return 3  # Unmatched body parts last
 
 
+func _exit_hospital_mode():
+	hospital_mode = false
+	hospital_mode_changed.emit(false)
+	if part_markers:
+		part_markers.set_active(false)
+	print("Hospital delivery mode: OFF")
+	# If a shift was paused, show selector to resume
+	if shift_manager and shift_manager.is_shift_active():
+		if shift_selector:
+			shift_selector.show_selector(true)
+
+
 func _check_hospital_auto_exit():
 	if not hospital_mode:
 		return
@@ -1351,10 +1384,7 @@ func _check_hospital_auto_exit():
 		return
 	if people_manager and people_manager.has_undelivered_parts():
 		return
-	# No parts anywhere - exit hospital mode
-	hospital_mode = false
-	hospital_mode_changed.emit(false)
-	print("Hospital delivery mode: OFF (no parts remaining)")
+	_exit_hospital_mode()
 
 
 # ===== PASSENGER SYSTEM =====
@@ -1636,17 +1666,10 @@ func _handle_confirm():
 		return
 
 	if not is_ready_for_fares:
-		# Not ready and no active shift → open shift selector
-		# If shift is active (mid-shift), just enable ready state directly
-		if shift_manager and shift_manager.is_shift_active():
-			is_ready_for_fares = true
-			confirmed_boarding_group.clear()
-			print("Ready for fares: YES")
-			ready_state_changed.emit(true)
-		else:
-			# No active shift - open selector (includes Hospital Run if parts exist)
-			if shift_selector:
-				shift_selector.show_selector()
+		# Open shift selector (mid-shift context shows Resume option)
+		if shift_selector:
+			var mid_shift = shift_manager and shift_manager.is_shift_active()
+			shift_selector.show_selector(mid_shift)
 		return
 
 	# Already ready - check for targeted fare to confirm boarding
@@ -1714,9 +1737,7 @@ func _handle_cancel():
 
 	# Hospital mode with no cargo - exit hospital mode
 	if hospital_mode:
-		hospital_mode = false
-		hospital_mode_changed.emit(false)
-		print("Hospital delivery mode: OFF")
+		_exit_hospital_mode()
 		return
 
 	if not is_ready_for_fares:

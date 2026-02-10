@@ -5,7 +5,7 @@ extends CanvasLayer
 # R (confirm) = select current option
 # T (cancel) = cycle to next option
 
-enum ShiftType { CANCEL, SINGLE, HALF, FULL, HOSPITAL }
+enum ShiftType { CANCEL, SINGLE, HALF, FULL, HOSPITAL, RESUME }
 
 const FARE_OPTIONS = [
 	{ "type": ShiftType.CANCEL, "label": "Cancel", "fares": 0 },
@@ -33,11 +33,13 @@ var _bg: ColorRect
 const COLOR_NORMAL = Color(0.6, 0.6, 0.6)
 const COLOR_SELECTED = Color(1.0, 0.9, 0.3)
 const COLOR_HOSPITAL = Color(1.0, 0.4, 0.4)
+const COLOR_RESUME = Color(0.4, 1.0, 0.6)
 const COLOR_TITLE = Color(0.8, 0.8, 0.8)
 
 # Signals
 signal shift_selected(fare_count: int)
 signal hospital_run_selected
+signal shift_resumed
 signal cancelled
 
 
@@ -136,7 +138,7 @@ func _update_layout():
 	hint_label.size = Vector2(panel.size.x, 20)
 
 
-func show_selector():
+func show_selector(mid_shift: bool = false):
 	# Build active options dynamically
 	_active_options = []
 
@@ -149,9 +151,20 @@ func show_selector():
 			"fares": 0
 		})
 
-	# Add standard fare options
-	for opt in FARE_OPTIONS:
-		_active_options.append(opt)
+	if mid_shift:
+		# Mid-shift context: Resume + Cancel only (no new shift types)
+		title_label.text = "Shift Paused"
+		_active_options.append({
+			"type": ShiftType.RESUME,
+			"label": "Resume Shift",
+			"fares": 0
+		})
+		_active_options.append({ "type": ShiftType.CANCEL, "label": "Cancel", "fares": 0 })
+	else:
+		# Normal context: fare shift types
+		title_label.text = "Start Shift"
+		for opt in FARE_OPTIONS:
+			_active_options.append(opt)
 
 	# Rebuild UI labels
 	_build_option_labels()
@@ -181,6 +194,8 @@ func confirm_selection():
 		cancelled.emit()
 	elif selected.type == ShiftType.HOSPITAL:
 		hospital_run_selected.emit()
+	elif selected.type == ShiftType.RESUME:
+		shift_resumed.emit()
 	else:
 		shift_selected.emit(selected.fares)
 
@@ -191,9 +206,13 @@ func _update_selection_display():
 	for i in range(option_labels.size()):
 		if i >= _active_options.size():
 			break
-		var is_hospital = _active_options[i].type == ShiftType.HOSPITAL
+		var opt_type = _active_options[i].type
 		if i == current_selection:
-			var color = COLOR_HOSPITAL if is_hospital else COLOR_SELECTED
+			var color = COLOR_SELECTED
+			if opt_type == ShiftType.HOSPITAL:
+				color = COLOR_HOSPITAL
+			elif opt_type == ShiftType.RESUME:
+				color = COLOR_RESUME
 			option_labels[i].add_theme_color_override("font_color", color)
 			option_labels[i].text = "> " + _active_options[i].label + " <"
 		else:
