@@ -1,0 +1,48 @@
+[gd_scene load_steps=8 format=3 uid="uid://cxe2jfi2fvkx4"]
+
+[ext_resource type="Material" uid="uid://cselcmv1hjfrn" path="res://mats/redsand.tres" id="1_ee1oc"]
+[ext_resource type="Material" uid="uid://ce3eavktn35d4" path="res://mats/grey.tres" id="2_siccx"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_vftlu"]
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_bp4u7"]
+material = ExtResource("1_ee1oc")
+radial_segments = 5
+rings = 1
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_tcts6"]
+material = ExtResource("2_siccx")
+height = 1.9
+radial_segments = 7
+rings = 2
+
+[sub_resource type="SphereMesh" id="SphereMesh_ox5ti"]
+radius = 0.345
+height = 0.615
+radial_segments = 7
+rings = 2
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_eqski"]
+albedo_color = Color(0.41960785, 0.9529412, 1, 1)
+metallic = 0.3
+metallic_specular = 0.44
+
+[node name="Node3D" type="RigidBody3D"]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 0, 0)
+shape = SubResource("CapsuleShape3D_vftlu")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 0, 0)
+mesh = SubResource("CapsuleMesh_bp4u7")
+
+[node name="MeshInstance3D2" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -0.5, 0, 1, -2.1855694e-08, 0, -0.34313816, 0)
+mesh = SubResource("CapsuleMesh_tcts6")
+
+[node name="MeshInstance3D3" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -0.23896559, 0.9829226, 0, -1.276408, -0.18402006, 0, 0.13698891, -0.6433497)
+mesh = SubResource("SphereMesh_ox5ti")
+skeleton = NodePath("../MeshInstance3D")
+surface_material_override/0 = SubResource("StandardMaterial3D_eqski")
