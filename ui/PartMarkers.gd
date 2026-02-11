@@ -166,7 +166,7 @@ func _update_markers():
 			arrow_sprites[i].visible = false
 			continue
 
-		var marker_world_pos = part.global_position + Vector3(0, 2, 0)
+		var marker_world_pos = part.global_position + Vector3(0, 0.5, 0)
 		var is_in_front = MarkerUtils.is_in_front(camera, marker_world_pos)
 		var screen_pos = MarkerUtils.project_position(camera, marker_world_pos)
 
