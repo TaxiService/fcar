@@ -178,6 +178,8 @@ const EJECT_WINDOW: float = 1.0  # Must get all clicks within this time
 # Hospital pickup cooldown (prevents eject → immediate re-collect)
 var pickup_cooldown_timer: float = 0.0
 var collecting_parts: Array[PersonPart] = []  # Parts flying toward car
+var hospital_destination: PointOfInterest = null  # Nearest hospital for delivery
+var _hospital_dest_timer: float = 0.0
 
 signal passenger_boarded(person: Person)
 signal passenger_delivered(person: Person, destination: Node)
@@ -185,6 +187,7 @@ signal passenger_ejected(person: Person)
 signal ready_state_changed(is_ready: bool)
 signal person_broken(position: Vector3, person_color: Color, velocity: Vector3)
 signal parts_collected(parts: Array[PersonPart])
+signal parts_delivered(total_refund: int, parts_count: int)
 signal hospital_mode_changed(active: bool)
 
 
@@ -618,11 +621,17 @@ func _physics_process(delta):
 	# Update parts collision detection
 	_update_parts_collisions()
 
-	# Hospital mode: update collecting parts and cooldown
+	# Hospital mode: update collecting parts, cooldown, delivery, and destination
 	if hospital_mode:
 		_update_collecting_parts()
 		if pickup_cooldown_timer > 0.0:
 			pickup_cooldown_timer -= delta
+		if not cargo_parts.is_empty():
+			_check_hospital_delivery()
+		_hospital_dest_timer -= delta
+		if _hospital_dest_timer <= 0.0:
+			_hospital_dest_timer = 3.0
+			_update_hospital_destination()
 
 	# Update passenger system
 	_update_passengers()
@@ -1333,11 +1342,53 @@ func _update_collecting_parts():
 
 	if not arrived.is_empty():
 		parts_collected.emit(arrived)
+		_update_hospital_destination()
+
+
+func _update_hospital_destination():
+	if not hospital_mode or cargo_parts.is_empty():
+		hospital_destination = null
+		return
+	if people_manager:
+		hospital_destination = people_manager.get_nearest_hospital(global_position)
+
+
+func _check_hospital_delivery():
+	if not people_manager:
+		return
+	for hospital in people_manager.get_all_hospitals():
+		if not is_instance_valid(hospital):
+			continue
+		if global_position.distance_to(hospital.global_position) > hospital.arrival_radius:
+			continue
+		_deliver_parts_to_hospital(hospital)
+		return
+
+
+func _deliver_parts_to_hospital(hospital: PointOfInterest):
+	var total_refund: int = 0
+	var count: int = cargo_parts.size()
+	for part in cargo_parts:
+		if is_instance_valid(part):
+			total_refund += part.point_value
+			var type_str = "CORE" if part.is_core else "BODY"
+			print("Delivered %s part #%d: +%d" % [type_str, part.source_person_id, part.point_value])
+			part.queue_free()
+	cargo_parts.clear()
+	if shift_manager and total_refund > 0:
+		shift_manager.add_score(total_refund)
+	print("Hospital delivery complete! Refunded %d. Score: %d" % [total_refund, shift_manager.get_score() if shift_manager else 0])
+	parts_delivered.emit(total_refund, count)
+	hospital_destination = null
+	# If no more parts on ground or in-flight, exit hospital mode
+	if collecting_parts.is_empty() and not people_manager.has_undelivered_parts():
+		_exit_hospital_mode()
 
 
 func _exit_hospital_mode():
 	_cancel_collecting_parts()
 	hospital_mode = false
+	hospital_destination = null
 	hospital_mode_changed.emit(false)
 	if part_markers:
 		part_markers.set_active(false)

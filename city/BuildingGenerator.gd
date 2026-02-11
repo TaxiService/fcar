@@ -49,6 +49,7 @@ const BLOCK_SCENE_PATHS: Array = [
 
 const FUNCTIONAL_SCENE_PATHS: Array = [
 	"res://city/building/functional/spawner1x1.tscn",
+	"res://city/building/functional/hospital1x1.tscn",
 ]
 
 @export_category("Pass 1: Structure")
@@ -706,12 +707,16 @@ func _run_functional_pass():
 				_stats.blocks_placed += 1
 				_stats.functional_placed += 1
 				_stats.sockets_functional += 1
-				
+
 				if func_info.can_spawn:
 					_stats.spawners_placed += 1
-				
+
+				# Debug: track which functional scenes get placed
+				if "hospital" in func_info.path:
+					_stats["hospitals_placed"] = _stats.get("hospitals_placed", 0) + 1
+
 				blocks_this_batch += 1
-				
+
 				if blocks_this_batch >= yield_every_n_blocks:
 					generation_progress.emit(
 						_stats.blocks_placed,
@@ -720,8 +725,8 @@ func _run_functional_pass():
 					await get_tree().process_frame
 					blocks_this_batch = 0
 				break
-	
-	generation_progress.emit(_stats.blocks_placed, "Functional complete: %d added (%d spawners)" % [placed, _stats.spawners_placed])
+
+	generation_progress.emit(_stats.blocks_placed, "Functional complete: %d added (%d spawners, %d hospitals)" % [placed, _stats.spawners_placed, _stats.get("hospitals_placed", 0)])
 
 
 func _run_functional_pass_sync():
@@ -835,6 +840,8 @@ func _run_functional_pass_sync():
 
 				if func_info.can_spawn:
 					_stats.spawners_placed += 1
+				if "hospital" in func_info.path:
+					_stats["hospitals_placed"] = _stats.get("hospitals_placed", 0) + 1
 				break
 
 
@@ -1230,6 +1237,18 @@ func _load_blocks_from_list(scene_paths: Array, is_functional_folder: bool):
 				_decoration_blocks.append(data)
 			if is_functional_folder or data.is_functional:
 				_functional_blocks.append(data)
+			# Debug: trace functional block loading
+			if is_functional_folder:
+				var cats = []
+				if data.is_structural: cats.append("STRUCT")
+				if data.is_decoration: cats.append("DECO")
+				if data.is_functional: cats.append("FUNC")
+				print("  Loaded functional: %s [%s] plugs=%d can_spawn=%s" % [
+					path, ",".join(cats), data.plugs.size(), data.can_spawn])
+				for p in data.plugs:
+					print("    plug: type=%d size=%d vert=%d" % [p.type_flags, p.size_flags, p.vertical_class])
+		else:
+			push_warning("BuildingGenerator: %s root is not BuildingBlock (is %s)" % [path, instance.get_class()])
 		instance.queue_free()
 
 
@@ -1347,9 +1366,10 @@ func print_stats():
 		_stats.decoration_placed
 	])
 	if _stats.get("functional_placed", 0) > 0:
-		print("  Functional: %d placed (%d spawners) from %d open sockets" % [
+		print("  Functional: %d placed (%d spawners, %d hospitals) from %d open sockets" % [
 			_stats.get("functional_placed", 0),
 			_stats.get("spawners_placed", 0),
+			_stats.get("hospitals_placed", 0),
 			_stats.get("open_sockets_before_functional", 0)
 		])
 	print("  Decoration: %d/%d open sockets decorated" % [

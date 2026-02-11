@@ -788,9 +788,11 @@ func _find_fare_destination(person: Person) -> Node:
 			registered_zones.size(), person_pos
 		])
 
-	# Also consider POIs
+	# Also consider POIs (skip hospitals — not valid fare destinations)
 	for poi in registered_pois:
 		if not is_instance_valid(poi):
+			continue
+		if poi.poi_type == "hospital":
 			continue
 		var dist_sq = person_pos.distance_squared_to(poi.global_position)
 		if dist_sq >= min_dist_sq and dist_sq <= max_dist_sq:
@@ -1214,6 +1216,29 @@ func get_enabled_pois() -> Array[PointOfInterest]:
 		if is_instance_valid(poi) and poi.enabled:
 			enabled.append(poi)
 	return enabled
+
+
+func get_nearest_hospital(from_pos: Vector3) -> PointOfInterest:
+	var nearest: PointOfInterest = null
+	var nearest_dist_sq: float = INF
+	for poi in registered_pois:
+		if not is_instance_valid(poi) or not poi.enabled:
+			continue
+		if poi.poi_type != "hospital":
+			continue
+		var dist_sq = from_pos.distance_squared_to(poi.global_position)
+		if dist_sq < nearest_dist_sq:
+			nearest_dist_sq = dist_sq
+			nearest = poi
+	return nearest
+
+
+func get_all_hospitals() -> Array[PointOfInterest]:
+	var hospitals: Array[PointOfInterest] = []
+	for poi in registered_pois:
+		if is_instance_valid(poi) and poi.enabled and poi.poi_type == "hospital":
+			hospitals.append(poi)
+	return hospitals
 
 
 func get_nearest_surface(pos: Vector3) -> SpawnSurface:

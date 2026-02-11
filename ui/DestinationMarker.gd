@@ -94,26 +94,34 @@ func _update_marker():
 		_hide_all()
 		return
 
-	# Find the first passenger with a valid destination
-	var target_person: Person = null
-	var passengers = fcar.passengers if "passengers" in fcar else []
-	for person in passengers:
-		if is_instance_valid(person) and person.destination != null:
-			target_person = person
-			break
+	# Determine destination position
+	var dest_pos: Vector3
+	var stable_pos: Vector3
 
-	if not target_person:
-		_hide_all()
-		return
+	if fcar.hospital_mode and is_instance_valid(fcar.hospital_destination):
+		stable_pos = fcar.hospital_destination.global_position
+		dest_pos = stable_pos + Vector3(0, 2, 0)
+	else:
+		# Find the first passenger with a valid destination
+		var target_person: Person = null
+		var passengers = fcar.passengers if "passengers" in fcar else []
+		for person in passengers:
+			if is_instance_valid(person) and person.destination != null:
+				target_person = person
+				break
+
+		if not target_person:
+			_hide_all()
+			return
+
+		stable_pos = target_person.get_destination_position()
+		dest_pos = stable_pos + Vector3(0, 2, 0)
 
 	# Get camera for projection
 	var camera = get_viewport().get_camera_3d()
 	if not camera:
 		_hide_all()
 		return
-
-	var stable_pos = target_person.get_destination_position()
-	var dest_pos = stable_pos + Vector3(0, 2, 0)  # Slightly above destination
 	var screen_size = get_viewport().get_visible_rect().size
 
 	# Calculate distances
