@@ -14,7 +14,7 @@ albedo_color = Color(0.160784, 0.184314, 0.156863, 1)
 
 [sub_resource type="BoxMesh" id="BoxMesh_nrjh1"]
 material = SubResource("StandardMaterial3D_c3qcp")
-size = Vector3(90, 5, 59.9)
+size = Vector3(90, 5, 60)
 
 [sub_resource type="TorusMesh" id="TorusMesh_6dmbk"]
 inner_radius = 3.105
@@ -46,14 +46,14 @@ size = Vector3(30, 15, 60)
 
 [sub_resource type="BoxMesh" id="BoxMesh_3boio"]
 material = ExtResource("4_iyfce")
-size = Vector3(30, 15, 60)
+size = Vector3(30, 15, 59.99)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_3boio"]
 size = Vector3(90, 5, 30)
 
 [sub_resource type="BoxMesh" id="BoxMesh_qge6t"]
 material = ExtResource("4_iyfce")
-size = Vector3(90, 5.1, 30)
+size = Vector3(90, 5, 30)
 
 [node name="FloorSmall5" type="StaticBody3D"]
 script = ExtResource("1_k8u28")
@@ -71,7 +71,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 30, 0)
 shape = SubResource("BoxShape3D_5dwv6")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="CollisionShape3D"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.01, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.005, 0)
 mesh = SubResource("BoxMesh_nrjh1")
 skeleton = NodePath("../..")
 
@@ -123,7 +123,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 60, 0)
 shape = SubResource("BoxShape3D_3boio")
 
 [node name="MeshInstance3D6" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 60, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 59.99, 0)
 mesh = SubResource("BoxMesh_qge6t")
 
 [node name="Conn_Plug_Medium5" type="Marker3D" parent="."]
@@ -161,6 +161,13 @@ type_flags = 3
 size_flags = 4
 rotation_mode = 1
 
+[node name="Conn_Plug_Large8" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 17.5, 0)
+script = ExtResource("5_xoq5h")
+type_flags = 3
+size_flags = 4
+rotation_mode = 1
+
 [node name="Conn_Plug_Large7" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 17.5, 17.5)
 script = ExtResource("5_xoq5h")
@@ -175,7 +182,7 @@ size_flags = 4
 rotation_mode = 1
 
 [node name="Conn_Plug_Large6" type="Marker3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 62.5, 0)
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 62.5, 0)
 script = ExtResource("5_xoq5h")
 type_flags = 3
 size_flags = 4

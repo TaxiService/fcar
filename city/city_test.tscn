@@ -63,6 +63,7 @@ transform = Transform3D(1, 0, 0, 0, 0.9658184, 0.25921968, 0, -0.25921968, 0.965
 
 [node name="CityGenerator" type="Node3D" parent="."]
 script = ExtResource("1_generator")
+crosslink_height = 14.99
 building_max_depth = 7
 building_branch_chance = 0.1
 building_max_total = 2520

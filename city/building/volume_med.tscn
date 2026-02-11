@@ -107,7 +107,7 @@ size_flags = 4
 rotation_mode = 1
 
 [node name="Conn_Plug_Large5" type="Marker3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 2.5, 0)
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 2.5, 0)
 script = ExtResource("4_3boio")
 type_flags = 3
 size_flags = 4
@@ -125,7 +125,7 @@ size_flags = 4
 rotation_mode = 1
 
 [node name="Conn_Plug_Large6" type="Marker3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 62.5, 0)
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 62.5, 0)
 script = ExtResource("4_3boio")
 type_flags = 3
 size_flags = 4
