@@ -6,9 +6,13 @@
 [ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://city/ConnectionPoint.gd" id="5_vcny3"]
 [ext_resource type="Script" uid="uid://bb5smj3tq58ck" path="res://systems/PointOfInterest.gd" id="6_poi"]
 
-[sub_resource type="BoxMesh" id="BoxMesh_wi01x"]
+[sub_resource type="SphereMesh" id="SphereMesh_wi01x"]
 material = ExtResource("3_1g6dr")
-size = Vector3(15, 7, 15)
+radius = 7.5
+height = 7.509
+radial_segments = 7
+rings = 5
+is_hemisphere = true
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_orayl"]
 size = Vector3(1, 1, 2)
@@ -23,16 +27,16 @@ block_type = 1
 can_spawn_people = true
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 5, 0)
-mesh = SubResource("BoxMesh_wi01x")
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.4583082, 0)
+mesh = SubResource("SphereMesh_wi01x")
 skeleton = NodePath("")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, -10, 3.530138, -10)
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, -6, 3.530138, -4)
 shape = SubResource("BoxShape3D_orayl")
 
 [node name="MeshInstance3D2" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10, 3.5, -10)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, 3.5, -4)
 mesh = SubResource("BoxMesh_l0srl")
 
 [node name="Conn_Plug_Large" type="Marker3D" parent="."]
