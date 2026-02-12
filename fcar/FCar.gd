@@ -597,6 +597,11 @@ func _physics_process(delta):
 	if _car_destroyed:
 		return
 
+	# Debug: P key forces instant game over
+	if Input.is_key_pressed(KEY_P) and justice_system and not justice_system.is_game_over:
+		print("[DEBUG] P pressed - forcing game over")
+		justice_system.force_game_over()
+
 	# Update player position for proximity-based people management
 	if people_manager:
 		people_manager.set_player_position(global_position)
@@ -1352,6 +1357,7 @@ func _update_parts_collisions():
 					# SQUISHED — destroy core
 					print("CORE SQUISHED at %s (roll: %d, DC: %d, speed: %.0f km/h)" % [part_pos, roll, int(dc), speed_kmh])
 					part.collision_immune_timer = 99.0
+					_mark_sibling_parts_junk(part.source_person_id)
 					if justice_system:
 						justice_system.report_core_squished()
 					people_manager.all_parts.erase(part)
@@ -1465,6 +1471,16 @@ func _push_part(part: PersonPart, hit_dir: Vector3, impact_speed: float, car_vel
 	part.collision_immune_timer = 1.0
 
 
+func _mark_sibling_parts_junk(person_id: int):
+	var count = 0
+	for part in people_manager.all_parts:
+		if is_instance_valid(part) and part.source_person_id == person_id and not part.is_junk:
+			part.mark_as_junk()
+			count += 1
+	if count > 0:
+		print("Person #%d fully lost - %d remaining parts marked as junk" % [person_id, count])
+
+
 # ===== HOSPITAL MODE =====
 
 func _confirm_hospital_pickup():
@@ -1479,6 +1495,8 @@ func _confirm_hospital_pickup():
 
 	var targeted = part_markers.get_targeted_part()
 	if not targeted or not is_instance_valid(targeted):
+		return
+	if targeted.is_junk:
 		return
 
 	targeted.start_collecting(self)

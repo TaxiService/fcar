@@ -12,6 +12,7 @@ var point_value: int = 0
 var in_cargo: bool = false
 var collecting: bool = false  # Flying toward car for pickup
 var collect_target: Node3D = null  # The car to fly toward
+var is_junk: bool = false  # Core destroyed — inert, cannot be picked up
 var collision_immune_timer: float = 0.0
 var at_rest: bool = false
 var velocity: Vector3 = Vector3.ZERO
@@ -43,6 +44,12 @@ func set_part_color(color: Color):
 	tint_color = color
 	set_instance_shader_parameter("person_color", Vector3(color.r, color.g, color.b))
 	set_instance_shader_parameter("pixel_lod", 0.0)
+
+
+func mark_as_junk():
+	is_junk = true
+	# Dim the part visually
+	set_instance_shader_parameter("person_color", Vector3(tint_color.r * 0.4, tint_color.g * 0.4, tint_color.b * 0.4))
 
 
 func start_collecting(target: Node3D):

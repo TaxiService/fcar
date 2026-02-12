@@ -8,6 +8,7 @@ var _overlay: ColorRect
 var _title_label: Label
 var _stats_label: Label
 var _prompt_label: Label
+var _action_taken: bool = false
 
 
 func _ready():
@@ -80,16 +81,21 @@ func show_game_over():
 
 
 func _unhandled_input(event: InputEvent):
-	if not visible:
+	if not visible or _action_taken:
 		return
 
 	if event is InputEventKey and event.pressed:
 		match event.keycode:
 			KEY_R:
+				_action_taken = true
+				_prompt_label.text = "Restarting..."
 				_restart_same_seed()
 			KEY_N:
+				_action_taken = true
+				_prompt_label.text = "Loading new game..."
 				_new_game()
 			KEY_ESCAPE:
+				_action_taken = true
 				get_tree().paused = false
 				get_tree().quit()
 

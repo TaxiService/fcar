@@ -124,7 +124,7 @@ func _get_nearby_parts() -> Array:
 	for part in people_manager.all_parts:
 		if not is_instance_valid(part):
 			continue
-		if not part.at_rest:
+		if not part.at_rest or part.is_junk:
 			continue
 
 		var dist = car_pos.distance_to(part.global_position)

@@ -49,6 +49,15 @@ func report_person_broken():
 	total_people_broken += 1
 
 
+func force_game_over():
+	if is_game_over:
+		return
+	is_game_over = true
+	lives = 0
+	game_over.emit()
+	print("[DEBUG] Force game over triggered")
+
+
 func reset():
 	cores_squished = 0
 	violence_level = 0
