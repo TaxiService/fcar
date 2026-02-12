@@ -101,7 +101,9 @@ func _unhandled_input(event: InputEvent):
 
 
 func _restart_same_seed():
+	visible = false
 	get_tree().paused = false
+	queue_free()
 	get_tree().reload_current_scene()
 
 
@@ -111,5 +113,7 @@ func _new_game():
 		var city_grid = get_node("/root/CityGrid")
 		if city_grid.get("city_generator") and city_grid.city_generator:
 			city_grid.city_generator.use_random_seed = true
+	visible = false
 	get_tree().paused = false
+	queue_free()
 	get_tree().reload_current_scene()
