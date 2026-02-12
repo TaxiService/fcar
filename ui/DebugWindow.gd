@@ -21,6 +21,7 @@ var parts_ground_label: Label
 var ready_label: Label
 var stability_label: Label
 var heightlock_label: Label
+var violence_label: Label
 
 
 func _ready():
@@ -97,6 +98,11 @@ func _build_ui():
 	parts_ground_label = Label.new()
 	parts_ground_label.text = "Parts on ground: ---"
 	vbox.add_child(parts_ground_label)
+
+	# Violence tracking
+	violence_label = Label.new()
+	violence_label.text = "Violence: ---"
+	vbox.add_child(violence_label)
 
 	# Apply style to all labels
 	for child in vbox.get_children():
@@ -222,3 +228,18 @@ func _process(delta: float):
 		parts_ground_label.text = "Parts on ground: %d" % car_ref.people_manager.all_parts.size()
 	else:
 		parts_ground_label.text = "Parts on ground: ---"
+
+	# Update violence tracking
+	if "justice_system" in car_ref and car_ref.justice_system:
+		var js = car_ref.justice_system
+		violence_label.text = "Violence: %d/%d | Level: %d | Lives: %d" % [
+			js.cores_squished, js.CORES_PER_STRIKE, js.violence_level, js.lives]
+		# Color based on danger level
+		if js.lives <= 0:
+			violence_label.add_theme_color_override("font_color", Color(1.0, 0.0, 0.0))
+		elif js.cores_squished > 0:
+			violence_label.add_theme_color_override("font_color", Color(1.0, 0.6, 0.2))
+		else:
+			violence_label.add_theme_color_override("font_color", Color(0.85, 0.85, 0.85))
+	else:
+		violence_label.text = "Violence: ---"

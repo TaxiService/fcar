@@ -181,6 +181,13 @@ var collecting_parts: Array[PersonPart] = []  # Parts flying toward car
 var hospital_destination: PointOfInterest = null  # Nearest hospital for delivery
 var _hospital_dest_timer: float = 0.0
 
+# Car destruction/respawn
+var justice_system: JusticeSystem = null
+var game_over_screen: Node = null  # GameOverScreen
+var _car_destroyed: bool = false
+var _spawn_position: Vector3
+var _spawn_rotation: Vector3
+
 signal passenger_boarded(person: Person)
 signal passenger_delivered(person: Person, destination: Node)
 signal passenger_ejected(person: Person)
@@ -192,6 +199,8 @@ signal hospital_mode_changed(active: bool)
 
 
 func _ready():
+	_spawn_position = global_position
+	_spawn_rotation = rotation
 	_init_subsystems()
 
 
@@ -258,6 +267,12 @@ func _init_subsystems():
 	# Create shift selector popup
 	_create_shift_selector()
 
+	# Create justice system (violence tracking and lives)
+	_create_justice_system()
+
+	# Create game over screen
+	_create_game_over_screen()
+
 
 func _create_shift_manager():
 	shift_manager = ShiftManager.new()
@@ -275,6 +290,37 @@ func _create_shift_selector():
 	shift_selector.shift_resumed.connect(_on_shift_resumed)
 	shift_selector.cancelled.connect(_on_shift_selector_cancelled)
 	get_tree().root.add_child.call_deferred(shift_selector)
+
+
+func _create_justice_system():
+	justice_system = JusticeSystem.new()
+	justice_system.name = "JusticeSystem"
+	get_tree().root.add_child.call_deferred(justice_system)
+
+	# Connect signals (deferred since node isn't in tree yet)
+	justice_system.life_lost.connect(_on_life_lost)
+	justice_system.game_over.connect(_on_game_over)
+
+
+func _create_game_over_screen():
+	game_over_screen = GameOverScreen.new()
+	game_over_screen.name = "GameOverScreen"
+	game_over_screen.shift_manager = shift_manager
+	game_over_screen.justice_system = justice_system
+	get_tree().root.add_child.call_deferred(game_over_screen)
+
+
+func _on_life_lost(lives_remaining: int):
+	if lives_remaining > 0:
+		destroy_and_respawn()
+
+
+func _on_game_over():
+	destroy_no_respawn()
+	# Show game over screen after a delay
+	await get_tree().create_timer(3.0).timeout
+	if game_over_screen:
+		game_over_screen.show_game_over()
 
 
 func _on_shift_selected(fare_count: int):
@@ -548,6 +594,9 @@ func _is_key_pressed_locked(key: int) -> bool:
 
 
 func _physics_process(delta):
+	if _car_destroyed:
+		return
+
 	# Update player position for proximity-based people management
 	if people_manager:
 		people_manager.set_player_position(global_position)
@@ -1217,6 +1266,8 @@ func _break_person(person: Person, pos: Vector3, speed_kmh: float, roll: int, dc
 	if shift_manager:
 		shift_manager.deduct_score(400)
 		print("PENALTY: -400 points (person broken). Score: %d" % shift_manager.get_score())
+	if justice_system:
+		justice_system.report_person_broken()
 	print("PERSON BROKEN at %s (speed: %.1f km/h, roll: %d, DC: %d, signal_listeners: %d)" % [
 		pos, speed_kmh, roll, dc, person_broken.get_connections().size()])
 	people_manager.remove_person(person)
@@ -1254,6 +1305,8 @@ func _update_parts_collisions():
 			continue
 		if part.collision_immune_timer > 0.0:
 			continue
+		if part.in_cargo or part.collecting:
+			continue
 
 		var part_pos = part.global_position
 
@@ -1270,27 +1323,146 @@ func _update_parts_collisions():
 		if _point_to_segment_distance_sq(collision_point, capsule_a, capsule_b) > hit_radius_sq:
 			continue
 
-		# HIT
+		# HIT — calculate common values
+		var hit_dir = part_pos - car_pos
+		hit_dir.y = 0
+		if hit_dir.length_squared() < 0.001:
+			hit_dir = Vector3.FORWARD
+		else:
+			hit_dir = hit_dir.normalized()
+
+		var impact_speed = max(Vector3(car_vel.x, 0, car_vel.z).dot(hit_dir), 0.0)
+
 		if part.is_core and part.at_rest:
-			print("CORE SQUISHED at %s" % part_pos)
+			# Core collision — push or constitution save
+			if impact_speed < 11.1:  # Below ~40 km/h: push
+				_push_part(part, hit_dir, impact_speed, car_vel)
+			else:
+				# Constitution save
+				var speed_kmh = impact_speed * 3.6
+				var roll = randi_range(1, 20)
+				var dc = 8.0 + (speed_kmh - 40.0) * 0.25
+				dc = clamp(dc, 8.0, 18.0)
+
+				if roll >= int(dc):
+					# Survived — push with more force
+					_push_part(part, hit_dir, impact_speed * 1.5, car_vel)
+					print("Core survived! (roll: %d, DC: %d, speed: %.0f km/h)" % [roll, int(dc), speed_kmh])
+				else:
+					# SQUISHED — destroy core
+					print("CORE SQUISHED at %s (roll: %d, DC: %d, speed: %.0f km/h)" % [part_pos, roll, int(dc), speed_kmh])
+					part.collision_immune_timer = 99.0
+					if justice_system:
+						justice_system.report_core_squished()
+					people_manager.all_parts.erase(part)
+					part.queue_free()
 		else:
 			# Re-scatter body part (or non-resting core)
-			var hit_dir = part_pos - car_pos
-			hit_dir.y = 0
-			if hit_dir.length_squared() < 0.001:
-				hit_dir = Vector3.FORWARD
-			else:
-				hit_dir = hit_dir.normalized()
+			_push_part(part, hit_dir, impact_speed, car_vel)
 
-			var scatter_angle = randf() * TAU
-			var scatter_speed = randf_range(2.0, 5.0)
-			part.velocity = Vector3(
-				cos(scatter_angle) * scatter_speed,
-				randf_range(1.0, 3.0),
-				sin(scatter_angle) * scatter_speed
-			) + car_vel * 0.3
-			part.at_rest = false
-			part.collision_immune_timer = 1.0
+
+# ===== CAR DESTRUCTION / RESPAWN =====
+
+func destroy_and_respawn():
+	if _car_destroyed:
+		return
+	_car_destroyed = true
+
+	# Eject everything
+	_eject_all_passengers()
+
+	# Exit hospital mode
+	if hospital_mode:
+		_exit_hospital_mode()
+
+	# Cancel ready state
+	if is_ready_for_fares:
+		_cancel_ready_state()
+
+	# Stop the car
+	linear_velocity = Vector3.ZERO
+	angular_velocity = Vector3.ZERO
+
+	# Hide the car
+	visible = false
+
+	print("Car destroyed! Respawning in 3 seconds...")
+
+	# Wait then respawn
+	await get_tree().create_timer(3.0).timeout
+	_respawn()
+
+
+func destroy_no_respawn():
+	if _car_destroyed:
+		return
+	_car_destroyed = true
+
+	# Eject everything
+	_eject_all_passengers()
+
+	if hospital_mode:
+		_exit_hospital_mode()
+	if is_ready_for_fares:
+		_cancel_ready_state()
+
+	linear_velocity = Vector3.ZERO
+	angular_velocity = Vector3.ZERO
+	visible = false
+
+	print("Car destroyed! GAME OVER")
+
+
+func _respawn():
+	# Reset position
+	global_position = _spawn_position
+	rotation = _spawn_rotation
+	linear_velocity = Vector3.ZERO
+	angular_velocity = Vector3.ZERO
+
+	# Reset state
+	_car_destroyed = false
+	visible = true
+	is_stable = true
+	disabled_time_remaining = 0.0
+	grace_period_remaining = 0.0
+	thrust_power = 1.0
+	lock_height = false
+	handbrake_active = false
+	handbrake_locked = false
+
+	# Reset input state
+	current_pitch = 0.0
+	current_roll = 0.0
+	current_throttle = 0.0
+	current_yaw = 0.0
+	controls_locked = false
+	locked_actions.clear()
+	locked_keys.clear()
+	masked_actions.clear()
+	masked_keys.clear()
+
+	# Clear cargo/passenger state
+	hospital_mode = false
+	hospital_destination = null
+	hospital_mode_changed.emit(false)
+	if part_markers:
+		part_markers.set_active(false)
+
+	var lives_left = justice_system.lives if justice_system else "?"
+	print("Car respawned. Lives: %s" % lives_left)
+
+
+func _push_part(part: PersonPart, hit_dir: Vector3, impact_speed: float, car_vel: Vector3):
+	var scatter_angle = randf() * TAU
+	var scatter_speed = randf_range(2.0, 5.0) + impact_speed * 0.3
+	part.velocity = Vector3(
+		cos(scatter_angle) * scatter_speed,
+		randf_range(1.0, 3.0),
+		sin(scatter_angle) * scatter_speed
+	) + car_vel * 0.3
+	part.at_rest = false
+	part.collision_immune_timer = 1.0
 
 
 # ===== HOSPITAL MODE =====
