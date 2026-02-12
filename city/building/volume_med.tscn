@@ -41,7 +41,7 @@ size = Vector3(35, 15, 20)
 
 [sub_resource type="BoxMesh" id="BoxMesh_qge6t"]
 material = ExtResource("4_ssnx1")
-size = Vector3(35, 14.99, 20)
+size = Vector3(35, 15.05, 20)
 
 [node name="FloorSmall5" type="StaticBody3D"]
 script = ExtResource("1_o06re")

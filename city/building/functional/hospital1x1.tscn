@@ -45,7 +45,6 @@ script = ExtResource("5_vcny3")
 size_flags = 6
 is_socket = false
 rotation_mode = 1
-ignores_collision = true
 
 [node name="PointOfInterest" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5, 0)
