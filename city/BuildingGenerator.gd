@@ -50,6 +50,7 @@ const BLOCK_SCENE_PATHS: Array = [
 const FUNCTIONAL_SCENE_PATHS: Array = [
 	"res://city/building/functional/spawner1x1.tscn",
 	"res://city/building/functional/hospital1x1.tscn",
+	"res://city/building/functional/repairs1x1.tscn",
 ]
 
 @export_category("Pass 1: Structure")
@@ -94,6 +95,20 @@ var _stats: Dictionary = {}
 var _is_generating: bool = false
 var _current_seed: int = 0
 
+# Hex center positions (XZ plane, passed from CityGenerator)
+var _hex_centers: Array[Vector2] = []
+
+# Per-hex functional block limits: { scene_path: { "min": N, "max": N } }
+# max = -1 means unlimited
+const FUNCTIONAL_LIMITS: Dictionary = {
+	"res://city/building/functional/hospital1x1.tscn": { "min": 0, "max": 1 },
+	"res://city/building/functional/repairs1x1.tscn": { "min": 1, "max": 1 },
+	"res://city/building/functional/spawner1x1.tscn": { "min": 5, "max": -1 },
+}
+
+# Tracking: { hex_index: { scene_path: count } }
+var _functional_counts_per_hex: Dictionary = {}
+
 
 func _ready():
 	_load_block_library()
@@ -117,10 +132,50 @@ func _shuffle_array(array: Array):
 		array[j] = temp
 
 
+func set_hex_centers(centers: Array[Vector2]):
+	_hex_centers = centers
+
+
+func _get_nearest_hex_index(world_pos: Vector3) -> int:
+	var nearest_idx: int = 0
+	var nearest_dist_sq: float = INF
+	for i in range(_hex_centers.size()):
+		var dx = world_pos.x - _hex_centers[i].x
+		var dz = world_pos.z - _hex_centers[i].y  # Vector2.y = world Z
+		var dist_sq = dx * dx + dz * dz
+		if dist_sq < nearest_dist_sq:
+			nearest_dist_sq = dist_sq
+			nearest_idx = i
+	return nearest_idx
+
+
+func _get_hex_functional_count(hex_idx: int, scene_path: String) -> int:
+	if not _functional_counts_per_hex.has(hex_idx):
+		return 0
+	return _functional_counts_per_hex[hex_idx].get(scene_path, 0)
+
+
+func _increment_hex_functional_count(hex_idx: int, scene_path: String):
+	if not _functional_counts_per_hex.has(hex_idx):
+		_functional_counts_per_hex[hex_idx] = {}
+	var counts = _functional_counts_per_hex[hex_idx]
+	counts[scene_path] = counts.get(scene_path, 0) + 1
+
+
+func _is_at_hex_limit(hex_idx: int, scene_path: String) -> bool:
+	if not FUNCTIONAL_LIMITS.has(scene_path):
+		return false
+	var max_limit = FUNCTIONAL_LIMITS[scene_path].get("max", -1)
+	if max_limit == -1:
+		return false
+	return _get_hex_functional_count(hex_idx, scene_path) >= max_limit
+
+
 func reset():
 	_placed_aabbs.clear()
 	_growth_queue.clear()
 	_placed_blocks.clear()
+	_functional_counts_per_hex.clear()
 	_stats = {
 		"blocks_placed": 0,
 		"structural_placed": 0,
@@ -200,6 +255,7 @@ func process_queue():
 	# Pass 2: Functional (spawners, POIs, etc.) - gameplay priority
 	if functional_enabled:
 		await _run_functional_pass()
+		_run_functional_guarantee_pass()
 
 	# Pass 3: Decoration - visual polish on remaining sockets
 	if decoration_enabled:
@@ -690,8 +746,12 @@ func _run_functional_pass():
 		
 		var shuffled = valid_blocks.duplicate()
 		_shuffle_array(shuffled)
-		
-		for func_info in shuffled.slice(0, 3):
+
+		var hex_idx = _get_nearest_hex_index(socket_data.pos) if not _hex_centers.is_empty() else -1
+
+		for func_info in shuffled.slice(0, 5):
+			if hex_idx >= 0 and _is_at_hex_limit(hex_idx, func_info.path):
+				continue
 			var result = _try_place_block(
 				func_info,
 				socket_data.pos,
@@ -700,18 +760,19 @@ func _run_functional_pass():
 				conn.size_flags,
 				socket_data.heading
 			)
-			
+
 			if result.success:
 				block.mark_connection_used(conn)
 				placed += 1
 				_stats.blocks_placed += 1
 				_stats.functional_placed += 1
 				_stats.sockets_functional += 1
+				if hex_idx >= 0:
+					_increment_hex_functional_count(hex_idx, func_info.path)
 
 				if func_info.can_spawn:
 					_stats.spawners_placed += 1
 
-				# Debug: track which functional scenes get placed
 				if "hospital" in func_info.path:
 					_stats["hospitals_placed"] = _stats.get("hospitals_placed", 0) + 1
 
@@ -727,6 +788,94 @@ func _run_functional_pass():
 				break
 
 	generation_progress.emit(_stats.blocks_placed, "Functional complete: %d added (%d spawners, %d hospitals)" % [placed, _stats.spawners_placed, _stats.get("hospitals_placed", 0)])
+
+
+func _run_functional_guarantee_pass():
+	if _hex_centers.is_empty():
+		return
+
+	var total_forced = 0
+	for hex_idx in range(_hex_centers.size()):
+		for scene_path in FUNCTIONAL_LIMITS:
+			var limits = FUNCTIONAL_LIMITS[scene_path]
+			var min_count = limits.get("min", 0)
+			if min_count <= 0:
+				continue
+			var current = _get_hex_functional_count(hex_idx, scene_path)
+			if current >= min_count:
+				continue
+			var needed = min_count - current
+			var placed = _force_place_functional_in_hex(hex_idx, scene_path, needed)
+			total_forced += placed
+			if placed < needed:
+				print("  WARNING: Could not meet minimum for %s in hex %d: placed %d/%d" % [
+					scene_path.get_file(), hex_idx, current + placed, min_count])
+
+	if total_forced > 0:
+		print("  Guarantee pass: force-placed %d functional blocks" % total_forced)
+
+
+func _force_place_functional_in_hex(hex_idx: int, scene_path: String, needed: int) -> int:
+	var hex_center = _hex_centers[hex_idx]
+
+	# Find the block_info for this scene_path
+	var target_block_info: Dictionary = {}
+	for func_block in _functional_blocks:
+		if func_block.path == scene_path:
+			target_block_info = func_block
+			break
+	if target_block_info.is_empty():
+		return 0
+
+	# Collect open sockets from placed blocks, sorted by distance to this hex
+	var open_sockets: Array[Dictionary] = []
+	for block in _placed_blocks:
+		if not is_instance_valid(block):
+			continue
+		for conn in block.get_available_connections():
+			if not conn.is_socket:
+				continue
+			var wpos = block.get_connection_world_position(conn)
+			var dx = wpos.x - hex_center.x
+			var dz = wpos.z - hex_center.y
+			var dist_sq = dx * dx + dz * dz
+			open_sockets.append({
+				"block": block, "conn": conn,
+				"pos": wpos, "dir": block.get_connection_world_direction(conn),
+				"heading": block.rotation.y, "dist_sq": dist_sq,
+			})
+
+	open_sockets.sort_custom(func(a, b): return a.dist_sq < b.dist_sq)
+
+	var placed = 0
+	for socket_data in open_sockets:
+		if placed >= needed:
+			break
+		var conn: ConnectionPoint = socket_data.conn
+		var block: BuildingBlock = socket_data.block
+		if not is_instance_valid(block):
+			continue
+
+		var target_dir = -socket_data.dir
+		var valid = _get_matching_blocks(
+			[target_block_info], 0, max_growth_depth,
+			conn.type_flags, conn.size_flags, target_dir
+		)
+		if valid.is_empty():
+			continue
+
+		var result = _try_place_block(
+			target_block_info, socket_data.pos, target_dir,
+			conn.type_flags, conn.size_flags, socket_data.heading
+		)
+		if result.success:
+			block.mark_connection_used(conn)
+			placed += 1
+			_stats.blocks_placed += 1
+			_stats.functional_placed += 1
+			_increment_hex_functional_count(hex_idx, scene_path)
+
+	return placed
 
 
 func _run_functional_pass_sync():
@@ -1396,6 +1545,15 @@ func print_stats():
 		for d in depths:
 			depth_str += "d%s:%d " % [d, _stats.depth_distribution[d]]
 		print("  Depth: %s" % depth_str.strip_edges())
+
+	if not _functional_counts_per_hex.is_empty():
+		print("  Functional blocks per hex:")
+		for hex_idx in _functional_counts_per_hex:
+			var counts = _functional_counts_per_hex[hex_idx]
+			var parts: Array[String] = []
+			for path in counts:
+				parts.append("%s=%d" % [path.get_file().get_basename(), counts[path]])
+			print("    Hex %d: %s" % [hex_idx, ", ".join(parts)])
 
 
 func print_debug_stats():

@@ -757,6 +757,7 @@ func _generate_buildings():
 	building_generator.max_decoration_blocks = int(building_max_total * 0.3)  # 30% extra for decorations
 	building_generator.decoration_probability = 0.4
 	building_generator.reset()
+	building_generator.set_hex_centers(hex_centers)
 	if building_generator.has_method("set_seed"):
 		building_generator.set_seed(_current_seed + 92711)
 

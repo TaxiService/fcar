@@ -1,0 +1,63 @@
+[gd_scene load_steps=11 format=3 uid="uid://u3v2c5dec5bi"]
+
+[ext_resource type="Script" uid="uid://cmafag82uyxu7" path="res://city/BuildingBlock.gd" id="1_7qblo"]
+[ext_resource type="Material" uid="uid://ce3eavktn35d4" path="res://mats/grey.tres" id="2_6cxhl"]
+[ext_resource type="Material" uid="uid://c84qehqsj2tk1" path="res://mats/floor_small.tres" id="3_qds03"]
+[ext_resource type="Material" uid="uid://bqb6xr3pfb6vl" path="res://mats/holo.tres" id="3_r3d66"]
+[ext_resource type="Script" uid="uid://bqovvbw65pd4c" path="res://city/ConnectionPoint.gd" id="3_ulfbp"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_6cxhl"]
+size = Vector3(25, 1.5, 25)
+
+[sub_resource type="BoxMesh" id="BoxMesh_qds03"]
+material = ExtResource("2_6cxhl")
+size = Vector3(25, 1.5, 25)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_5dwv6"]
+size = Vector3(2, 8.323853, 10)
+
+[sub_resource type="BoxMesh" id="BoxMesh_fulfq"]
+material = ExtResource("3_qds03")
+size = Vector3(2, 9.5, 10)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_j4nc4"]
+material = ExtResource("3_r3d66")
+top_radius = 9.0
+bottom_radius = 14.0
+height = 9.0
+radial_segments = 10
+rings = 0
+cap_bottom = false
+
+[node name="FloorSmall5" type="StaticBody3D"]
+script = ExtResource("1_7qblo")
+block_type = 1
+can_spawn_people = true
+
+[node name="CollisionShape3D2" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 12.071819, 0)
+shape = SubResource("BoxShape3D_6cxhl")
+
+[node name="MeshInstance3D2" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 12.071819, 0)
+mesh = SubResource("BoxMesh_qds03")
+
+[node name="CollisionShape3D3" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6.9904613, 0)
+shape = SubResource("BoxShape3D_5dwv6")
+
+[node name="MeshInstance3D3" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6.774557, 0)
+mesh = SubResource("BoxMesh_fulfq")
+
+[node name="MeshInstance3D4" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6.777426, 0)
+mesh = SubResource("CylinderMesh_j4nc4")
+
+[node name="Conn_Plug_Large2" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 2.5, 0)
+script = ExtResource("3_ulfbp")
+size_flags = 4
+is_socket = false
+can_spawn_zone = true
+rotation_mode = 1
