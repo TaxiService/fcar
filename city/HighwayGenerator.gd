@@ -19,7 +19,7 @@ class HighwayRoute extends RefCounted:
 @export var spire_avoidance_radius: float = 90.0
 @export var waypoint_spacing: float = 200.0
 @export var y_undulation_amplitude: float = 30.0
-@export var default_speed_limit: float = 40.0
+@export var default_speed_limit: float = 25.0
 
 @export_category("Debug")
 @export var debug_draw_highways: bool = true

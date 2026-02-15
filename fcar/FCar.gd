@@ -161,6 +161,7 @@ var passengers: Array[Person] = []
 var cargo_parts: Array[PersonPart] = []
 var hospital_mode: bool = false
 var people_manager: Node = null  # Reference to PeopleManager for finding hailing persons
+var traffic_manager: TrafficManager = null
 var destination_marker: DestinationMarker = null  # HUD for passenger destination
 var hailing_markers: HailingMarkers = null  # Markers for nearby hailing groups
 var part_markers: PartMarkers = null  # HUD markers above ground parts in hospital mode
@@ -196,6 +197,7 @@ signal person_broken(position: Vector3, person_color: Color, velocity: Vector3)
 signal parts_collected(parts: Array[PersonPart])
 signal parts_delivered(total_refund: int, parts_count: int)
 signal hospital_mode_changed(active: bool)
+signal traffic_collision(position: Vector3, impact_speed: float)
 
 
 func _ready():
@@ -248,6 +250,9 @@ func _init_subsystems():
 
 	# Find PeopleManager for passenger system
 	_find_people_manager()
+
+	# Find TrafficManager for car collision detection
+	traffic_manager = CityGrid.traffic_manager
 
 	# Initialize people collision from PeopleCollision child node
 	_init_people_collision()
@@ -671,6 +676,9 @@ func _physics_process(delta):
 
 	# Update people collision detection
 	_update_people_collisions()
+
+	# Update traffic car collision detection
+	_update_traffic_collisions()
 
 	# Update parts collision detection
 	_update_parts_collisions()
@@ -1287,6 +1295,65 @@ func _point_to_segment_distance_sq(point: Vector3, seg_a: Vector3, seg_b: Vector
 		return point.distance_squared_to(seg_a)
 	var t = clamp(ap.dot(ab) / ab_len_sq, 0.0, 1.0)
 	return point.distance_squared_to(seg_a + ab * t)
+
+
+func _update_traffic_collisions():
+	if not traffic_manager:
+		traffic_manager = CityGrid.traffic_manager
+		if not traffic_manager:
+			return
+
+	var car_pos = global_position
+	var car_vel = linear_velocity
+	var car_speed = car_vel.length()
+
+	if car_speed < 1.0:
+		return
+
+	var player_half = Vector3(0.6, 0.5, 1.2)
+
+	for tc in traffic_manager.get_active_cars():
+		if tc.state == TrafficCar.State.INACTIVE:
+			continue
+		if tc.collision_cooldown > 0:
+			continue
+
+		var tc_pos = tc.global_position
+
+		# Broad phase: squared distance (5m threshold)
+		var dist_sq = car_pos.distance_squared_to(tc_pos)
+		if dist_sq > 25.0:
+			continue
+
+		# Narrow phase: AABB overlap
+		var diff = (car_pos - tc_pos).abs()
+		var combined = player_half + tc.collision_half_extents
+		if diff.x >= combined.x or diff.y >= combined.y or diff.z >= combined.z:
+			continue
+
+		_handle_traffic_collision(tc, tc_pos, car_vel, car_speed)
+
+
+func _handle_traffic_collision(tc: TrafficCar, tc_pos: Vector3, car_vel: Vector3, car_speed: float):
+	var hit_dir = (tc_pos - global_position).normalized()
+
+	# Player response: impulse pushing player away
+	var impact_strength = clampf(car_speed * 0.3, 5.0, 50.0)
+	var reflect_dir = car_vel.bounce(hit_dir).normalized()
+	var impulse = (-hit_dir + reflect_dir * 0.3).normalized() * impact_strength * mass * 0.1
+	apply_central_impulse(impulse)
+
+	# Spin the player a bit
+	var torque_strength = clampf(car_speed * 0.05, 0.5, 5.0)
+	var torque_dir = hit_dir.cross(Vector3.UP) * torque_strength * mass
+	apply_torque_impulse(torque_dir)
+
+	# Traffic car response: deflect along hit direction + carry some player velocity
+	var deflection = hit_dir * car_speed * 0.4 + car_vel * 0.2
+	tc.apply_disturbance(deflection, global_position)
+	tc.collision_cooldown = 1.5
+
+	traffic_collision.emit(tc_pos, car_speed)
 
 
 func _update_parts_collisions():

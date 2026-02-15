@@ -23,6 +23,7 @@ var facing_direction: Vector3 = Vector3.FORWARD
 
 # Collision half-extents for manual AABB check (used by FCar, not Godot physics)
 var collision_half_extents: Vector3 = Vector3(1.0, 0.5, 2.0)
+var collision_cooldown: float = 0.0
 
 var _visual: Node3D = null
 
@@ -51,6 +52,7 @@ func deactivate():
 	tube_offset = Vector3.ZERO
 	disturbed_velocity = Vector3.ZERO
 	disturbed_timer = 0.0
+	collision_cooldown = 0.0
 	visible = false
 
 func apply_disturbance(impact_velocity: Vector3, _impact_point: Vector3):

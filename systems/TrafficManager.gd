@@ -82,6 +82,9 @@ func _load_routes():
 
 	print("TrafficManager: Loaded %d routes, %d total slots (%.0fm spacing)" % [_routes.size(), total_slots, car_spacing])
 
+func get_active_cars() -> Array[TrafficCar]:
+	return _active_cars
+
 func _acquire_from_pool() -> TrafficCar:
 	if _pool.is_empty():
 		return null
@@ -193,6 +196,9 @@ func _update_movement(delta: float, cam_pos: Vector3):
 		_update_car(car, delta, route, cam_pos)
 
 func _update_car(car: TrafficCar, delta: float, route, cam_pos: Vector3):
+	if car.collision_cooldown > 0:
+		car.collision_cooldown -= delta
+
 	match car.state:
 		TrafficCar.State.CRUISING:
 			car.curve_offset += car.speed * delta
