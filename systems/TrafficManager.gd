@@ -2,13 +2,13 @@ class_name TrafficManager
 extends Node
 
 @export_category("Pool")
-@export var pool_size: int = 150
-@export var max_active_cars: int = 80
+@export var pool_size: int = 200
+@export var max_active_cars: int = 120
 
 @export_category("Spawning")
 @export var spawn_radius: float = 600.0
 @export var despawn_radius: float = 800.0
-@export var cars_per_route: int = 20
+@export var car_spacing: float = 80.0  # Target meters between car slots
 
 @export_category("LOD")
 @export var rotation_update_radius: float = 200.0
@@ -69,16 +69,18 @@ func _load_routes():
 		return
 
 	_routes = hg.routes
-	# Initialize slot arrays per route
+	# Initialize slot arrays per route, scaled by route length
+	var total_slots = 0
 	for i in range(_routes.size()):
 		var route = _routes[i]
-		var slot_count = cars_per_route
+		var slot_count = maxi(1, int(route.total_length / car_spacing))
 		var slots: Array = []
 		slots.resize(slot_count)
 		slots.fill(null)
 		_route_slots[i] = slots
+		total_slots += slot_count
 
-	print("TrafficManager: Loaded %d routes, %d slots each" % [_routes.size(), cars_per_route])
+	print("TrafficManager: Loaded %d routes, %d total slots (%.0fm spacing)" % [_routes.size(), total_slots, car_spacing])
 
 func _acquire_from_pool() -> TrafficCar:
 	if _pool.is_empty():
