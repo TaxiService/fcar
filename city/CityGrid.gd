@@ -36,6 +36,8 @@ var people_manager: PeopleManager = null
 var city_generator: CityGenerator = null
 var building_generator: BuildingGenerator = null
 var visibility_manager: VisibilityManager = null
+var highway_generator: HighwayGenerator = null
+var traffic_manager: TrafficManager = null
 
 
 func _ready():

@@ -2107,6 +2107,7 @@ func _setup_lod_camera():
 	if camera:
 		Person.lod_camera = camera
 		Person.lod_player_y = global_position.y
+		TrafficCar.lod_camera = camera
 		print("FCar: LOD camera set to %s" % camera.name)
 	else:
 		push_error("FCar: Could not find camera child for LOD system!")

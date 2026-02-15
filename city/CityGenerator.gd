@@ -140,6 +140,11 @@ var buildings_container: Node3D
 
 @export var building_generator_path: NodePath
 var building_generator: BuildingGenerator
+
+@export_category("Highways")
+@export var generate_highways: bool = true
+var highway_generator: HighwayGenerator
+
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _current_seed: int = 0
 
@@ -154,9 +159,10 @@ func _ready():
 	CityGrid.city_generator = self
 	_create_containers()
 	CityGrid.building_generator = building_generator
+	CityGrid.highway_generator = highway_generator
 	if show_ground_grid:
 		_create_ground_grid()
-	
+
 	# Use call_deferred to start async generation after scene is ready
 	call_deferred("_start_generation")
 
@@ -206,6 +212,11 @@ func _create_containers():
 	if building_generator:
 		building_generator.reparent(buildings_container)
 
+	# Create HighwayGenerator
+	highway_generator = HighwayGenerator.new()
+	highway_generator.name = "HighwayGenerator"
+	add_child(highway_generator)
+
 func _initialize_rng():
 	if use_random_seed:
 		_current_seed = int(Time.get_unix_time_from_system() * 1000) % 2147483647
@@ -253,7 +264,12 @@ func generate_city():
 	city_generation_progress.emit("connectors", 0.4, "Generating connectors...")
 	_generate_connectors()
 	await get_tree().process_frame
-	
+
+	if generate_highways:
+		city_generation_progress.emit("highways", 0.45, "Generating highways...")
+		_generate_highways()
+		await get_tree().process_frame
+
 	if generate_buildings:
 		city_generation_progress.emit("buildings", 0.5, "Generating buildings...")
 		await _generate_buildings()
@@ -280,6 +296,9 @@ func _clear_generated():
 	for child in buildings_container.get_children():
 		if child != building_generator:
 			child.queue_free()
+	# Clear highway routes
+	if highway_generator:
+		highway_generator._clear()
 
 
 func _generate_hex_grid():
@@ -744,6 +763,14 @@ func _calculate_connector_aabbs() -> Array[AABB]:
 
 	return aabbs
 
+
+func _generate_highways():
+	if not highway_generator:
+		push_error("CityGenerator: HighwayGenerator not initialized")
+		return
+	highway_generator.generate_highways = generate_highways
+	highway_generator.set_seed(_current_seed + 55501)
+	highway_generator.generate(self)
 
 func _generate_buildings():
 	if not building_generator:
