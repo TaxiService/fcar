@@ -22,7 +22,7 @@ class HighwayRoute extends RefCounted:
 @export var default_speed_limit: float = 25.0
 
 @export_category("Debug")
-@export var debug_draw_highways: bool = true
+@export var debug_draw_highways: bool = false
 
 var routes: Array = []  # Array of HighwayRoute
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -277,10 +277,10 @@ func _draw_curve_line(curve: Curve3D, color: Color):
 func _draw_waypoint_sphere(pos: Vector3, color: Color):
 	var mi = MeshInstance3D.new()
 	var sphere = SphereMesh.new()
-	sphere.radius = 8.0
-	sphere.height = 16.0
-	sphere.radial_segments = 8
-	sphere.rings = 4
+	sphere.radius = 2.0
+	sphere.height = 4.0
+	sphere.radial_segments = 6
+	sphere.rings = 2
 	mi.mesh = sphere
 	mi.position = pos
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
