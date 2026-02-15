@@ -88,8 +88,6 @@ fare_guarantee_min = 3
 
 [node name="TrafficManager" type="Node" parent="."]
 script = ExtResource("11_traf")
-max_active_cars = 800
-cars_per_route = 200
 
 [node name="VisibilityManager" type="Node" parent="."]
 script = ExtResource("5_yage8")
