@@ -66,12 +66,12 @@ script = ExtResource("1_generator")
 crosslink_height = 14.99
 building_max_depth = 7
 building_branch_chance = 0.1
-building_max_total = 2520
-top_seed_probability = 0.1
-bottom_seed_probability = 0.1
+building_max_total = 5000
+top_seed_probability = 0.2
 bottom_seed_sizes = 4
 edge_top_sizes = 1
 building_generator_path = NodePath("BuildingGenerator")
+spawn_fcar = false
 
 [node name="BuildingGenerator" type="Node3D" parent="CityGenerator"]
 script = ExtResource("10_bgen")
