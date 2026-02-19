@@ -3,7 +3,7 @@ extends Node3D
 
 class HighwayRoute extends RefCounted:
 	var curve: Curve3D
-	var height_level: int       # Biome border index (1, 2, 3...)
+	var height_level: int       # Sequential height index
 	var route_type: String      # "ring" or "cross"
 	var tube_radius: float
 	var speed_limit: float
@@ -12,8 +12,11 @@ class HighwayRoute extends RefCounted:
 
 @export_category("Highway Generation")
 @export var generate_highways: bool = true
-@export var ring_highways_per_border: int = 1
-@export var cross_highway_count: int = 2
+@export var ring_radii_count: int = 3     # 1=outer, 2=outer+mid, 3=outer+mid+inner
+@export var height_levels_per_border: int = 2  # Subdivisions per biome (1=borders only, 2=+midpoints)
+@export var cross_angles_count: int = 3   # 1-3 unique hex-safe angles
+@export var paired_lanes: bool = true
+@export var lane_separation: float = 60.0
 @export var tube_radius: float = 40.0
 @export var ring_radius_offset: float = 50.0
 @export var spire_avoidance_radius: float = 90.0
@@ -23,10 +26,15 @@ class HighwayRoute extends RefCounted:
 
 @export_category("Debug")
 @export var debug_draw_highways: bool = false
+@export var debug_draw_height_filter: float = -1.0  # -1 = all, otherwise only near this Y
+@export var debug_draw_type_filter: String = ""       # "" = all, "ring" or "cross"
 
 var routes: Array = []  # Array of HighwayRoute
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _debug_container: Node3D = null
+
+# Hex face-center safe angles (perpendicular to vertex directions for pointy-top hex)
+const SAFE_CROSS_ANGLES = [0.0, PI / 3.0, 2.0 * PI / 3.0]
 
 func set_seed(seed_value: int):
 	_rng.seed = seed_value
@@ -37,26 +45,26 @@ func generate(city_gen: CityGenerator):
 
 	_clear()
 
-	var biome_height = city_gen.spire_height / city_gen.biome_count
+	var max_spire_dist = _get_max_spire_radius(city_gen)
 
-	# Ring highways at each biome border (skip ground level border 0)
-	for border_idx in range(1, city_gen.biome_count):
-		var border_y = biome_height * border_idx
-		for i in range(ring_highways_per_border):
-			var route = _generate_ring_highway(city_gen, border_y, border_idx, i)
-			if route:
-				routes.append(route)
+	# Calculate all height levels and ring radii
+	var heights = _calc_height_levels(city_gen)
+	var ring_radii = _calc_ring_radii(max_spire_dist)
 
-	# Cross highways along hex face-center directions (safe angles that avoid spires)
-	# Pointy-top hex has vertices at 30°+n*60°, so face-centers are at n*60° (0°, 60°, 120°)
-	var safe_angles = [0.0, PI / 3.0, 2.0 * PI / 3.0]
-	for i in range(cross_highway_count):
-		var border_idx = (i % (city_gen.biome_count - 1)) + 1
-		var border_y = biome_height * border_idx
-		var angle = safe_angles[i % safe_angles.size()]
-		var route = _generate_cross_highway(city_gen, border_y, border_idx, angle)
-		if route:
-			routes.append(route)
+	# Generate ring highways
+	for h_idx in range(heights.size()):
+		var y = heights[h_idx]
+		for r_idx in range(ring_radii.size()):
+			if not _should_generate_ring(r_idx, h_idx):
+				continue
+			_generate_ring_pair(city_gen, y, h_idx, ring_radii[r_idx], r_idx, max_spire_dist)
+
+	# Generate cross highways
+	var num_angles = mini(cross_angles_count, SAFE_CROSS_ANGLES.size())
+	for h_idx in range(heights.size()):
+		var y = heights[h_idx]
+		for a_idx in range(num_angles):
+			_generate_cross_pair(city_gen, y, h_idx, SAFE_CROSS_ANGLES[a_idx], max_spire_dist)
 
 	var ring_count = 0
 	var cross_count = 0
@@ -65,7 +73,8 @@ func generate(city_gen: CityGenerator):
 			ring_count += 1
 		else:
 			cross_count += 1
-	print("HighwayGenerator: Generated %d routes (%d ring, %d cross)" % [routes.size(), ring_count, cross_count])
+	print("HighwayGenerator: Generated %d routes (%d ring, %d cross) across %d heights, %d ring radii" % [
+		routes.size(), ring_count, cross_count, heights.size(), ring_radii.size()])
 
 	if debug_draw_highways:
 		_draw_debug()
@@ -76,6 +85,36 @@ func _clear():
 		_debug_container.queue_free()
 		_debug_container = null
 
+# --- Height and radius calculation ---
+
+func _calc_height_levels(city_gen: CityGenerator) -> Array[float]:
+	var heights: Array[float] = []
+	var total_sub = city_gen.biome_count * height_levels_per_border
+	var spacing = city_gen.spire_height / total_sub
+	var max_y = city_gen.spire_height * float(city_gen.biome_count - 1) / city_gen.biome_count
+	for i in range(1, total_sub):
+		var y = spacing * i
+		if y <= max_y:
+			heights.append(y)
+	return heights
+
+func _calc_ring_radii(max_spire_dist: float) -> Array[float]:
+	var radii: Array[float] = []
+	radii.append(max_spire_dist + ring_radius_offset)  # Outer — clear of all spires
+	if ring_radii_count >= 2:
+		radii.append(max_spire_dist * 0.6)  # Mid — between hex ring 1 and 2
+	if ring_radii_count >= 3:
+		radii.append(max_spire_dist * 0.3)  # Inner — between center and hex ring 1
+	return radii
+
+func _should_generate_ring(radius_idx: int, height_idx: int) -> bool:
+	# Density falloff: inner rings get fewer height levels
+	match radius_idx:
+		0: return true                   # Outer: all heights
+		1: return height_idx % 2 == 0    # Mid: every other
+		2: return height_idx % 3 == 0    # Inner: every 3rd
+	return true
+
 func _get_max_spire_radius(city_gen: CityGenerator) -> float:
 	var max_dist = 0.0
 	for pos in city_gen.spire_positions:
@@ -84,72 +123,97 @@ func _get_max_spire_radius(city_gen: CityGenerator) -> float:
 			max_dist = dist
 	return max_dist
 
-func _generate_ring_highway(city_gen: CityGenerator, base_y: float, border_idx: int, ring_index: int) -> HighwayRoute:
-	var max_spire_dist = _get_max_spire_radius(city_gen)
-	var ring_radius = max_spire_dist + ring_radius_offset + ring_index * tube_radius * 2.5
+# --- Avoidance parameters per ring tier ---
 
-	var circumference = TAU * ring_radius
-	var num_points = maxi(12, int(circumference / waypoint_spacing))
+func _avoidance_strength(radius_idx: int, max_spire_dist: float, radius: float) -> float:
+	var fraction = clampf(radius / (max_spire_dist + ring_radius_offset), 0.0, 1.0)
+	return 1.0 + (1.0 - fraction) * 2.0  # Inner=3x, outer=1x
 
-	# Phase offset for organic undulation
+func _avoidance_passes(radius_idx: int) -> int:
+	if radius_idx == 0:
+		return 1
+	if radius_idx == 1:
+		return 2
+	return 3
+
+func _spacing_for_radius(radius_idx: int) -> float:
+	# Tighter spacing for interior rings (more obstacles to weave through)
+	if radius_idx == 0:
+		return waypoint_spacing
+	return waypoint_spacing * 0.7
+
+# --- Ring highway generation ---
+
+func _generate_ring_pair(city_gen: CityGenerator, y: float, h_idx: int, radius: float, r_idx: int, max_spire_dist: float):
+	var strength = _avoidance_strength(r_idx, max_spire_dist, radius)
+	var passes = _avoidance_passes(r_idx)
+	var spacing = _spacing_for_radius(r_idx)
+
+	if paired_lanes:
+		var r_inner = radius - lane_separation * 0.5
+		var r_outer = radius + lane_separation * 0.5
+
+		var pts_a = _generate_ring_points(city_gen, y, r_inner, spacing, strength, passes)
+		_add_route(_build_loop_curve(pts_a), h_idx, "ring")
+
+		var pts_b = _generate_ring_points(city_gen, y, r_outer, spacing, strength, passes)
+		pts_b.reverse()
+		_add_route(_build_loop_curve(pts_b), h_idx, "ring")
+	else:
+		var pts = _generate_ring_points(city_gen, y, radius, spacing, strength, passes)
+		_add_route(_build_loop_curve(pts), h_idx, "ring")
+
+func _generate_ring_points(city_gen: CityGenerator, base_y: float, radius: float,
+		spacing: float, strength: float, passes: int) -> Array[Vector3]:
+	var circumference = TAU * radius
+	var num_points = maxi(12, int(circumference / spacing))
 	var phase = _rng.randf() * TAU
-
 	var points: Array[Vector3] = []
 
 	for i in range(num_points):
 		var angle = TAU * i / num_points
-		var x = cos(angle) * ring_radius
-		var z = sin(angle) * ring_radius
+		var x = cos(angle) * radius
+		var z = sin(angle) * radius
 
-		# Multi-frequency Y undulation for organic feel
 		var y_offset = sin(angle * 3.0 + phase) * y_undulation_amplitude * 0.7 \
 			+ sin(angle * 7.0 + phase * 2.3) * y_undulation_amplitude * 0.3
 		var y = base_y + y_offset
 
 		var point = Vector3(x, y, z)
-		point = _avoid_spires(point, city_gen.spire_positions)
+		for p in range(passes):
+			point = _avoid_spires(point, city_gen.spire_positions, strength)
 		points.append(point)
 
-	# Build Curve3D with smooth handles and loop closure
-	var curve = Curve3D.new()
+	return points
 
-	for i in range(points.size()):
-		var prev_idx = (i - 1 + points.size()) % points.size()
-		var next_idx = (i + 1) % points.size()
+# --- Cross highway generation ---
 
-		var to_next = points[next_idx] - points[i]
-		var to_prev = points[prev_idx] - points[i]
-		var tangent = (to_next - to_prev).normalized()
-		var handle_len = points[i].distance_to(points[next_idx]) * 0.33
-
-		curve.add_point(points[i], -tangent * handle_len, tangent * handle_len)
-
-	# Close the loop by duplicating first point at the end
-	var p0 = points[0]
-	var prev_last = points[points.size() - 1]
-	var next_first = points[1]
-	var close_tangent = (next_first - prev_last).normalized()
-	var close_handle_len = p0.distance_to(next_first) * 0.33
-	curve.add_point(p0, -close_tangent * close_handle_len, close_tangent * close_handle_len)
-
-	var route = HighwayRoute.new()
-	route.curve = curve
-	route.height_level = border_idx
-	route.route_type = "ring"
-	route.tube_radius = tube_radius
-	route.speed_limit = default_speed_limit
-	route.is_loop = true
-	route.total_length = curve.get_baked_length()
-
-	print("  Ring highway at y=%.0f, radius=%.0f, %d points, length=%.0fm" % [
-		base_y, ring_radius, num_points, route.total_length])
-
-	return route
-
-func _generate_cross_highway(city_gen: CityGenerator, base_y: float, border_idx: int, direction_angle: float) -> HighwayRoute:
-	var max_spire_dist = _get_max_spire_radius(city_gen)
+func _generate_cross_pair(city_gen: CityGenerator, y: float, h_idx: int, angle: float, max_spire_dist: float):
 	var extent = max_spire_dist + ring_radius_offset + 100.0
+	var strength = _avoidance_strength(0, max_spire_dist, extent)
+	var passes = 1
 
+	var center_pts = _generate_cross_points(city_gen, y, angle, extent, strength, passes)
+
+	if paired_lanes:
+		var perp = Vector3(-sin(angle), 0, cos(angle))
+		var offset = perp * lane_separation * 0.5
+
+		var pts_a: Array[Vector3] = []
+		for pt in center_pts:
+			pts_a.append(pt + offset)
+		_add_route(_build_open_curve(pts_a), h_idx, "cross")
+
+		var pts_b: Array[Vector3] = []
+		for pt in center_pts:
+			pts_b.append(pt - offset)
+		pts_b.reverse()
+		_add_route(_build_open_curve(pts_b), h_idx, "cross")
+	else:
+		_add_route(_build_open_curve(center_pts), h_idx, "cross")
+
+func _generate_cross_points(city_gen: CityGenerator, base_y: float, direction_angle: float,
+		extent: float, strength: float, passes: int) -> Array[Vector3]:
 	var dir = Vector2(cos(direction_angle), sin(direction_angle))
 	var start_2d = -dir * extent
 	var end_2d = dir * extent
@@ -164,67 +228,93 @@ func _generate_cross_highway(city_gen: CityGenerator, base_y: float, border_idx:
 		var t = float(i) / num_segments
 		var pos_2d = start_2d.lerp(end_2d, t)
 
-		# Y undulation — gentler near endpoints, stronger in the middle
-		var center_weight = sin(t * PI)  # 0 at ends, 1 at middle
+		var center_weight = sin(t * PI)
 		var y_offset = sin(t * PI * 4.0 + phase) * y_undulation_amplitude * center_weight
 		var y = base_y + y_offset
 
 		var point = Vector3(pos_2d.x, y, pos_2d.y)
-		point = _avoid_spires(point, city_gen.spire_positions)
+		for p in range(passes):
+			point = _avoid_spires(point, city_gen.spire_positions, strength)
 		points.append(point)
 
-	# Build Curve3D with smooth handles (open-ended)
-	var curve = Curve3D.new()
+	return points
 
+# --- Route creation helpers ---
+
+func _add_route(curve: Curve3D, h_idx: int, type: String):
+	if not curve:
+		return
+	var route = HighwayRoute.new()
+	route.curve = curve
+	route.height_level = h_idx
+	route.route_type = type
+	route.tube_radius = tube_radius
+	route.speed_limit = default_speed_limit
+	route.is_loop = (type == "ring")
+	route.total_length = curve.get_baked_length()
+	routes.append(route)
+
+func _build_loop_curve(points: Array[Vector3]) -> Curve3D:
+	if points.size() < 3:
+		return null
+
+	var curve = Curve3D.new()
+	for i in range(points.size()):
+		var prev_idx = (i - 1 + points.size()) % points.size()
+		var next_idx = (i + 1) % points.size()
+		var tangent = (points[next_idx] - points[prev_idx]).normalized()
+		var handle_len = points[i].distance_to(points[next_idx]) * 0.33
+		curve.add_point(points[i], -tangent * handle_len, tangent * handle_len)
+
+	# Close the loop by duplicating first point
+	var p0 = points[0]
+	var close_tangent = (points[1] - points[points.size() - 1]).normalized()
+	var close_len = p0.distance_to(points[1]) * 0.33
+	curve.add_point(p0, -close_tangent * close_len, close_tangent * close_len)
+
+	return curve
+
+func _build_open_curve(points: Array[Vector3]) -> Curve3D:
+	if points.size() < 2:
+		return null
+
+	var curve = Curve3D.new()
 	for i in range(points.size()):
 		var in_handle = Vector3.ZERO
 		var out_handle = Vector3.ZERO
 
 		if i > 0 and i < points.size() - 1:
-			var to_next = points[i + 1] - points[i]
-			var to_prev = points[i - 1] - points[i]
-			var tangent = (to_next - to_prev).normalized()
+			var tangent = (points[i + 1] - points[i - 1]).normalized()
 			var handle_len = points[i].distance_to(points[i + 1]) * 0.33
 			in_handle = -tangent * handle_len
 			out_handle = tangent * handle_len
-		elif i == 0 and points.size() > 1:
+		elif i == 0:
 			var tangent = (points[1] - points[0]).normalized()
-			var handle_len = points[0].distance_to(points[1]) * 0.33
-			out_handle = tangent * handle_len
-		elif i == points.size() - 1 and points.size() > 1:
+			out_handle = tangent * points[0].distance_to(points[1]) * 0.33
+		else:  # last point
 			var tangent = (points[i] - points[i - 1]).normalized()
-			var handle_len = points[i - 1].distance_to(points[i]) * 0.33
-			in_handle = -tangent * handle_len
+			in_handle = -tangent * points[i - 1].distance_to(points[i]) * 0.33
 
 		curve.add_point(points[i], in_handle, out_handle)
 
-	var route = HighwayRoute.new()
-	route.curve = curve
-	route.height_level = border_idx
-	route.route_type = "cross"
-	route.tube_radius = tube_radius
-	route.speed_limit = default_speed_limit
-	route.is_loop = false
-	route.total_length = curve.get_baked_length()
+	return curve
 
-	print("  Cross highway at y=%.0f, angle=%.0f°, %d points, length=%.0fm" % [
-		base_y, rad_to_deg(direction_angle), points.size(), route.total_length])
+# --- Spire avoidance ---
 
-	return route
-
-func _avoid_spires(point: Vector3, spires: Array[Vector3]) -> Vector3:
+func _avoid_spires(point: Vector3, spires: Array[Vector3], strength: float = 1.0) -> Vector3:
 	var result = point
+	var effective_radius = spire_avoidance_radius * strength
 	for spire_pos in spires:
 		var spire_xz = Vector2(spire_pos.x, spire_pos.z)
 		var point_xz = Vector2(result.x, result.z)
 		var dist = point_xz.distance_to(spire_xz)
 
-		if dist < spire_avoidance_radius:
+		if dist < effective_radius:
 			var away = point_xz - spire_xz
 			if away.length() < 0.01:
 				away = Vector2(_rng.randf() - 0.5, _rng.randf() - 0.5)
 			away = away.normalized()
-			var push = spire_avoidance_radius - dist + 10.0
+			var push = effective_radius - dist + 10.0
 			result.x += away.x * push
 			result.z += away.y * push
 
@@ -240,11 +330,29 @@ func _draw_debug():
 	_debug_container.name = "HighwayDebug"
 	add_child(_debug_container)
 
+	var height_tolerance = 50.0
+	var drawn = 0
+
 	for route in routes:
+		# Type filter
+		if debug_draw_type_filter != "" and route.route_type != debug_draw_type_filter:
+			continue
+
+		# Height filter — check first curve point's Y
+		if debug_draw_height_filter >= 0.0:
+			if route.curve.point_count == 0:
+				continue
+			var route_y = route.curve.get_point_position(0).y
+			if absf(route_y - debug_draw_height_filter) > height_tolerance:
+				continue
+
 		var color = Color.DODGER_BLUE if route.route_type == "ring" else Color.ORANGE
 		_draw_curve_line(route.curve, color)
 		for p_idx in range(route.curve.point_count):
 			_draw_waypoint_sphere(route.curve.get_point_position(p_idx), color)
+		drawn += 1
+
+	print("HighwayGenerator: Debug drew %d / %d routes" % [drawn, routes.size()])
 
 func _draw_curve_line(curve: Curve3D, color: Color):
 	var baked_length = curve.get_baked_length()

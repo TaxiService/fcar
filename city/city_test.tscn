@@ -1,4 +1,4 @@
-[gd_scene load_steps=15 format=3 uid="uid://c8xqj5kvmyxrf"]
+[gd_scene load_steps=16 format=3 uid="uid://c8xqj5kvmyxrf"]
 
 [ext_resource type="Script" uid="uid://crluh2jxfkkv4" path="res://city/CityGenerator.gd" id="1_generator"]
 [ext_resource type="Script" uid="uid://dg28ig0ty1t3a" path="res://ui/LoadingScreen.gd" id="1_tegu2"]
@@ -11,6 +11,7 @@
 [ext_resource type="Script" uid="uid://7xu3fgcqlm5x" path="res://city/LODIntegration.gd" id="8_nix7l"]
 [ext_resource type="Script" uid="uid://1mpmjxdgxui" path="res://city/BuildingGenerator.gd" id="10_bgen"]
 [ext_resource type="Script" uid="uid://bw11b4s2c56h3" path="res://systems/TrafficManager.gd" id="11_traf"]
+[ext_resource type="Script" path="res://city/HighwayGenerator.gd" id="12_hgen"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
 sky_top_color = Color(0.2, 0.3, 0.5, 1)
@@ -72,9 +73,14 @@ top_seed_probability = 0.2
 bottom_seed_sizes = 4
 edge_top_sizes = 1
 building_generator_path = NodePath("BuildingGenerator")
+highway_generator_path = NodePath("HighwayGenerator")
+spawn_fcar = false
 
 [node name="BuildingGenerator" type="Node3D" parent="CityGenerator"]
 script = ExtResource("10_bgen")
+
+[node name="HighwayGenerator" type="Node3D" parent="CityGenerator"]
+script = ExtResource("12_hgen")
 
 [node name="PeopleManager" type="Node" parent="."]
 script = ExtResource("1_yage8")

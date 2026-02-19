@@ -143,6 +143,7 @@ var building_generator: BuildingGenerator
 
 @export_category("Highways")
 @export var generate_highways: bool = true
+@export var highway_generator_path: NodePath
 var highway_generator: HighwayGenerator
 
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -212,10 +213,9 @@ func _create_containers():
 	if building_generator:
 		building_generator.reparent(buildings_container)
 
-	# Create HighwayGenerator
-	highway_generator = HighwayGenerator.new()
-	highway_generator.name = "HighwayGenerator"
-	add_child(highway_generator)
+	# Resolve HighwayGenerator from NodePath
+	if highway_generator_path:
+		highway_generator = get_node(highway_generator_path) as HighwayGenerator
 
 func _initialize_rng():
 	if use_random_seed:
