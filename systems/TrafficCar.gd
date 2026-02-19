@@ -12,6 +12,7 @@ var tube_offset: Vector3 = Vector3.ZERO
 var speed: float = 0.0
 var target_speed: float = 0.0
 var slot_index: int = -1
+var data_index: int = -1
 
 # Disturbed state (after player collision)
 var disturbed_velocity: Vector3 = Vector3.ZERO
@@ -46,6 +47,7 @@ func deactivate():
 	state = State.INACTIVE
 	route_index = -1
 	slot_index = -1
+	data_index = -1
 	curve_offset = 0.0
 	speed = 0.0
 	target_speed = 0.0

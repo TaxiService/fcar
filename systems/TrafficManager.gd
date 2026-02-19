@@ -2,13 +2,13 @@ class_name TrafficManager
 extends Node
 
 @export_category("Pool")
-@export var pool_size: int = 200
-@export var max_active_cars: int = 120
+@export var pool_size: int = 60
+@export var max_active_cars: int = 60
 
-@export_category("Spawning")
-@export var spawn_radius: float = 600.0
-@export var despawn_radius: float = 800.0
-@export var car_spacing: float = 80.0  # Target meters between car slots
+@export_category("Rendering")
+@export var car_spacing: float = 80.0
+@export var close_car_distance: float = 150.0
+@export var max_render_distance: float = 1000.0
 
 @export_category("LOD")
 @export var rotation_update_radius: float = 200.0
@@ -24,22 +24,74 @@ var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _route_slots: Dictionary = {}
 
 # Squared radii for fast distance checks
-var _spawn_radius_sq: float
-var _despawn_radius_sq: float
+var _close_dist_sq: float
+var _close_despawn_dist_sq: float  # Slightly larger than close for hysteresis
+var _max_render_dist_sq: float
 var _rotation_radius_sq: float
 
-# Round-robin chunk index for batched LOD updates
-var _lod_chunk_index: int = 0
-const LOD_CHUNK_SIZE: int = 20
+# --- Data-oriented car arrays (one entry per car slot across all routes) ---
+var _car_count: int = 0
+var _car_route_idx: PackedInt32Array
+var _car_curve_offset: PackedFloat32Array
+var _car_speed: PackedFloat32Array
+var _car_target_speed: PackedFloat32Array
+var _car_tube_offset_x: PackedFloat32Array
+var _car_tube_offset_y: PackedFloat32Array
+var _car_state: PackedInt32Array            # 0=cruising, 1=disturbed
+var _car_disturbed_timer: PackedFloat32Array
+var _car_disturbed_vx: PackedFloat32Array
+var _car_disturbed_vy: PackedFloat32Array
+var _car_disturbed_vz: PackedFloat32Array
+var _car_collision_cooldown: PackedFloat32Array
+var _car_world_pos: PackedVector3Array
+var _car_color: PackedColorArray
+var _car_visible: PackedByteArray           # 0=hidden, 1=mid-range (multimesh), 2=close (node pool)
+var _car_tangent: PackedVector3Array        # Cached tangent for extrapolation and rotation
+
+# Mapping from data_index -> assigned TrafficCar node (null if no node assigned)
+var _car_node_map: Array = []
+
+const CAR_STATE_CRUISING: int = 0
+const CAR_STATE_DISTURBED: int = 1
+const DISTURBED_DURATION: float = 2.0
+
+# --- MultiMesh ---
+var _multimesh: MultiMesh
+var _multimesh_instance: MultiMeshInstance3D
+
+# Frame counter for staggered curve sampling
+var _frame_counter: int = 0
 
 func _ready():
 	CityGrid.traffic_manager = self
-	_spawn_radius_sq = spawn_radius * spawn_radius
-	_despawn_radius_sq = despawn_radius * despawn_radius
+	_close_dist_sq = close_car_distance * close_car_distance
+	var despawn_dist = close_car_distance * 1.4
+	_close_despawn_dist_sq = despawn_dist * despawn_dist
+	_max_render_dist_sq = max_render_distance * max_render_distance
 	_rotation_radius_sq = rotation_update_radius * rotation_update_radius
 	_car_scene = load("res://city/cars/redsand.tscn")
 	_rng.seed = hash("traffic") + int(Time.get_unix_time_from_system()) % 10000
+	_setup_multimesh()
 	call_deferred("_warm_pool")
+
+func _setup_multimesh():
+	_multimesh = MultiMesh.new()
+	_multimesh.transform_format = MultiMesh.TRANSFORM_3D
+	_multimesh.use_colors = true
+	_multimesh.instance_count = 0
+
+	var mesh = BoxMesh.new()
+	mesh.size = Vector3(2.0, 0.8, 4.0)
+	var material = StandardMaterial3D.new()
+	material.vertex_color_use_as_albedo = true
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mesh.material = material
+	_multimesh.mesh = mesh
+
+	_multimesh_instance = MultiMeshInstance3D.new()
+	_multimesh_instance.multimesh = _multimesh
+	_multimesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(_multimesh_instance)
 
 func _warm_pool():
 	for i in range(pool_size):
@@ -50,7 +102,7 @@ func _warm_pool():
 	_pool_ready = true
 	print("TrafficManager: Pool ready (%d cars)" % _pool.size())
 
-	# Grab routes from highway generator
+	# Grab routes from highway generator and initialize data arrays
 	_load_routes()
 
 func _create_pooled_car() -> TrafficCar:
@@ -69,7 +121,7 @@ func _load_routes():
 		return
 
 	_routes = hg.routes
-	# Initialize slot arrays per route, scaled by route length
+	# Initialize slot arrays per route (kept for spawn tracking)
 	var total_slots = 0
 	for i in range(_routes.size()):
 		var route = _routes[i]
@@ -82,29 +134,102 @@ func _load_routes():
 
 	print("TrafficManager: Loaded %d routes, %d total slots (%.0fm spacing)" % [_routes.size(), total_slots, car_spacing])
 
+	_initialize_car_data()
+
+func _initialize_car_data():
+	# Count total slots across all routes
+	_car_count = 0
+	for route in _routes:
+		_car_count += maxi(1, int(route.total_length / car_spacing))
+
+	# Resize all parallel arrays
+	_car_route_idx.resize(_car_count)
+	_car_curve_offset.resize(_car_count)
+	_car_speed.resize(_car_count)
+	_car_target_speed.resize(_car_count)
+	_car_tube_offset_x.resize(_car_count)
+	_car_tube_offset_y.resize(_car_count)
+	_car_state.resize(_car_count)
+	_car_disturbed_timer.resize(_car_count)
+	_car_disturbed_vx.resize(_car_count)
+	_car_disturbed_vy.resize(_car_count)
+	_car_disturbed_vz.resize(_car_count)
+	_car_collision_cooldown.resize(_car_count)
+	_car_world_pos.resize(_car_count)
+	_car_color.resize(_car_count)
+	_car_visible.resize(_car_count)
+	_car_visible.fill(0)
+	_car_tangent.resize(_car_count)
+
+	_car_node_map.resize(_car_count)
+	_car_node_map.fill(null)
+
+	# Fill initial data
+	var idx = 0
+	for route_i in range(_routes.size()):
+		var route = _routes[route_i]
+		var slots = maxi(1, int(route.total_length / car_spacing))
+		for s in range(slots):
+			_car_route_idx[idx] = route_i
+			var offset = route.total_length * s / float(slots)
+			_car_curve_offset[idx] = offset
+			var spd = route.speed_limit * _rng.randf_range(0.85, 1.15)
+			_car_speed[idx] = spd
+			_car_target_speed[idx] = spd
+			_car_state[idx] = CAR_STATE_CRUISING
+			_car_disturbed_timer[idx] = 0.0
+			_car_disturbed_vx[idx] = 0.0
+			_car_disturbed_vy[idx] = 0.0
+			_car_disturbed_vz[idx] = 0.0
+			_car_collision_cooldown[idx] = 0.0
+
+			var angle = _rng.randf() * TAU
+			var dist = _rng.randf() * route.tube_radius * 0.7
+			_car_tube_offset_x[idx] = cos(angle) * dist
+			_car_tube_offset_y[idx] = sin(angle) * dist * 0.3
+
+			_car_color[idx] = Color.from_hsv(_rng.randf(), _rng.randf_range(0.3, 0.7), _rng.randf_range(0.5, 0.9))
+
+			# Compute initial world position and tangent
+			var curve_pos = route.curve.sample_baked(offset)
+			_car_world_pos[idx] = curve_pos + Vector3(_car_tube_offset_x[idx], _car_tube_offset_y[idx], 0)
+			var next_offset = minf(offset + 5.0, route.total_length - 0.1)
+			var next_pos = route.curve.sample_baked(next_offset)
+			var tangent = (next_pos - curve_pos).normalized()
+			if tangent.length_squared() > 0.001:
+				_car_tangent[idx] = tangent
+			else:
+				_car_tangent[idx] = Vector3.FORWARD
+
+			idx += 1
+
+	print("TrafficManager: Initialized %d car slots across %d routes" % [_car_count, _routes.size()])
+
 func get_active_cars() -> Array[TrafficCar]:
 	return _active_cars
 
 func _acquire_from_pool() -> TrafficCar:
 	if _pool.is_empty():
 		return null
-	var car = _pool.pop_back()
-	return car
+	return _pool.pop_back()
 
 func _return_to_pool(car: TrafficCar):
 	if not is_instance_valid(car):
 		return
-	# Clear slot
+	# Clear slot in route_slots
 	if car.route_index >= 0 and _route_slots.has(car.route_index):
 		var slots = _route_slots[car.route_index]
 		if car.slot_index >= 0 and car.slot_index < slots.size():
 			slots[car.slot_index] = null
+	# Clear node map entry
+	if car.data_index >= 0 and car.data_index < _car_count:
+		_car_node_map[car.data_index] = null
 	car.deactivate()
 	_active_cars.erase(car)
 	_pool.append(car)
 
 func _process(delta: float):
-	if not _pool_ready or _routes.is_empty():
+	if not _pool_ready or _car_count == 0:
 		return
 
 	var cam = TrafficCar.lod_camera
@@ -117,173 +242,244 @@ func _process(delta: float):
 
 	var cam_pos = cam.global_position
 
-	# Spawn/despawn pass
-	_update_spawning(cam_pos)
+	# Step 1: Advance all car offsets (cheap float math)
+	_advance_all_cars(delta)
 
-	# Move all active cars
-	_update_movement(delta, cam_pos)
+	# Step 2: Propagate node state to arrays (disturbance from FCar collision)
+	_sync_nodes_to_arrays()
 
-	# Batched LOD update
-	_update_lod_batch(cam_pos)
+	# Step 3: Compute positions and visibility tiers
+	_compute_visible_positions(cam_pos, delta)
 
-func _update_spawning(cam_pos: Vector3):
-	# Despawn cars beyond despawn radius
+	# Step 4: Spawn/despawn close pool based on tiers
+	_update_spawning()
+
+	# Step 5: Sync array state back to active nodes
+	_sync_arrays_to_nodes(cam_pos)
+
+	# Step 6: Update MultiMesh for mid-range rendering
+	_update_multimesh()
+
+	_frame_counter += 1
+
+func _advance_all_cars(delta: float):
+	for i in range(_car_count):
+		if _car_collision_cooldown[i] > 0:
+			_car_collision_cooldown[i] -= delta
+
+		if _car_state[i] == CAR_STATE_CRUISING:
+			_car_curve_offset[i] += _car_speed[i] * delta
+			var route = _routes[_car_route_idx[i]]
+			if route.is_loop:
+				_car_curve_offset[i] = fmod(_car_curve_offset[i], route.total_length)
+				if _car_curve_offset[i] < 0:
+					_car_curve_offset[i] += route.total_length
+			else:
+				if _car_curve_offset[i] >= route.total_length:
+					_car_curve_offset[i] = fmod(_car_curve_offset[i], route.total_length)
+		else:  # DISTURBED
+			_car_disturbed_timer[i] += delta
+			if _car_disturbed_timer[i] >= DISTURBED_DURATION:
+				_car_state[i] = CAR_STATE_CRUISING
+				_car_disturbed_timer[i] = 0.0
+				_car_speed[i] = _car_target_speed[i]
+			else:
+				# Advance along curve at half speed while disturbed
+				var route = _routes[_car_route_idx[i]]
+				_car_curve_offset[i] += _car_target_speed[i] * delta * 0.5
+				if route.is_loop:
+					_car_curve_offset[i] = fmod(_car_curve_offset[i], route.total_length)
+			_car_disturbed_vx[i] *= 0.95
+			_car_disturbed_vy[i] *= 0.95
+			_car_disturbed_vz[i] *= 0.95
+
+func _sync_nodes_to_arrays():
+	for car in _active_cars:
+		var di = car.data_index
+		if di < 0 or di >= _car_count:
+			continue
+		# FCar calls apply_disturbance() directly on the node — propagate to arrays
+		if car.state == TrafficCar.State.DISTURBED and _car_state[di] == CAR_STATE_CRUISING:
+			_car_state[di] = CAR_STATE_DISTURBED
+			_car_disturbed_timer[di] = car.disturbed_timer
+			_car_disturbed_vx[di] = car.disturbed_velocity.x
+			_car_disturbed_vy[di] = car.disturbed_velocity.y
+			_car_disturbed_vz[di] = car.disturbed_velocity.z
+		if car.collision_cooldown > _car_collision_cooldown[di]:
+			_car_collision_cooldown[di] = car.collision_cooldown
+
+func _compute_visible_positions(cam_pos: Vector3, delta: float):
+	for i in range(_car_count):
+		# Use previous frame's world_pos for distance (avoids sampling hidden cars)
+		var dist_sq = cam_pos.distance_squared_to(_car_world_pos[i])
+		var needs_sample = false
+
+		if dist_sq < _close_dist_sq:
+			_car_visible[i] = 2  # Close — Node3D pool
+			needs_sample = true
+		elif dist_sq < _max_render_dist_sq:
+			# Keep existing node assignment in hysteresis buffer zone
+			if _car_node_map[i] != null and dist_sq < _close_despawn_dist_sq:
+				_car_visible[i] = 2  # Still close — keep node
+				needs_sample = true
+			else:
+				_car_visible[i] = 1  # Mid-range — MultiMesh
+				# Sample every 3rd frame (staggered by index)
+				needs_sample = (_frame_counter % 3 == i % 3)
+		else:
+			_car_visible[i] = 0  # Hidden
+			# Periodic resample to catch drift (staggered across 60 frames)
+			needs_sample = (_frame_counter % 60 == i % 60)
+
+		# Always sample disturbed cars for accurate visual
+		if _car_state[i] == CAR_STATE_DISTURBED:
+			needs_sample = true
+
+		if needs_sample:
+			var route = _routes[_car_route_idx[i]]
+			var offset = _car_curve_offset[i]
+			var curve_pos = route.curve.sample_baked(offset)
+			var world_pos = curve_pos + Vector3(_car_tube_offset_x[i], _car_tube_offset_y[i], 0)
+
+			if _car_state[i] == CAR_STATE_DISTURBED:
+				var blend = _car_disturbed_timer[i] / DISTURBED_DURATION
+				var t = ease(blend, 0.3)
+				var disturbed_offset = Vector3(
+					_car_disturbed_vx[i], _car_disturbed_vy[i], _car_disturbed_vz[i]
+				) * (1.0 - t) * 0.5
+				world_pos += disturbed_offset
+
+			_car_world_pos[i] = world_pos
+
+			# Compute and cache tangent for extrapolation and rotation
+			var next_offset = minf(offset + 5.0, route.total_length - 0.1)
+			var next_pos = route.curve.sample_baked(next_offset)
+			var tangent = (next_pos - curve_pos).normalized()
+			if tangent.length_squared() > 0.001:
+				_car_tangent[i] = tangent
+		elif _car_visible[i] >= 1:
+			# Extrapolate position along cached tangent
+			_car_world_pos[i] += _car_tangent[i] * _car_speed[i] * delta
+
+func _update_spawning():
+	# Despawn nodes that are no longer tier 2
 	var i = _active_cars.size() - 1
 	while i >= 0:
 		var car = _active_cars[i]
-		var dist_sq = car.global_position.distance_squared_to(cam_pos)
-		if dist_sq > _despawn_radius_sq:
+		if car.data_index < 0 or car.data_index >= _car_count or _car_visible[car.data_index] != 2:
 			_return_to_pool(car)
 		i -= 1
 
-	# Spawn cars in empty slots near camera
+	# Spawn nodes for tier 2 cars that don't have one
 	if _active_cars.size() >= max_active_cars:
 		return
 
-	for route_idx in range(_routes.size()):
-		var route = _routes[route_idx]
-		var slots = _route_slots[route_idx]
-		var slot_spacing = route.total_length / slots.size()
+	for di in range(_car_count):
+		if _active_cars.size() >= max_active_cars:
+			return
+		if _car_visible[di] != 2:
+			continue
+		if _car_node_map[di] != null:
+			continue
+		_spawn_node_for_data(di)
 
-		for slot_idx in range(slots.size()):
-			if _active_cars.size() >= max_active_cars:
-				return
-			if slots[slot_idx] != null:
-				continue
-
-			# Check if this slot's curve position is near the camera
-			var offset = slot_spacing * slot_idx
-			var slot_pos = route.curve.sample_baked(offset)
-			var dist_sq = slot_pos.distance_squared_to(cam_pos)
-
-			if dist_sq < _spawn_radius_sq:
-				_spawn_car_at_slot(route_idx, route, slot_idx, offset)
-
-func _spawn_car_at_slot(route_idx: int, route, slot_idx: int, offset: float):
+func _spawn_node_for_data(data_idx: int):
 	var car = _acquire_from_pool()
 	if not car:
 		return
 
-	# Random tube offset (spread more horizontally than vertically)
-	var angle = _rng.randf() * TAU
-	var dist = _rng.randf() * route.tube_radius * 0.7
-	var tube_off = Vector3(cos(angle) * dist, sin(angle) * dist * 0.3, 0)
+	var route_idx = _car_route_idx[data_idx]
+	var route = _routes[route_idx]
 
-	var spd = route.speed_limit * _rng.randf_range(0.8, 1.15)
+	# Determine which slot this data_idx maps to within the route
+	var route_start = 0
+	for ri in range(route_idx):
+		route_start += maxi(1, int(_routes[ri].total_length / car_spacing))
+	var slot_idx = data_idx - route_start
 
+	var tube_off = Vector3(_car_tube_offset_x[data_idx], _car_tube_offset_y[data_idx], 0)
+
+	car.data_index = data_idx
 	car.slot_index = slot_idx
-	car.activate(route_idx, offset, tube_off, spd)
+	car.activate(route_idx, _car_curve_offset[data_idx], tube_off, _car_speed[data_idx])
 
-	# Set initial position
-	var curve_pos = route.curve.sample_baked(offset)
-	car.global_position = curve_pos + tube_off
+	# Set position from precomputed world pos
+	car.global_position = _car_world_pos[data_idx]
 
-	# Set initial facing
-	var next_pos = route.curve.sample_baked(minf(offset + 2.0, route.total_length))
-	var tangent = (next_pos - curve_pos).normalized()
+	# Set initial facing from cached tangent
+	var tangent = _car_tangent[data_idx]
 	if tangent.length_squared() > 0.001:
 		car.facing_direction = tangent
 		car.look_at(car.global_position + tangent, Vector3.UP)
 
 	_active_cars.append(car)
-	_route_slots[route_idx][slot_idx] = car
+	_car_node_map[data_idx] = car
 
-func _update_movement(delta: float, cam_pos: Vector3):
+	# Also update route_slots for backward compat
+	if _route_slots.has(route_idx) and slot_idx >= 0 and slot_idx < _route_slots[route_idx].size():
+		_route_slots[route_idx][slot_idx] = car
+
+func _sync_arrays_to_nodes(cam_pos: Vector3):
 	for car in _active_cars:
-		if car.route_index < 0 or car.route_index >= _routes.size():
+		var di = car.data_index
+		if di < 0 or di >= _car_count:
 			continue
-		var route = _routes[car.route_index]
-		_update_car(car, delta, route, cam_pos)
 
-func _update_car(car: TrafficCar, delta: float, route, cam_pos: Vector3):
-	if car.collision_cooldown > 0:
-		car.collision_cooldown -= delta
+		# Read authoritative array state to node
+		car.global_position = _car_world_pos[di]
+		car.curve_offset = _car_curve_offset[di]
+		car.speed = _car_speed[di]
+		car.collision_cooldown = _car_collision_cooldown[di]
 
-	match car.state:
-		TrafficCar.State.CRUISING:
-			car.curve_offset += car.speed * delta
+		if _car_state[di] == CAR_STATE_DISTURBED:
+			car.state = TrafficCar.State.DISTURBED
+			car.disturbed_timer = _car_disturbed_timer[di]
+			car.disturbed_velocity = Vector3(_car_disturbed_vx[di], _car_disturbed_vy[di], _car_disturbed_vz[di])
+		elif _car_state[di] == CAR_STATE_CRUISING:
+			car.state = TrafficCar.State.CRUISING
 
-			if route.is_loop:
-				car.curve_offset = fmod(car.curve_offset, route.total_length)
-				if car.curve_offset < 0:
-					car.curve_offset += route.total_length
-			else:
-				if car.curve_offset >= route.total_length:
-					car.curve_offset = 0.0
+		# Update rotation for nearby cars using cached tangent
+		var dist_sq = car.global_position.distance_squared_to(cam_pos)
+		if dist_sq < _rotation_radius_sq:
+			var tangent = _car_tangent[di]
+			if tangent.length_squared() > 0.001:
+				car.facing_direction = tangent
+				car.look_at(car.global_position + tangent, Vector3.UP)
 
-			var curve_pos = route.curve.sample_baked(car.curve_offset)
-			car.global_position = curve_pos + car.tube_offset
+		car.visible = true  # Always visible — pool only holds close-range cars
 
-			# Only update rotation for nearby cars
-			var dist_sq = car.global_position.distance_squared_to(cam_pos)
-			if dist_sq < _rotation_radius_sq:
-				var look_offset = minf(car.curve_offset + 2.0, route.total_length)
-				var next_pos = route.curve.sample_baked(look_offset)
-				var tangent = (next_pos - curve_pos).normalized()
-				if tangent.length_squared() > 0.001:
-					car.facing_direction = tangent
-					car.look_at(car.global_position + tangent, Vector3.UP)
+func _update_multimesh():
+	# Count cars that need multimesh rendering (visible but no node assigned)
+	var mm_count = 0
+	for i in range(_car_count):
+		if _car_visible[i] >= 1 and _car_node_map[i] == null:
+			mm_count += 1
 
-		TrafficCar.State.DISTURBED:
-			car.disturbed_timer += delta
-			var blend = car.disturbed_timer / car.disturbed_duration
+	# Resize multimesh if needed (only grow, with padding)
+	if mm_count > _multimesh.instance_count:
+		_multimesh.instance_count = mm_count + 100
 
-			if blend >= 1.0:
-				car.state = TrafficCar.State.CRUISING
-				_snap_car_to_curve(car, route)
-			else:
-				var disturbed_pos = car.global_position + car.disturbed_velocity * delta
-				car.disturbed_velocity *= 0.95
+	# Write transforms and colors
+	var write_idx = 0
+	for i in range(_car_count):
+		if _car_visible[i] < 1 or _car_node_map[i] != null:
+			continue
 
-				car.curve_offset += car.target_speed * delta * 0.5
-				if route.is_loop:
-					car.curve_offset = fmod(car.curve_offset, route.total_length)
-				var curve_pos = route.curve.sample_baked(car.curve_offset) + car.tube_offset
+		var pos = _car_world_pos[i]
+		var tangent = _car_tangent[i]
 
-				var t = ease(blend, 0.3)
-				car.global_position = disturbed_pos.lerp(curve_pos, t)
+		var xform = Transform3D()
+		if tangent.length_squared() > 0.001:
+			var up = Vector3.UP
+			var right = tangent.cross(up).normalized()
+			if right.length_squared() < 0.001:
+				right = Vector3.RIGHT
+			up = right.cross(tangent).normalized()
+			xform.basis = Basis(right, up, -tangent)
+		xform.origin = pos
 
-func _snap_car_to_curve(car: TrafficCar, route):
-	# Find approximate nearest offset by sampling
-	var best_offset = car.curve_offset
-	var best_dist_sq = INF
-	var search_range = 200.0
-	var step = 20.0
+		_multimesh.set_instance_transform(write_idx, xform)
+		_multimesh.set_instance_color(write_idx, _car_color[i])
+		write_idx += 1
 
-	var start = car.curve_offset - search_range
-	var end = car.curve_offset + search_range
-
-	var check = start
-	while check <= end:
-		var test_offset = check
-		if route.is_loop:
-			test_offset = fmod(fmod(test_offset, route.total_length) + route.total_length, route.total_length)
-		else:
-			test_offset = clampf(test_offset, 0.0, route.total_length)
-		var pos = route.curve.sample_baked(test_offset)
-		var d = pos.distance_squared_to(car.global_position)
-		if d < best_dist_sq:
-			best_dist_sq = d
-			best_offset = test_offset
-		check += step
-
-	car.curve_offset = best_offset
-	car.speed = car.target_speed
-
-func _update_lod_batch(cam_pos: Vector3):
-	if _active_cars.is_empty():
-		return
-
-	var start = _lod_chunk_index
-	var end = mini(start + LOD_CHUNK_SIZE, _active_cars.size())
-
-	for i in range(start, end):
-		_update_car_lod(_active_cars[i], cam_pos)
-
-	_lod_chunk_index = end
-	if _lod_chunk_index >= _active_cars.size():
-		_lod_chunk_index = 0
-
-func _update_car_lod(car: TrafficCar, cam_pos: Vector3):
-	var dist_sq = car.global_position.distance_squared_to(cam_pos)
-	car.visible = dist_sq < _despawn_radius_sq
+	_multimesh.visible_instance_count = write_idx
