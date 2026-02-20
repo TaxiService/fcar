@@ -102,8 +102,19 @@ func _warm_pool():
 	_pool_ready = true
 	print("TrafficManager: Pool ready (%d cars)" % _pool.size())
 
-	# Grab routes from highway generator and initialize data arrays
-	_load_routes()
+	# Wait for city generation to complete before loading routes
+	var cg = CityGrid.city_generator
+	if cg:
+		if not cg.is_node_ready():
+			await cg.ready
+		# If highways already generated, load now; otherwise wait for signal
+		var hg = CityGrid.highway_generator
+		if hg and not hg.routes.is_empty():
+			_load_routes()
+		else:
+			cg.city_generation_complete.connect(_load_routes, CONNECT_ONE_SHOT)
+	else:
+		push_warning("TrafficManager: No CityGenerator found")
 
 func _create_pooled_car() -> TrafficCar:
 	var car = TrafficCar.new()
