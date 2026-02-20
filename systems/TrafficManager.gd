@@ -219,6 +219,26 @@ func _initialize_car_data():
 func get_active_cars() -> Array[TrafficCar]:
 	return _active_cars
 
+func get_close_car_data() -> Array:
+	return _car_node_map
+
+func get_car_count() -> int:
+	return _car_count
+
+func get_car_world_pos(data_index: int) -> Vector3:
+	return _car_world_pos[data_index]
+
+func get_car_collision_cooldown(data_index: int) -> float:
+	return _car_collision_cooldown[data_index]
+
+func apply_car_disturbance(data_index: int, velocity: Vector3):
+	_car_state[data_index] = CAR_STATE_DISTURBED
+	_car_disturbed_timer[data_index] = 0.0
+	_car_disturbed_vx[data_index] = velocity.x
+	_car_disturbed_vy[data_index] = velocity.y
+	_car_disturbed_vz[data_index] = velocity.z
+	_car_collision_cooldown[data_index] = 1.5
+
 func _acquire_from_pool() -> TrafficCar:
 	if _pool.is_empty():
 		return null
@@ -256,19 +276,16 @@ func _process(delta: float):
 	# Step 1: Advance all car offsets (cheap float math)
 	_advance_all_cars(delta)
 
-	# Step 2: Propagate node state to arrays (disturbance from FCar collision)
-	_sync_nodes_to_arrays()
-
-	# Step 3: Compute positions and visibility tiers
+	# Step 2: Compute positions and visibility tiers
 	_compute_visible_positions(cam_pos, delta)
 
-	# Step 4: Spawn/despawn close pool based on tiers
+	# Step 3: Spawn/despawn close pool based on tiers
 	_update_spawning()
 
-	# Step 5: Sync array state back to active nodes
+	# Step 4: Sync array state back to active nodes
 	_sync_arrays_to_nodes(cam_pos)
 
-	# Step 6: Update MultiMesh for mid-range rendering
+	# Step 5: Update MultiMesh for mid-range rendering
 	_update_multimesh()
 
 	_frame_counter += 1
@@ -303,21 +320,6 @@ func _advance_all_cars(delta: float):
 			_car_disturbed_vx[i] *= 0.95
 			_car_disturbed_vy[i] *= 0.95
 			_car_disturbed_vz[i] *= 0.95
-
-func _sync_nodes_to_arrays():
-	for car in _active_cars:
-		var di = car.data_index
-		if di < 0 or di >= _car_count:
-			continue
-		# FCar calls apply_disturbance() directly on the node — propagate to arrays
-		if car.state == TrafficCar.State.DISTURBED and _car_state[di] == CAR_STATE_CRUISING:
-			_car_state[di] = CAR_STATE_DISTURBED
-			_car_disturbed_timer[di] = car.disturbed_timer
-			_car_disturbed_vx[di] = car.disturbed_velocity.x
-			_car_disturbed_vy[di] = car.disturbed_velocity.y
-			_car_disturbed_vz[di] = car.disturbed_velocity.z
-		if car.collision_cooldown > _car_collision_cooldown[di]:
-			_car_collision_cooldown[di] = car.collision_cooldown
 
 func _compute_visible_positions(cam_pos: Vector3, delta: float):
 	for i in range(_car_count):
@@ -436,18 +438,8 @@ func _sync_arrays_to_nodes(cam_pos: Vector3):
 		if di < 0 or di >= _car_count:
 			continue
 
-		# Read authoritative array state to node
+		# Position node from authoritative array data
 		car.global_position = _car_world_pos[di]
-		car.curve_offset = _car_curve_offset[di]
-		car.speed = _car_speed[di]
-		car.collision_cooldown = _car_collision_cooldown[di]
-
-		if _car_state[di] == CAR_STATE_DISTURBED:
-			car.state = TrafficCar.State.DISTURBED
-			car.disturbed_timer = _car_disturbed_timer[di]
-			car.disturbed_velocity = Vector3(_car_disturbed_vx[di], _car_disturbed_vy[di], _car_disturbed_vz[di])
-		elif _car_state[di] == CAR_STATE_CRUISING:
-			car.state = TrafficCar.State.CRUISING
 
 		# Update rotation for nearby cars using cached tangent
 		var dist_sq = car.global_position.distance_squared_to(cam_pos)

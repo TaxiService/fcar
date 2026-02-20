@@ -1303,38 +1303,38 @@ func _update_traffic_collisions():
 		if not traffic_manager:
 			return
 
-	var car_pos = global_position
 	var car_vel = linear_velocity
-	var car_speed = car_vel.length()
-
-	if car_speed < 1.0:
+	if car_vel.length_squared() < 1.0:
 		return
 
+	var car_pos = global_position
+	var car_speed = car_vel.length()
 	var player_half = Vector3(0.6, 0.5, 1.2)
+	var tc_half = Vector3(1.0, 0.5, 2.0)
+	var combined = player_half + tc_half
+	var node_map = traffic_manager.get_close_car_data()
 
-	for tc in traffic_manager.get_active_cars():
-		if tc.state == TrafficCar.State.INACTIVE:
+	for di in range(node_map.size()):
+		if node_map[di] == null:
 			continue
-		if tc.collision_cooldown > 0:
+		if traffic_manager.get_car_collision_cooldown(di) > 0:
 			continue
 
-		var tc_pos = tc.global_position
+		var tc_pos = traffic_manager.get_car_world_pos(di)
 
 		# Broad phase: squared distance (5m threshold)
-		var dist_sq = car_pos.distance_squared_to(tc_pos)
-		if dist_sq > 25.0:
+		if car_pos.distance_squared_to(tc_pos) > 25.0:
 			continue
 
 		# Narrow phase: AABB overlap
 		var diff = (car_pos - tc_pos).abs()
-		var combined = player_half + tc.collision_half_extents
 		if diff.x >= combined.x or diff.y >= combined.y or diff.z >= combined.z:
 			continue
 
-		_handle_traffic_collision(tc, tc_pos, car_vel, car_speed)
+		_handle_traffic_collision_data(di, tc_pos, car_vel, car_speed)
 
 
-func _handle_traffic_collision(tc: TrafficCar, tc_pos: Vector3, car_vel: Vector3, car_speed: float):
+func _handle_traffic_collision_data(data_idx: int, tc_pos: Vector3, car_vel: Vector3, car_speed: float):
 	var hit_dir = (tc_pos - global_position).normalized()
 
 	# Player response: impulse pushing player away
@@ -1350,8 +1350,7 @@ func _handle_traffic_collision(tc: TrafficCar, tc_pos: Vector3, car_vel: Vector3
 
 	# Traffic car response: deflect along hit direction + carry some player velocity
 	var deflection = hit_dir * car_speed * 0.4 + car_vel * 0.2
-	tc.apply_disturbance(deflection, global_position)
-	tc.collision_cooldown = 1.5
+	traffic_manager.apply_car_disturbance(data_idx, deflection)
 
 	traffic_collision.emit(tc_pos, car_speed)
 
